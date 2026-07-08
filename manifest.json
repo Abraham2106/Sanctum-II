@@ -1,0 +1,10 @@
+{
+  "id": "sanctum-ii",
+  "name": "Sanctum II",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "Plataforma autocontenida de agentes de IA que razonan sobre tu vault",
+  "author": "",
+  "authorUrl": "",
+  "isDesktopOnly": true
+}
