@@ -162,7 +162,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     const traceId = this.tracer.start(agent.id, this.systemPrompt, prompt);
     try {
       const result = await executeTurn(
-        { agent, opencodeClient: this.opencodeClient, geminiBalancer: this.geminiBalancer, vectorStore: this.vectorStore, tracer: this.tracer },
+        { agent, opencodeClient: this.opencodeClient, geminiBalancer: this.geminiBalancer, vectorStore: this.vectorStore, tracer: this.tracer, tavilyApiKey: this.settings.tavilyApiKey },
         prompt,
         false,
         this.pathFilter,
@@ -202,7 +202,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     const traceId = this.tracer.start(agent.id, agent.system_prompt || FALLBACK_SYSTEM_PROMPT, actualMessage);
     try {
       const result = await executeTurn(
-        { agent, opencodeClient: this.opencodeClient, geminiBalancer: this.geminiBalancer, vectorStore: this.vectorStore, tracer: this.tracer },
+        { agent, opencodeClient: this.opencodeClient, geminiBalancer: this.geminiBalancer, vectorStore: this.vectorStore, tracer: this.tracer, tavilyApiKey: this.settings.tavilyApiKey },
         actualMessage,
         false,
         this.pathFilter,
@@ -327,6 +327,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
         opencodeClient: this.opencodeClient,
         tracer: this.tracer,
         pathFilter: this.pathFilter,
+        tavilyApiKey: this.settings.tavilyApiKey,
       });
 
       if (result.criticVerdict === "accept" && writeIntent) {

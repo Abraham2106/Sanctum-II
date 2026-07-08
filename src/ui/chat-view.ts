@@ -3,6 +3,8 @@ import { VIEW_TYPE_SANCTUM } from "../constants";
 import type { AgentDefinition } from "../agents/types";
 import type { MeshResultFull } from "../orchestrator/mesh";
 
+const CHAT_HISTORY_PATH = "sanctum-logs/chat-history.json";
+
 export interface ChatViewPlugin {
   agent: AgentDefinition | null;
   agentName: string;
@@ -101,11 +103,16 @@ export class SanctumChatView extends ItemView {
     this.meshBtn.addEventListener("click", () => this.toggleMeshMode());
 
     makeBtn("📋 Último trace", "var(--text-muted)", () => this.handleShowTrace());
+    makeBtn("🧹 Limpiar Chat", "var(--text-muted)", () => this.clearChatHistory());
 
     this.msgEl = container.createDiv({ cls: "sanctum-messages" });
     this.msgEl.style.cssText = "flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px";
 
-    this.addMessage("agent", `Bienvenido. Indexá /Research/ y preguntale a @${agentName}.`, `${agentEmoji} ${agentName}`);
+    this.loadChatHistory().then((loaded) => {
+      if (!loaded) {
+        this.addMessage("agent", `Bienvenido. Indexá /Research/ y preguntale a @${agentName}.`, `${agentEmoji} ${agentName}`);
+      }
+    });
 
     const inputRow = container.createDiv();
     inputRow.style.cssText = "display:flex;gap:8px;padding:8px 0";
@@ -135,6 +142,7 @@ export class SanctumChatView extends ItemView {
   private addMessage(role: "user" | "agent", content: string, label?: string): void {
     this.messages.push({ role, content, label });
     this.renderMessages();
+    this.saveChatHistory();
   }
 
   private renderMessages(): void {
@@ -297,6 +305,37 @@ export class SanctumChatView extends ItemView {
     this.input.disabled = false;
     this.sendBtn.disabled = false;
     this.input.focus();
+  }
+
+  private async saveChatHistory(): Promise<void> {
+    try {
+      await this.app.vault.adapter.write(CHAT_HISTORY_PATH, JSON.stringify(this.messages, null, 2));
+    } catch {}
+  }
+
+  private async loadChatHistory(): Promise<boolean> {
+    try {
+      const exists = await this.app.vault.adapter.exists(CHAT_HISTORY_PATH);
+      if (!exists) return false;
+      const raw = await this.app.vault.adapter.read(CHAT_HISTORY_PATH);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        this.messages = parsed;
+        this.renderMessages();
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  private async clearChatHistory(): Promise<void> {
+    this.messages = [];
+    try {
+      await this.app.vault.adapter.write(CHAT_HISTORY_PATH, JSON.stringify([]));
+    } catch {}
+    const agentEmoji = this.plugin.agent?.avatar || "🤖";
+    const agentName = this.plugin.agentName;
+    this.addMessage("agent", `Bienvenido. Indexá /Research/ y preguntale a @${agentName}.`, `${agentEmoji} ${agentName}`);
   }
 
   private async loadFolderList(select: HTMLSelectElement): Promise<void> {

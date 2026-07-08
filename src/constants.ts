@@ -5,10 +5,12 @@ export interface SanctumSettings {
   opencodeApiKey: string;
   opencodeBaseUrl: string;
   geminiApiKeys: string;
+  tavilyApiKey: string;
 }
 
 export const DEFAULT_SETTINGS: SanctumSettings = {
   opencodeApiKey: "",
   opencodeBaseUrl: "https://api.opencode.ai",
   geminiApiKeys: "",
+  tavilyApiKey: "",
 };

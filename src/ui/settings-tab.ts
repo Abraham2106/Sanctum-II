@@ -82,5 +82,18 @@ export class SanctumSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+    new Setting(containerEl)
+      .setName("Tavily API Key")
+      .setDesc("API key de Tavily para búsqueda web en agentes con tool web_search")
+      .addText((text) =>
+        text
+          .setPlaceholder("tvly-...")
+          .setValue(this.plugin.settings.tavilyApiKey)
+          .onChange(async (val) => {
+            this.plugin.settings.tavilyApiKey = val;
+            await this.plugin.saveSettings();
+          })
+      );
   }
 }

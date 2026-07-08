@@ -13,6 +13,7 @@ export interface MeshOptions {
   opencodeClient: OpenCodeClient;
   tracer: Tracer;
   pathFilter?: string[];
+  tavilyApiKey?: string;
 }
 
 export interface HistoryEntry {
@@ -93,6 +94,7 @@ function pickTurnDeps(opts: MeshOptions) {
     geminiBalancer: opts.geminiBalancer,
     vectorStore: opts.vectorStore,
     tracer: opts.tracer,
+    tavilyApiKey: opts.tavilyApiKey,
   };
 }
 
