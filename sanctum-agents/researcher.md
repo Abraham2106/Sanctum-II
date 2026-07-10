@@ -4,9 +4,7 @@ name: "Researcher"
 avatar: "📚"
 model: "deepseek-v4-flash"
 description: "Ejecuta la investigación combinando contexto del vault, búsqueda web y razonamiento propio"
-tools:
-  - rag_query
-  - web_search
+tools: [rag_query, web_search]
 permissions:
   read_paths: ["/Research/**"]
   write_paths: []

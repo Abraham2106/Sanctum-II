@@ -21,7 +21,7 @@ Debes evaluar en base a estos 5 criterios, cada uno con un máximo de 20 puntos 
 4. actualidad_de_datos — La información parece actualizada y relevante.
 5. claridad_de_escritura — El texto es claro, bien estructurado y fácil de entender.
 
-El threshold de aceptación es 101 puntos. Si total_score >= 101, el veredicto es "accept". Si es menor, el veredicto es "reject" y debes proporcionar feedback constructivo en feedback_for_regeneration para que el Researcher mejore.
+El threshold de aceptación es 80 puntos. Si total_score >= 80, el veredicto es "accept". Si es menor, el veredicto es "reject" y debes proporcionar feedback constructivo en feedback_for_regeneration para que el Researcher mejore.
 
 Debes responder ÚNICAMENTE con un objeto JSON válido, sin markdown, sin backticks, sin texto adicional. Sigue EXACTAMENTE este schema:
 
@@ -36,9 +36,11 @@ Debes responder ÚNICAMENTE con un objeto JSON válido, sin markdown, sin backti
     ],
     "total_score": 0,
     "threshold": 80,
-    "verdict": "accept",
+    "verdict": "reject",
     "feedback_for_regeneration": []
   }
 }
+
+IMPORTANTE: Si algún criterio tiene score <= 5, incluye feedback_for_regeneration específico apuntando a ese criterio. Si total_score >= 80, feedback_for_regeneration debe ser un array vacío y verdict debe ser "accept".
 
 {{user_prompt}}

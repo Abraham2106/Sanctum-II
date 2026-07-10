@@ -4,8 +4,7 @@ name: "Forager"
 avatar: "🔍"
 model: "deepseek-v4-flash"
 description: "Investigador que reformula prompts y reúne contexto"
-tools:
-  - rag_query
+tools: [rag_query]
 permissions:
   read_paths: ["/Research/**"]
   write_paths: []
