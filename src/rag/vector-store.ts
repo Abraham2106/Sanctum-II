@@ -5,9 +5,9 @@ export interface Chunk {
   embedding: number[];
 }
 
-const STORE_PATH = "sanctum-logs/vector-store.jsonl";
+const DEFAULT_STORE_PATH = "sanctum-logs/vector-store.jsonl";
 
-function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
@@ -62,14 +62,25 @@ export class VectorStore {
   private pendingTxns: string[] = [];
   private shouldTruncate = false;
   private dims = 0;
+  private storePath: string;
+
+  constructor(storePath?: string) {
+    this.storePath = storePath || DEFAULT_STORE_PATH;
+  }
 
   get count(): number {
     return this.chunks.length;
   }
 
+  get allChunks(): Chunk[] {
+    return this.chunks;
+  }
+
+  getStorePath(): string { return this.storePath; }
+
   async load(adapter: { read: (p: string) => Promise<string> }): Promise<void> {
     try {
-      const raw = await adapter.read(STORE_PATH);
+      const raw = await adapter.read(this.storePath);
       const lines = raw.split("\n");
       
       this.chunksMap.clear();
@@ -142,12 +153,12 @@ export class VectorStore {
         }));
       }
       const fileContent = txns.length > 0 ? txns.join("\n") + "\n" : "";
-      await adapter.write(STORE_PATH, fileContent);
+      await adapter.write(this.storePath, fileContent);
       this.shouldTruncate = false;
       this.pendingTxns = [];
     } else if (this.pendingTxns.length > 0) {
       const appendContent = this.pendingTxns.join("") ;
-      await appendToFile(adapter, STORE_PATH, appendContent);
+      await appendToFile(adapter, this.storePath, appendContent);
       this.pendingTxns = [];
     }
   }

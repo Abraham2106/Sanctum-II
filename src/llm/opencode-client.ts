@@ -24,24 +24,35 @@ export class OpenCodeClient {
     systemPrompt: string,
     userPrompt: string,
     injectedContext?: string
+  ): Promise<{ content: string; usage: { prompt: number; completion: number } }>;
+  async chat(messages: { role: "system" | "user" | "assistant"; content: string }[]): Promise<{ content: string; usage: { prompt: number; completion: number } }>;
+  async chat(
+    arg1: string | { role: "system" | "user" | "assistant"; content: string }[],
+    arg2?: string,
+    arg3?: string,
   ): Promise<{ content: string; usage: { prompt: number; completion: number } }> {
     if (!this.configured) {
       throw new Error("OPENCODE_GO_API_KEY no configurada");
     }
 
-    const userContent = injectedContext
-      ? `${userPrompt}\n\nContexto del vault:\n${injectedContext}`
-      : userPrompt;
+    let messages: { role: "system" | "user" | "assistant"; content: string }[];
 
-    const body = {
-      model: MODEL,
-      messages: [
-        { role: "system" as const, content: systemPrompt },
+    if (typeof arg1 === "string") {
+      // Legacy mode: systemPrompt, userPrompt, injectedContext
+      const userContent = arg3
+        ? `${arg2}\n\nContexto del vault:\n${arg3}`
+        : arg2 || "";
+      messages = [
+        { role: "system" as const, content: arg1 },
         { role: "user" as const, content: userContent },
-      ],
-    };
+      ];
+    } else {
+      // Messages array mode
+      messages = arg1;
+    }
 
     const url = `${this.baseUrl}/chat/completions`;
+    const body = { model: MODEL, messages };
     const response = await requestUrl({
       url,
       method: "POST",

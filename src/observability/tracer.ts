@@ -1,8 +1,9 @@
 export interface TraceChunk {
-  source: "rag";
+  source: "rag" | "kg";
   chunk: string;
   similarity_score: number;
   from_note: string;
+  relation?: "wikilink" | "semantic" | "wikilink+semantic";
 }
 
 export interface TraceInput {

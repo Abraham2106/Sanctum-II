@@ -34,6 +34,7 @@ export async function indexResearchFolder(
   let totalChunks = 0;
 
   const targetPath = subPath || RESEARCH_PATH;
+  console.log(`[RAG-old] 📇 Indexando ${targetPath} → store: ${store.getStorePath()}, count: ${store.count}`);
   const exists = await vaultAdapter.exists(targetPath);
   if (!exists) {
     return { totalNotes: 0, totalChunks: 0, errors: [`La carpeta /${targetPath}/ no existe en el vault`] };
