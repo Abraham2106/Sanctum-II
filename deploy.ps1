@@ -8,6 +8,16 @@ if (Test-Path "sanctum-agents") {
     Copy-Item "sanctum-agents\*.md" "$vault\sanctum-agents\" -Force
 }
 
+if (Test-Path "sanctum-skills") {
+    New-Item -ItemType Directory -Path "$vault\sanctum-skills" -Force
+    Copy-Item "sanctum-skills\*.md" "$vault\sanctum-skills\" -Force
+}
+
+New-Item -ItemType Directory -Path "$vault\sanctum-chains" -Force
 New-Item -ItemType Directory -Path "$vault\sanctum-logs\traces" -Force
+New-Item -ItemType Directory -Path "$vault\sanctum-projects" -Force
+New-Item -ItemType Directory -Path "$vault\sanctum-memory" -Force
+New-Item -ItemType Directory -Path "$vault\sanctum-logs\threads" -Force
+New-Item -ItemType Directory -Path "$vault\sanctum-logs\index" -Force
 
 Write-Output "Deploy completado a $vault"

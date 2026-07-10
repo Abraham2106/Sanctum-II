@@ -3,5 +3,4 @@ main.js
 main.js.map
 .env
 *.env.local
-Vision.md
-MVP.md
+docs-local/

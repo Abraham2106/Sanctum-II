@@ -5,6 +5,7 @@ export interface SanctumEnv {
   OPENCODE_GO_API_KEY: string;
   OPENCODE_GO_BASE_URL: string;
   GEMINI_API_KEYS: string;
+  TAVILY_API_KEY: string;
 }
 
 export function loadEnvFile(envPath?: string): Partial<SanctumEnv> {
@@ -36,10 +37,12 @@ export function getEnv(): SanctumEnv {
   const opencodeApiKey = envFile.OPENCODE_GO_API_KEY || process.env.OPENCODE_GO_API_KEY || "";
   const opencodeBaseUrl = envFile.OPENCODE_GO_BASE_URL || process.env.OPENCODE_GO_BASE_URL || "https://api.opencode.ai";
   const geminiKeys = envFile.GEMINI_API_KEYS || process.env.GEMINI_API_KEYS || "";
+  const tavilyKey = envFile.TAVILY_API_KEY || process.env.TAVILY_API_KEY || "";
 
   return {
     OPENCODE_GO_API_KEY: opencodeApiKey,
     OPENCODE_GO_BASE_URL: opencodeBaseUrl,
     GEMINI_API_KEYS: geminiKeys,
+    TAVILY_API_KEY: tavilyKey,
   };
 }
