@@ -1,524 +1,278 @@
-import { ItemView, WorkspaceLeaf, MarkdownRenderer, Notice, TFile } from "obsidian";
-import { VIEW_TYPE_SANCTUM } from "../constants";
+import { ItemView, WorkspaceLeaf, Notice, setIcon } from "obsidian";
 import type { AgentDefinition } from "../agents/types";
 import type { MeshResultFull } from "../orchestrator/mesh";
+import { VIEW_TYPE_SANCTUM } from "../constants";
+import { ChatLeftPanel } from "./chat-left";
+import { ChatComposer } from "./chat-composer";
+import { ChatRightPanel } from "./chat-right";
+import { ChatMessages } from "./chat-messages";
+import { ChatAutocomplete } from "./chat-autocomplete";
+import type { ChatViewPlugin, ChatMessage, RailAgent } from "./chat-types";
 
-const CHAT_HISTORY_PATH = "sanctum-logs/chat-history.json";
-
-export interface ChatViewPlugin {
-  agent: AgentDefinition | null;
-  agentName: string;
-  vectorStore: { count: number };
-  activeFolder: string | null;
-  sendChatMessage(msg: string): Promise<string>;
-  indexResearch(folder?: string): Promise<void>;
-  setActiveFolder(folder: string | null): void;
-  runOrchestrate(prompt: string): Promise<void>;
-  createNoteWithAI(): Promise<void>;
-  testEmbeddings(): Promise<void>;
-  testChat(): Promise<void>;
-  runMesh(prompt: string): Promise<MeshResultFull>;
-  getLatestTrace(): Promise<string>;
-}
-
-interface ChatMessage {
-  role: "user" | "agent";
-  content: string;
-  label?: string;
-}
+export { ChatViewPlugin, ChatMessage };
 
 export class SanctumChatView extends ItemView {
+  // Plugin interface (delegated to the real plugin)
   private plugin: ChatViewPlugin;
-  private messages: ChatMessage[] = [];
-  private msgEl: HTMLElement;
-  private input: HTMLInputElement;
-  private sendBtn: HTMLButtonElement;
-  private meshMode = false;
-  private meshBtn: HTMLButtonElement;
-  private dropdownEl: HTMLElement;
-  private availableAgents: { id: string; name: string; avatar: string }[] = [];
-  private activeQuery: { startIdx: number; endIdx: number; text: string } | null = null;
-  private filteredOptions: { type: "agent" | "note"; label: string; value: string; detail?: string; avatar?: string }[] = [];
-  private highlightedIndex = 0;
+  private opened = false;
+
+  // Modules
+  private left!: ChatLeftPanel;
+  private composer!: ChatComposer;
+  private right!: ChatRightPanel;
+  private messenger!: ChatMessages;
+  private autocomplete!: ChatAutocomplete;
+
+  // State exposed to modules
+  meshMode = false;
+  threadId = "";
+  selectedRailAgent: RailAgent | null = null;
+
+  // DOM references
+  private threadEl!: HTMLElement;
+
+  // Agent autocomplete data
+  private availableAgents: RailAgent[] = [];
 
   constructor(leaf: WorkspaceLeaf, plugin: ChatViewPlugin) {
     super(leaf);
     this.plugin = plugin;
   }
 
-  getViewType(): string {
-    return VIEW_TYPE_SANCTUM;
+  getViewType(): string { return VIEW_TYPE_SANCTUM; }
+  getDisplayText(): string { return "Sanctum II"; }
+  getIcon(): string { return "bot"; }
+
+  setThreadId(id: string): void {
+    this.threadId = id;
+    if (this.messenger) this.messenger.setThreadId(id);
   }
 
-  getDisplayText(): string {
-    return "Sanctum II";
+  async postMessage(text: string): Promise<void> {
+    this.messenger.messages = [];
+    if (this.threadEl) this.threadEl.empty();
+    const loaded = await this.messenger.loadThreadMessages();
+    if (!loaded) {
+      this.messenger.addMsg("agent",
+        `Bienvenido a **Sanctum-II** · Proyecto: **${this.plugin.getActiveProjectName()}** ${this.plugin.getActiveProjectIcon()}.`,
+        `bot ${this.plugin.agentName}`);
+    }
+    this.composer.inputEl.value = text;
+    this.composer.inputEl.disabled = false;
+    this.composer.sendBtn.disabled = false;
+    await this.handleSend();
   }
 
-  getIcon(): string {
-    return "bot";
+  async reloadForProject(threadId: string): Promise<void> {
+    this.threadId = threadId;
+    if (!this.messenger) return;
+    this.messenger.messages = [];
+    if (this.threadEl) {
+      this.threadEl.empty();
+      const loaded = await this.messenger.loadThreadMessages();
+      if (!loaded) {
+        this.messenger.addMsg("agent",
+          `Bienvenido a **Sanctum-II** · Proyecto: **${this.plugin.getActiveProjectName()}** ${this.plugin.getActiveProjectIcon()}.`,
+          `bot ${this.plugin.agentName}`);
+      }
+    }
   }
 
   async onOpen(): Promise<void> {
-    const container = this.containerEl.children[1];
+    if (this.opened) return;
+    this.opened = true;
+    const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
-    container.style.cssText = "display:flex;flex-direction:column;height:100%;position:relative";
+    container.addClass("sanctum-root");
 
-    const agentEmoji = this.plugin.agent?.avatar || "🤖";
-    const agentName = this.plugin.agentName;
-    const idxCount = this.plugin.vectorStore.count;
-    container.createEl("h3", { text: `Sanctum II — ${agentEmoji} ${agentName} (${idxCount} chunks)` });
+    const leftEl = container.createDiv({ cls: "s-left" });
+    const centerEl = container.createDiv({ cls: "s-center" });
+    const rightEl = container.createDiv({ cls: "s-right" });
 
-    const actionsEl = container.createDiv();
-    actionsEl.style.cssText = "display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center";
+    // Initialize modules
+    this.left = new ChatLeftPanel(this.plugin);
+    this.composer = new ChatComposer(this.plugin);
+    this.right = new ChatRightPanel();
+    this.messenger = new ChatMessages(this.plugin);
+    this.autocomplete = new ChatAutocomplete(this.plugin, () => this.app);
 
-    // Folder selector
-    const folderSelect = actionsEl.createEl("select");
-    folderSelect.style.cssText = "font-size:12px;padding:2px 4px;max-width:160px";
-    const defaultOpt = folderSelect.createEl("option", { text: "📂 Todo /Research/", value: "" });
-    defaultOpt.selected = true;
-    this.loadFolderList(folderSelect).catch(() => {});
+    // Build panels — left uses parent (s-left), right creates s-right inside
+    this.left.build(leftEl, this.availableAgents);
+    this.composer.build(centerEl, {
+      onSend: () => this.dispatchSend(),
+      onToggleMesh: () => this.toggleMeshMode(),
+    });
+    this.right.build(rightEl);
 
-    const makeBtn = (text: string, bg: string, onClick: () => void) => {
-      const btn = actionsEl.createEl("button", { text });
-      btn.style.cssText = `background:${bg};color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px`;
-      btn.addEventListener("click", onClick);
+    // Subscribe to composer events — combine autocomplete + send
+    let autoCompleteHandled = false;
+    this.autocomplete.setOnSelect(() => { autoCompleteHandled = true; });
+    this.composer.inputEl.onkeydown = (e) => {
+      autoCompleteHandled = false;
+      this.autocomplete.handleKeyDown(e);
+      // If autocomplete just handled Enter, don't send
+      if (autoCompleteHandled) return;
+      const dropVisible = this.composer.dropdownEl?.classList.contains("is-visible");
+      if (e.key === "Enter" && !e.shiftKey && !dropVisible) {
+        e.preventDefault();
+        this.dispatchSend();
+      }
     };
 
-    makeBtn("📚 Indexar", "var(--color-blue)", () => {
-      const folder = folderSelect.value || undefined;
-      this.plugin.indexResearch(folder);
+    // Gather thread element from the DOM (composer creates it)
+    const threadWrapper = centerEl.querySelector(".s-thread") as HTMLElement;
+    this.threadEl = threadWrapper?.querySelector(".s-thread-inner") as HTMLElement;
+
+    // Initialize messenger
+    this.messenger.init(this.threadEl, this.threadId, () => { /* auto-save on add */ });
+    this.messenger.setThreadId(this.threadId);
+
+    // Build right panel
+    this.right.build(rightEl);
+
+    // Initialize autocomplete
+    this.autocomplete.init(this.composer.inputEl, this.composer.dropdownEl, (skillId) => {
+      if (this.plugin.setSkillContext) this.plugin.setSkillContext(skillId);
     });
 
-    folderSelect.addEventListener("change", () => {
-      this.plugin.setActiveFolder(folderSelect.value || null);
-      folderSelect.style.border = folderSelect.value ? "1px solid var(--interactive-accent)" : "none";
+    // Load autocomplete data
+    this.autocomplete.loadData().then(() => {
+      this.availableAgents = (this.autocomplete as any).availableAgents || [];
+      // Rebuild left with agents
+      this.left.build(leftEl, this.availableAgents);
     });
-    makeBtn("🔍 RAG", "var(--color-purple)", () => this.plugin.runOrchestrate("¿Qué dice /Research/?"));
-    makeBtn("✏️ Nota IA", "var(--color-cyan)", () => this.plugin.createNoteWithAI());
-    makeBtn("🧪 Embeddings", "var(--interactive-accent)", () => this.plugin.testEmbeddings());
-    makeBtn("💬 Chat test", "var(--color-green)", () => this.plugin.testChat());
-    // --- Mesh toggle button (separate from makeBtn to keep reference) ---
-    this.meshBtn = actionsEl.createEl("button", { text: "🔀 Mesh" });
-    this.updateMeshBtnStyle();
-    this.meshBtn.addEventListener("click", () => this.toggleMeshMode());
 
-    makeBtn("📋 Último trace", "var(--text-muted)", () => this.handleShowTrace());
-    makeBtn("🧹 Limpiar Chat", "var(--text-muted)", () => this.clearChatHistory());
-
-    this.msgEl = container.createDiv({ cls: "sanctum-messages" });
-    this.msgEl.style.cssText = "flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px";
-
-    this.loadChatHistory().then((loaded) => {
+    // Load welcome message
+    this.messenger.loadThreadMessages().then(loaded => {
       if (!loaded) {
-        this.addMessage("agent", `Bienvenido. Indexá /Research/ y preguntale a @${agentName}.`, `${agentEmoji} ${agentName}`);
+        this.messenger.addMsg("agent",
+          `Bienvenido a **Sanctum-II** · Proyecto: **${this.plugin.getActiveProjectName()}**. Indexá tu carpeta de investigación y haceme preguntas usando \`@\` para mencionar agentes.`,
+          `bot ${this.plugin.agentName}`);
       }
-    });
-
-    const inputRow = container.createDiv();
-    inputRow.style.cssText = "display:flex;gap:8px;padding:8px 0";
-    this.input = inputRow.createEl("input", {
-      attr: { type: "text", placeholder: `Mensaje para ${agentName}...` },
-    });
-    this.input.style.cssText = "flex:1;padding:6px 8px";
-    this.sendBtn = inputRow.createEl("button", { text: "Enviar" });
-    this.sendBtn.style.cssText = "padding:6px 16px";
-
-    this.dropdownEl = container.createDiv({ cls: "sanctum-autocomplete" });
-
-    this.sendBtn.onclick = () => this.dispatchSend();
-    this.input.onkeydown = (e) => this.handleKeyDown(e);
-    this.input.addEventListener("input", () => this.handleInput());
-    this.input.addEventListener("keyup", (e) => {
-      if (e.key === "@") {
-        this.handleInput();
-      }
-    });
-
-    this.loadAutocompleteData().then(() => {
-      console.log("Sanctum: agents loaded", this.availableAgents);
     });
   }
 
-  private addMessage(role: "user" | "agent", content: string, label?: string): void {
-    this.messages.push({ role, content, label });
-    this.renderMessages();
-    this.saveChatHistory();
-  }
-
-  private renderMessages(): void {
-    this.msgEl.empty();
-    for (const msg of this.messages) {
-      const wrapper = this.msgEl.createDiv();
-      wrapper.style.cssText = `
-        display:flex;flex-direction:column;
-        align-items:${msg.role === "user" ? "flex-end" : "flex-start"};
-      `;
-
-      const bubble = wrapper.createDiv();
-      bubble.style.cssText = `
-        max-width:85%;padding:8px 12px;border-radius:8px;word-wrap:break-word;
-        background:${msg.role === "user" ? "var(--interactive-accent)" : "var(--background-secondary)"};
-        color:${msg.role === "user" ? "#fff" : "var(--text-normal)"};
-      `;
-
-      if (msg.role === "user") {
-        bubble.setText(msg.content);
-      } else {
-        bubble.createEl("small", {
-          text: msg.label || `${this.plugin.agent?.avatar || "🤖"} ${this.plugin.agentName}`,
-          cls: "sanctum-agent-label",
-        });
-        const mdEl = bubble.createDiv();
-        mdEl.style.cssText = "margin-top:4px";
-        MarkdownRenderer.renderMarkdown(msg.content, mdEl, "", this.plugin);
-      }
-
-      const copyBtn = wrapper.createEl("button", { text: "📋" });
-      copyBtn.style.cssText = `
-        border:none;background:transparent;cursor:pointer;font-size:11px;
-        padding:2px 6px;opacity:0.4;
-      `;
-      copyBtn.title = "Copiar mensaje";
-      copyBtn.onclick = () => {
-        navigator.clipboard.writeText(msg.content).then(() => {
-          copyBtn.textContent = "✅";
-          setTimeout(() => { copyBtn.textContent = "📋"; }, 1500);
-        }).catch(() => {
-          new Notice("No se pudo copiar al portapapeles");
-        });
-      };
-    }
-    this.msgEl.scrollTo({ top: this.msgEl.scrollHeight, behavior: "smooth" });
-  }
+  // ── Send / Mesh handlers ──
 
   private async dispatchSend(): Promise<void> {
-    if (this.meshMode) {
-      return this.handleMesh();
-    }
-    return this.handleSend();
+    if (this.meshMode) await this.handleMesh();
+    else await this.handleSend();
   }
 
   private async handleSend(): Promise<void> {
-    const text = this.input.value.trim();
+    const text = this.composer.inputEl.value.trim();
     if (!text) return;
 
-    this.addMessage("user", text);
-    this.input.value = "";
-    this.input.disabled = true;
-    this.sendBtn.disabled = true;
+    this.composer.inputEl.disabled = true;
+    this.composer.sendBtn.disabled = true;
 
-    let agentEmoji = this.plugin.agent?.avatar || "🤖";
-    let agentLabel = `${agentEmoji} ${this.plugin.agentName}`;
+    // Detect @agent mention
+    const mentionMatch = text.trim().match(/^@([\w\-]+)(?:\s+([\s\S]*))?$/);
+    let agentLabel = `bot ${this.plugin.agentName}`;
+    let iconId = "bot";
 
-    const mentionMatch = text.match(/^@([\w\-]+)/);
     if (mentionMatch) {
-      const targetAgent = this.availableAgents.find(a => a.id === mentionMatch[1]);
-      if (targetAgent) {
-        agentEmoji = targetAgent.avatar;
-        agentLabel = `${targetAgent.avatar} ${targetAgent.name}`;
+      const targetAgentId = mentionMatch[1];
+      const found = this.availableAgents.find(a => a.id === targetAgentId);
+      if (found) {
+        iconId = "bot";
+        agentLabel = `${iconId} ${found.name}`;
       }
     }
 
-    this.addMessage("agent", `${agentEmoji} pensando...`, agentLabel);
+    this.composer.inputEl.value = "";
+    this.messenger.addMsg("agent", "Pensando...", agentLabel);
+    const history = this.messenger.messages.slice(0, -1).map(m => ({ role: m.role === "user" ? "user" as const : "assistant" as const, content: m.content }));
+    const response = await this.plugin.sendChatMessage(text, history);
+    this.messenger.messages.pop();
+    this.threadEl.lastElementChild?.remove();
+    this.messenger.addMsg("agent", response, agentLabel);
+    this.composer.inputEl.disabled = false;
+    this.composer.sendBtn.disabled = false;
+    this.composer.inputEl.focus();
+  }
 
-    const response = await this.plugin.sendChatMessage(text);
+  private async handleMesh(): Promise<void> {
+    const text = this.composer.inputEl.value.trim();
+    if (!text) {
+      this.messenger.addMsg("agent", "Escribí una pregunta para ejecutar el mesh Forager→Researcher→Critic.", "shuffle Mesh");
+      return;
+    }
 
-    this.messages.pop();
-    this.addMessage("agent", response, agentLabel);
+    this.messenger.addMsg("user", text);
+    this.composer.inputEl.value = "";
+    this.composer.inputEl.disabled = true;
+    this.composer.sendBtn.disabled = true;
 
-    this.input.disabled = false;
-    this.sendBtn.disabled = false;
-    this.input.focus();
+    this.messenger.addMsg("agent", "⏳ Ejecutando pipeline Forager → Researcher → Critic…", "shuffle Mesh");
+    this.composer.showPipeline(true, "forager");
+
+    const result = await this.plugin.runMesh(text);
+    this.composer.showPipeline(true, "done", result.criticScore, result.attempts);
+
+    this.messenger.messages.pop();
+    this.threadEl.lastElementChild?.remove();
+
+    const label = `search Forager → Researcher ×${result.attempts} → Critic`;
+
+    if (result.criticVerdict === "escalated") {
+      const wrap = this.threadEl.createDiv({ cls: "s-msg-agent" });
+      const meta = wrap.createDiv({ cls: "s-msg-meta" });
+      const avatar = meta.createDiv({ cls: "s-msg-avatar" });
+      setIcon(avatar, "alert-triangle");
+      meta.createDiv({ cls: "s-msg-name", text: `Forager → Researcher ×${result.attempts} → Critic` });
+      meta.createDiv({ cls: "s-msg-time", text: `Score: ${result.criticScore}/100` });
+
+      const band = wrap.createDiv({ cls: "s-escalation" });
+      band.createDiv({ text: `El Critic rechazó los ${result.loopState.max_attempts} intentos del Researcher.`, attr: { style: "font-weight:600;margin-bottom:6px" } });
+      const feedback = result.loopState.history.filter((h: any) => h.agent === "critic").pop()?.feedback || [];
+      if (feedback.length) {
+        const ul = band.createEl("ul", { attr: { style: "margin:6px 0 0;padding-left:16px;font-size:12.5px" } });
+        feedback.forEach((f: string) => ul.createEl("li", { text: f }));
+      }
+      this.messenger.messages.push({ role: "agent", content: `[escalated] ${result.researcherOutput}`, label, timestamp: Date.now() });
+    } else {
+      let acceptMsg = `${result.researcherOutput}\n\n---\n**⚖️ Evaluación del Critic:** Aceptado con ${result.criticScore}/100.`;
+      if ((result as any).createdNotePath) {
+        const noteName = (result as any).createdNotePath.replace(/\.md$/i, "");
+        acceptMsg += `\n\n📁 Nota guardada en: [[${noteName}]]`;
+      }
+      this.messenger.addMsg("agent", acceptMsg, label, { meshMeta: { attempts: result.attempts, score: result.criticScore, verdict: "accept" } });
+      // Mini score bar
+      const msgEl = this.threadEl.lastElementChild;
+      if (msgEl) {
+        const progWrap = msgEl.createDiv({ cls: "s-msg-prog" });
+        const attempts = result.loopState?.attempts;
+        if (attempts?.length) {
+          const prog = progWrap.createDiv({ cls: "s-mini-prog" });
+          for (const a of attempts) {
+            const dot = prog.createDiv({ cls: `s-mini-prog-dot${a.total_score >= 80 ? " ok" : a.total_score >= 50 ? " mid" : " low"}` });
+            dot.style.width = `${Math.max(10, (a.total_score / 100) * 24)}px`;
+            dot.title = `Intento ${a.attempt}: ${a.total_score}/100`;
+          }
+        }
+      }
+    }
+
+    this.right.renderTracePanel(result);
+    this.composer.inputEl.disabled = false;
+    this.composer.sendBtn.disabled = false;
+    this.composer.inputEl.focus();
   }
 
   private toggleMeshMode(): void {
     this.meshMode = !this.meshMode;
-    this.updateMeshBtnStyle();
-    const agentName = this.plugin.agentName;
+    this.composer.modeChatBtn.classList.toggle("active-chat", !this.meshMode);
+    this.composer.modeMeshBtn.classList.toggle("active-mesh", this.meshMode);
+    this.composer.sendBtn.className = `s-send-btn ${this.meshMode ? "mesh-mode" : "chat-mode"}`;
+    this.composer.inputEl.placeholder = this.meshMode
+      ? "Pregunta para ejecutar el Mesh..."
+      : `Pregunta para ${this.plugin.agentName}...`;
     if (this.meshMode) {
-      this.input.placeholder = "🔀 Pregunta para mesh Forager→Researcher→Critic...";
-      this.sendBtn.textContent = "🔀 Enviar";
-      this.addMessage("agent", "Modo **Mesh** activado. Tu próximo mensaje se enviará al pipeline Forager→Researcher→Critic.", "🔀 Mesh");
+      this.messenger.addMsg("agent", "Modo **Mesh** activado. Tu siguiente mensaje pasará por el pipeline completo.", "shuffle Mesh");
     } else {
-      this.input.placeholder = `Mensaje para ${agentName}...`;
-      this.sendBtn.textContent = "Enviar";
-      this.addMessage("agent", `Modo normal. Mensajes van a @${agentName}.`, `${this.plugin.agent?.avatar || "🤖"} ${agentName}`);
-    }
-    this.input.focus();
-  }
-
-  private updateMeshBtnStyle(): void {
-    const active = this.meshMode;
-    this.meshBtn.style.cssText = `background:${active ? "#e67e22" : "#888"};color:#fff;border:${active ? "2px solid #fff" : "none"};padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:${active ? "bold" : "normal"};opacity:${active ? "1" : "0.7"}`;
-    this.meshBtn.textContent = active ? "🔀 Mesh ON" : "🔀 Mesh";
-    this.meshBtn.title = active ? "Click para desactivar modo Mesh" : "Click para activar modo Mesh (Enter enviará al pipeline Forager→Researcher→Critic)";
-  }
-
-  private async handleMesh(): Promise<void> {
-    const text = this.input.value.trim();
-    if (!text) {
-      this.addMessage("agent", "Escribí una pregunta para ejecutar el mesh Forager→Researcher→Critic.", "🔀 Mesh");
-      return;
-    }
-
-    this.addMessage("user", text);
-    this.input.value = "";
-    this.input.disabled = true;
-    this.sendBtn.disabled = true;
-
-    this.addMessage("agent", "🔀 Ejecutando mesh Forager→Researcher→Critic...", "🔀 Mesh");
-
-    const result = await this.plugin.runMesh(text);
-
-    this.messages.pop();
-
-    const label = `🔍 Forager → 📚 Researcher (×${result.attempts}) → ⚖️ Critic`;
-
-    if (result.criticVerdict === "escalated") {
-      const escaladoMsg = `### ⚠️ Mesh escalado al usuario\n\n` +
-        `El Critic rechazó los ${result.loopState.max_attempts} intentos del Researcher.\n\n` +
-        `**Mejor score:** ${result.criticScore}/100\n\n` +
-        `**Feedback del Critic:**\n${(result.loopState.history.filter(h => h.agent === "critic").pop()?.feedback || []).map(f => `- ${f}`).join("\n")}\n\n` +
-        `---\n\n**Mejor intento del Researcher:**\n${result.researcherOutput}`;
-      this.addMessage("agent", escaladoMsg, label);
-    } else {
-      let acceptMsg = `${result.researcherOutput}\n\n---\n**⚖️ Evaluación del Critic:** Aceptado con ${result.criticScore}/100.`;
-      if (result.createdNotePath) {
-        const noteName = result.createdNotePath.replace(/\.md$/i, "");
-        acceptMsg += `\n\n📁 Nota guardada exitosamente en: [[${noteName}]]`;
-      }
-      this.addMessage("agent", acceptMsg, label);
-    }
-
-    this.input.disabled = false;
-    this.sendBtn.disabled = false;
-    this.input.focus();
-  }
-
-  private async handleShowTrace(): Promise<void> {
-    this.input.disabled = true;
-    this.sendBtn.disabled = true;
-    this.addMessage("agent", "📋 Leyendo último trace...", "📋 Tracer");
-    const trace = await this.plugin.getLatestTrace();
-    this.messages.pop();
-    this.addMessage("agent", trace, "📋 Tracer");
-    this.input.disabled = false;
-    this.sendBtn.disabled = false;
-    this.input.focus();
-  }
-
-  private async saveChatHistory(): Promise<void> {
-    try {
-      await this.app.vault.adapter.write(CHAT_HISTORY_PATH, JSON.stringify(this.messages, null, 2));
-    } catch {}
-  }
-
-  private async loadChatHistory(): Promise<boolean> {
-    try {
-      const exists = await this.app.vault.adapter.exists(CHAT_HISTORY_PATH);
-      if (!exists) return false;
-      const raw = await this.app.vault.adapter.read(CHAT_HISTORY_PATH);
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        this.messages = parsed;
-        this.renderMessages();
-        return true;
-      }
-    } catch {}
-    return false;
-  }
-
-  private async clearChatHistory(): Promise<void> {
-    this.messages = [];
-    try {
-      await this.app.vault.adapter.write(CHAT_HISTORY_PATH, JSON.stringify([]));
-    } catch {}
-    const agentEmoji = this.plugin.agent?.avatar || "🤖";
-    const agentName = this.plugin.agentName;
-    this.addMessage("agent", `Bienvenido. Indexá /Research/ y preguntale a @${agentName}.`, `${agentEmoji} ${agentName}`);
-  }
-
-  private async loadFolderList(select: HTMLSelectElement): Promise<void> {
-    try {
-      const listing = await this.app.vault.adapter.list("Research");
-      for (const folder of listing.folders) {
-        const label = folder.replace(/^Research[\/\\]?/, "");
-        select.createEl("option", { text: `📁 ${label}`, value: folder });
-      }
-    } catch {}
-  }
-
-  private async loadAutocompleteData(): Promise<void> {
-    const agents: { id: string; name: string; avatar: string }[] = [];
-    try {
-      const files = await this.app.vault.adapter.list("sanctum-agents");
-      const mdFiles = files.files.filter((f: string) => f.endsWith(".md"));
-      for (const path of mdFiles) {
-        try {
-          const content = await this.app.vault.adapter.read(path);
-          const parts = content.split("---");
-          if (parts.length >= 3) {
-            const fm = parts[1];
-            const id = fm.match(/^id:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || "";
-            if (!id) continue;
-            const internal = fm.match(/^internal:\s*(true|false)$/m)?.[1] === "true";
-            if (internal) continue;
-            const name = fm.match(/^name:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || id;
-            const avatar = fm.match(/^avatar:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || "🤖";
-            agents.push({ id, name, avatar });
-          }
-        } catch {}
-      }
-    } catch {}
-    this.availableAgents = agents;
-  }
-
-  private getAutocompleteQuery(): { startIdx: number; endIdx: number; text: string } | null {
-    const cursorPos = this.input.selectionStart ?? 0;
-    const val = this.input.value;
-    let atIdx = -1;
-    for (let i = cursorPos - 1; i >= 0; i--) {
-      if (val[i] === "@") {
-        if (i === 0 || val[i - 1] === " ") {
-          atIdx = i;
-          break;
-        }
-        break;
-      }
-      if (val[i] === " ") break;
-    }
-    if (atIdx === -1) return null;
-    const text = val.slice(atIdx + 1, cursorPos);
-    if (text.includes(" ")) return null;
-    return { startIdx: atIdx, endIdx: cursorPos, text };
-  }
-
-  private handleInput(): void {
-    try {
-      const query = this.getAutocompleteQuery();
-      this.activeQuery = query;
-
-      if (!query) {
-        this.closeDropdown();
-        return;
-      }
-
-      const queryLower = query.text.toLowerCase();
-
-      const agents = this.availableAgents
-        .filter(a => a.name.toLowerCase().includes(queryLower) || a.id.toLowerCase().includes(queryLower))
-        .map(a => ({ type: "agent" as const, label: a.name, value: a.id, detail: `@${a.id}`, avatar: a.avatar }));
-
-      let notes: { type: "agent" | "note"; label: string; value: string; detail?: string; avatar?: string }[] = [];
-      try {
-        const mdFiles = this.app.vault.getMarkdownFiles();
-        for (const file of mdFiles) {
-          if (file.path.startsWith("sanctum-agents/")) continue;
-          const basename = file.basename.toLowerCase();
-          if (basename.includes(queryLower) || file.path.toLowerCase().includes(queryLower)) {
-            notes.push({ type: "note", label: file.basename, value: `[[${file.path}]]`, detail: file.path, avatar: "📄" });
-            if (notes.length >= 10) break;
-          }
-        }
-      } catch {}
-
-      this.filteredOptions = [...agents, ...notes];
-      this.highlightedIndex = 0;
-
-      if (this.filteredOptions.length === 0) {
-        this.closeDropdown();
-        return;
-      }
-
-      this.renderDropdown();
-    } catch (err) {
-      console.error("Sanctum autocomplete error:", err);
-    }
-  }
-
-  private renderDropdown(): void {
-    this.dropdownEl.empty();
-    this.dropdownEl.classList.add("is-visible");
-
-    for (let i = 0; i < this.filteredOptions.length; i++) {
-      const opt = this.filteredOptions[i];
-      const item = this.dropdownEl.createDiv({ cls: "sanctum-autocomplete-item" });
-      if (i === this.highlightedIndex) item.classList.add("is-highlighted");
-
-      item.createSpan({ cls: "avatar", text: opt.avatar || "🤖" });
-      item.createSpan({ cls: "label", text: opt.label });
-      if (opt.detail) item.createSpan({ cls: "detail", text: opt.detail });
-
-      item.dataset.index = String(i);
-      item.onclick = () => this.selectOption(i);
-      item.onmouseenter = () => {
-        const prev = this.dropdownEl.querySelector(".is-highlighted");
-        if (prev) prev.classList.remove("is-highlighted");
-        this.highlightedIndex = i;
-        item.classList.add("is-highlighted");
-      };
-    }
-  }
-
-  private selectOption(index: number): void {
-    const opt = this.filteredOptions[index];
-    if (!opt || !this.activeQuery) return;
-
-    const val = this.input.value;
-    let insertText: string;
-    if (opt.type === "agent") {
-      insertText = `@${opt.value} `;
-    } else {
-      insertText = `${opt.value} `;
-    }
-
-    this.input.value = val.slice(0, this.activeQuery.startIdx) + insertText + val.slice(this.activeQuery.endIdx);
-    const newPos = this.activeQuery.startIdx + insertText.length;
-    this.input.selectionStart = newPos;
-    this.input.selectionEnd = newPos;
-    this.input.focus();
-    this.closeDropdown();
-  }
-
-  private closeDropdown(): void {
-    this.dropdownEl.classList.remove("is-visible");
-    this.activeQuery = null;
-    this.filteredOptions = [];
-    this.highlightedIndex = 0;
-  }
-
-  private handleKeyDown(e: KeyboardEvent): void {
-    const isVisible = this.dropdownEl.classList.contains("is-visible");
-
-    if (isVisible && this.filteredOptions.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        this.highlightedIndex = (this.highlightedIndex + 1) % this.filteredOptions.length;
-        this.renderDropdown();
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        this.highlightedIndex = (this.highlightedIndex - 1 + this.filteredOptions.length) % this.filteredOptions.length;
-        this.renderDropdown();
-        return;
-      }
-      if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        this.selectOption(this.highlightedIndex);
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        this.closeDropdown();
-        this.input.focus();
-        return;
-      }
-    }
-
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      this.dispatchSend();
+      const iconId = "bot";
+      this.messenger.addMsg("agent", `Modo **Chat** activado. Mensajes van a @${this.plugin.agentName}.`, `${iconId} ${this.plugin.agentName}`);
     }
   }
 }
