@@ -23,7 +23,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/Abraham2106/Sanctum-II">
-    <img src="docs/logo.png" alt="Sanctum II Chat" width="120">
+    <img src="docs/logo-2.png" alt="Sanctum II Chat" width="120">
   </a>
 
   <h3 align="center">Sanctum II</h3>
