@@ -36,7 +36,7 @@ async function generateNoteContent(deps: NoteGenDeps, instruction: string): Prom
   const title = extractTitle(result.content) || slugify(instruction.slice(0, 40));
   const path = `${RESEARCH_PATH}/${slugify(title)}.md`;
 
-  if (!canWriteToPath(path, deps.writePaths)) {
+  if (deps.writePaths.length > 0 && !canWriteToPath(path, deps.writePaths)) {
     throw new Error(`Sin permisos de escritura para ${path}`);
   }
 

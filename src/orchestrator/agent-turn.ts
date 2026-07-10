@@ -1,3 +1,4 @@
+import { Notice } from "obsidian";
 import type { AgentDefinition } from "../agents/types";
 import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import type { OpenCodeClient } from "../llm/opencode-client";
@@ -5,6 +6,14 @@ import type { VectorStore } from "../rag/vector-store";
 import type { Tracer } from "../observability/tracer";
 import { renderSystemPrompt } from "../agents/agent-loader";
 import { searchTavily, formatWebContext } from "../tools/tavily";
+import { expandFromSeeds } from "../kg/kg";
+import type { KgOptions } from "../kg/types";
+import type { KgEdgeStore } from "../kg/kg-store";
+import { injectProjectPrefix } from "../projects/context";
+import type { ProjectContext } from "../projects/context";
+import type { Skill } from "../skills/types";
+import { buildConversationPayload } from "./conversation";
+import type { ConversationMessage } from "./conversation";
 
 const MIN_SIMILARITY = 0.65;
 
@@ -15,16 +24,24 @@ export interface TurnDeps {
   vectorStore: VectorStore;
   tracer: Tracer;
   tavilyApiKey?: string;
+  tavilyQuery?: string;
+  kgOptions?: KgOptions;
+  edgeStore?: KgEdgeStore;
+  projectContext?: ProjectContext;
+  skillContext?: Skill;
+  conversationMessages?: ConversationMessage[];
+  conversationSummary?: string;
 }
 
 export interface TurnResult {
   content: string;
   usage: { prompt: number; completion: number };
   ragContext: string;
+  conversationSummary?: string;
 }
 
-function hasWebSearchTool(agent: AgentDefinition): boolean {
-  return agent.tools?.includes("web_search") ?? false;
+function hasWebSearchTool(agent: AgentDefinition, skill?: Skill): boolean {
+  return agent.tools?.includes("web_search") || skill?.tools?.includes("web_search") || false;
 }
 
 export async function executeTurn(
@@ -33,14 +50,61 @@ export async function executeTurn(
   skipRag: boolean = false,
   pathFilter?: string[]
 ): Promise<TurnResult> {
+  const project = deps.projectContext?.project;
+  const topK = project?.rag?.top_k || 5;
+  const minSim = project?.rag?.min_similarity || MIN_SIMILARITY;
+  const activePathFilter = pathFilter?.length ? pathFilter : project?.read_paths;
+
   let ragContext = "";
   if (!skipRag && deps.geminiBalancer.hasKeys && deps.vectorStore.count > 0) {
     const queryEmbedding = await deps.geminiBalancer.embed(userInput);
-    let results = deps.vectorStore.search(queryEmbedding, 5).filter((r) => r.score >= MIN_SIMILARITY);
-    if (pathFilter && pathFilter.length > 0) {
-      results = deps.vectorStore.filterByPaths(results, pathFilter);
+    // Search wide — pathFilter may narrow later
+    const searchK = (activePathFilter?.length) ? Math.max(50, deps.vectorStore.count) : topK;
+    let results = deps.vectorStore.search(queryEmbedding, searchK).filter((r) => r.score >= minSim);
+    console.log(`[RAG] search K=${searchK} → pre-filter: ${results.length} chunks (≥${minSim}), top scores: ${results.slice(0, 5).map(r => `${r.chunk.note_path.split("/").pop()}:${r.score.toFixed(3)}`).join(" | ")}`);
+
+    // If sim threshold filtered everything out, retry without it
+    if (results.length === 0) {
+      const allResults = deps.vectorStore.search(queryEmbedding, searchK);
+      if (allResults.length > 0) {
+        results = allResults;
+        console.log(`[RAG] ⚠ Threshold ${minSim} too strict — usando todos los chunks (best score: ${allResults[0].score.toFixed(3)})`);
+        new Notice(`⚠ Similitud máxima: ${allResults[0].score.toFixed(2)} (umbral era ${minSim}). Usando todos los chunks.`, 5000);
+      }
+    }
+
+    // KG expansion: from seed chunks, expand via persisted edges
+    const kgOpts = deps.kgOptions;
+    if (kgOpts?.enabled && results.length > 0 && deps.edgeStore && deps.edgeStore.count > 0) {
+      const seedNotes = [...new Set(results.map(r => r.chunk.note_path))];
+      const expansion = expandFromSeeds(deps.vectorStore, seedNotes, queryEmbedding, kgOpts, deps.edgeStore);
+      for (const ac of expansion.added_chunks) {
+        results.push({
+          chunk: { id: "", note_path: ac.note_path, chunk_text: ac.chunk_text, embedding: [] },
+          score: ac.score,
+        });
+      }
+      for (const ac of expansion.added_chunks) {
+        deps.tracer.addChunk({
+          source: "kg",
+          chunk: ac.chunk_text,
+          similarity_score: ac.score,
+          from_note: ac.note_path,
+          relation: ac.relation as any,
+        });
+      }
+    }
+
+    if (activePathFilter && activePathFilter.length > 0) {
+      results = deps.vectorStore.filterByPaths(results, activePathFilter);
+      console.log(`[RAG] post-filter (${JSON.stringify(activePathFilter)}): ${results.length} chunks`);
     } else if (deps.agent.permissions?.read_paths) {
       results = deps.vectorStore.filterByPaths(results, deps.agent.permissions.read_paths);
+    }
+    results = results.slice(0, topK);
+    if (results.length === 0) {
+      const samplePaths = deps.vectorStore.allChunks.slice(0, 3).map(c => c.note_path).join(", ");
+      new Notice(`⚠ RAG: 0 resultados. Store: ${deps.vectorStore.count} chunks · filtro: ${JSON.stringify(activePathFilter)} · rutas: ${samplePaths || "(vacío)"}`, 8000);
     }
     for (const r of results) {
       deps.tracer.addChunk({
@@ -51,23 +115,55 @@ export async function executeTurn(
       });
     }
     ragContext = results.map((r) => `[${r.chunk.note_path}]\n${r.chunk.chunk_text}`).join("\n\n");
+  } else if (!skipRag) {
+    if (!deps.geminiBalancer.hasKeys) {
+      new Notice("⚠ RAG: sin Gemini API keys", 5000);
+    } else if (deps.vectorStore.count === 0) {
+      new Notice(`⚠ RAG: store vacío (${deps.vectorStore.getStorePath()}). Indexá desde el proyecto.`, 8000);
+    }
   }
 
   let webContext = "";
-  if (hasWebSearchTool(deps.agent) && deps.tavilyApiKey) {
-    try {
-      const tavilyResponse = await searchTavily(deps.tavilyApiKey, userInput);
-      webContext = formatWebContext(tavilyResponse.results, tavilyResponse.answer);
-    } catch (err: any) {
-      console.warn("Sanctum: Tavily search failed:", err.message);
+  if (hasWebSearchTool(deps.agent, deps.skillContext)) {
+    if (!deps.tavilyApiKey) {
+      console.warn("Sanctum: Tavily API key no configurada — web search saltado");
+    } else {
+      new Notice("🌐 Buscando en web vía Tavily...", 2000);
+      try {
+        const searchQuery = deps.tavilyQuery || userInput.slice(0, 400);
+        const tavilyResponse = await searchTavily(deps.tavilyApiKey, searchQuery);
+        webContext = formatWebContext(tavilyResponse.results, tavilyResponse.answer);
+        if (webContext) console.log(`[Web] ${tavilyResponse.results.length} resultados de Tavily`);
+      } catch (err: any) {
+        console.warn("Sanctum: Tavily search failed:", err.message);
+      }
     }
   }
 
   let renderedPrompt = renderSystemPrompt(deps.agent, ragContext, userInput);
-  if (webContext) {
-    renderedPrompt = renderedPrompt.replace(/\{\{web_context\}\}/g, webContext);
+  renderedPrompt = renderedPrompt.replace(/\{\{web_context\}\}/g, webContext || "");
+
+  if (deps.projectContext?.systemPrefix) {
+    renderedPrompt = injectProjectPrefix(renderedPrompt, deps.projectContext.systemPrefix);
   }
-  const result = await deps.opencodeClient.chat(renderedPrompt, userInput, ragContext || undefined);
+
+  if (deps.skillContext?.instructions) {
+    renderedPrompt = `--- Skill: ${deps.skillContext.name} ---\n${deps.skillContext.instructions}\n\n---\n\n${renderedPrompt}`;
+  }
+
+  let result;
+  if (deps.conversationMessages && deps.conversationMessages.length > 0) {
+    // Inject the final user message
+    const allMessages: ConversationMessage[] = [
+      ...deps.conversationMessages,
+      { role: "user", content: userInput },
+    ];
+    const payload = buildConversationPayload(renderedPrompt, allMessages, deps.conversationSummary);
+    result = await deps.opencodeClient.chat(payload.messages);
+    return { content: result.content, usage: result.usage, ragContext, conversationSummary: payload.newSummary };
+  } else {
+    result = await deps.opencodeClient.chat(renderedPrompt, userInput, ragContext || undefined);
+  }
 
   return { content: result.content, usage: result.usage, ragContext };
 }
