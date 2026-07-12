@@ -2,7 +2,7 @@ import { Notice } from "obsidian";
 import type { AppServices } from "./services";
 import { executeTurn } from "../orchestrator/agent-turn";
 import { loadAgentFromVault } from "../agents/agent-loader";
-import { executeWriteIntent } from "../orchestrator/note-generator";
+import { executeWriteIntent as executeWriteIntentFromNoteGen } from "../orchestrator/note-generator";
 import { classifyIntent, detectPendingAction, buildConversationPayload } from "../orchestrator/conversation";
 import { executeChain, topologicalOrder } from "../chains/executor";
 import type { ConversationMessage } from "../orchestrator/conversation";
@@ -26,7 +26,7 @@ export class ChatOrchestrator {
   ): Promise<ChatResponse> {
     if (!this.svc.opencodeClient.configured) return { content: "OPENCODE_GO_API_KEY no configurada." };
 
-    const writeIntent = this.executeWriteIntent(userMessage);
+    const writeIntent = await this.executeWriteIntent(userMessage);
     if (writeIntent) return { content: writeIntent };
 
     const mentionMatch = userMessage.trim().match(/^@([\w\-]+)(?:\s+([\s\S]*))?$/);
@@ -128,12 +128,29 @@ export class ChatOrchestrator {
     }
   }
 
-  private executeWriteIntent(userMessage: string): string | null {
-    // Quick regex-based write intent detection
-    const match = userMessage.toLowerCase().match(/cre[áa]\s*una\s+nota\s+llamada\s+["']?([^"'\n]+)["']?\s*(?:sobre\s+)?(.+)?/i);
-    if (!match) return null;
-    // Delegate to note-generator
-    return null;
+  private async executeWriteIntent(userMessage: string): Promise<string | null> {
+    const nameMatch = userMessage.toLowerCase().match(/cre[áa]\s*una\s+nota\s+llamada\s+["']?([^"'\n]+)["']?\s*(?:sobre\s+)?(.+)?/i);
+    const topicMatch = !nameMatch ? userMessage.toLowerCase().match(/cre[áa]\s*una\s+nota\s+(?:sobre\s+)?(.+)/i) : null;
+    if (!nameMatch && !topicMatch) return null;
+    const intent = nameMatch
+      ? { name: nameMatch[1].trim(), topic: nameMatch[2]?.trim() || nameMatch[1].trim() }
+      : { topic: topicMatch![1].trim() };
+    const agent = this.svc.agent || this.fallbackAgent();
+    try {
+      return await executeWriteIntentFromNoteGen(
+        {
+          agent,
+          opencodeClient: this.svc.opencodeClient,
+          noteWriter: this.svc.noteWriter,
+          tracer: this.svc.tracer,
+          vaultAdapter: this.svc.adapter,
+          writePaths: agent.permissions?.write_paths || [],
+        },
+        intent,
+      );
+    } catch (err: any) {
+      return `Error al crear nota: ${err.message}`;
+    }
   }
 
   private fallbackAgent() {

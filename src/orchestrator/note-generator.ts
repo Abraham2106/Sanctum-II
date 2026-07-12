@@ -3,7 +3,7 @@ import type { OpenCodeClient } from "../llm/opencode-client";
 import type { NoteWriter, WriteResult } from "../core/note-writer";
 import type { Tracer } from "../observability/tracer";
 import { renderSystemPrompt } from "../agents/agent-loader";
-import { slugify, extractTitle, globMatch } from "../utils";
+import { slugify, extractTitle, globMatch, isInternalPath } from "../utils";
 import { RESEARCH_PATH } from "../constants";
 
 export function makeInstruction(topic: string): string {
@@ -12,6 +12,7 @@ export function makeInstruction(topic: string): string {
 
 export function canWriteToPath(path: string, writePaths: string[] | undefined): boolean {
   if (!writePaths || writePaths.length === 0) return false;
+  if (isInternalPath(path)) return false;
   return writePaths.some((p) => globMatch(path, p));
 }
 
