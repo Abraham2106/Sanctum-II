@@ -2,7 +2,7 @@ import { Notice } from "obsidian";
 import type { AppServices } from "./services";
 import { executeTurn } from "../orchestrator/agent-turn";
 import { loadAgentFromVault } from "../agents/agent-loader";
-import { executeWriteIntent as executeWriteIntentFromNoteGen } from "../orchestrator/note-generator";
+import { executeWriteIntent as executeWriteIntentFromNoteGen, canWriteToPath } from "../orchestrator/note-generator";
 import { classifyIntent, detectPendingAction, buildConversationPayload } from "../orchestrator/conversation";
 import { executeChain, topologicalOrder } from "../chains/executor";
 import type { ConversationMessage } from "../orchestrator/conversation";
@@ -131,6 +131,9 @@ export class ChatOrchestrator {
           return { content: `Encontré varias notas posibles: ${names}. ¿A cuál te referís?` };
         }
         // Note resolved — modify it
+        if (!canWriteToPath(resolution.path!, this.svc.activeProject?.write_paths || [])) {
+          return { content: `Permiso denegado: no se puede modificar ${resolution.path}` };
+        }
         try {
           const currentContent = await this.svc.adapter.read(resolution.path!);
           const modPrompt = `Nota actual:\n${currentContent.slice(0, 3000)}\n\nInstrucción del usuario: ${userMessage}\n\nRegenerá la nota completa incorporando los cambios pedidos. Responde SOLO con el contenido Markdown completo de la nota modificada.`;
@@ -193,7 +196,7 @@ export class ChatOrchestrator {
             { name: noteName, topic: pa.params.fullProposal || pa.description || noteName },
           );
           if (!data.createdNotes) data.createdNotes = [];
-          const created: CreatedNote = { path: `Projects/${this.svc.activeProject.id}/${noteName}.md`, title: noteName, created_at: Date.now() };
+          const created: CreatedNote = { path: `${this.svc.activeProject.outputPath}/${noteName}.md`, title: noteName, created_at: Date.now() };
           data.createdNotes.push(created);
           await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || [], data);
           return { content: result };

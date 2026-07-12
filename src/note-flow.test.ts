@@ -11,13 +11,14 @@ vi.mock("obsidian", () => ({
 
 // Track the last call to executeWriteIntent to assert writePaths
 const mockExecuteWriteIntent = vi.fn();
+const mockCanWriteToPath = vi.hoisted(() => vi.fn().mockReturnValue(true));
 vi.mock("./orchestrator/note-generator", () => ({
   executeWriteIntent: (...args: any[]) => {
     mockExecuteWriteIntent(...args);
     return Promise.resolve("✏️ **Nota creada exitosamente**\n\n# Nota generada\n\ncontenido de prueba");
   },
   makeInstruction: vi.fn().mockReturnValue("test instruction"),
-  canWriteToPath: vi.fn().mockReturnValue(true),
+  canWriteToPath: mockCanWriteToPath,
   createNoteAction: vi.fn(),
 }));
 
@@ -105,6 +106,8 @@ beforeEach(() => {
   mockAdapter.read.mockReset();
   mockAdapter.exists.mockReset();
   mockOpenCodeClient.chat.mockReset();
+  mockCanWriteToPath.mockReset();
+  mockCanWriteToPath.mockReturnValue(true);
 });
 
 describe("Integration — tryResolvePendingAction (creación de nota)", () => {
@@ -140,6 +143,12 @@ describe("Integration — tryResolvePendingAction (creación de nota)", () => {
 
     // 3) Verify saveThreadData was called (createdNotes tracked in memory)
     expect(mockProjectStore.saveThreadData).toHaveBeenCalled();
+    // 4) Verify createdNote path uses outputPath, not a hardcoded Projects/{id}
+    const saveArgs = mockProjectStore.saveThreadData.mock.calls[0];
+    const savedExtra = saveArgs[3];
+    expect(savedExtra).toBeDefined();
+    expect(savedExtra.createdNotes).toBeDefined();
+    expect(savedExtra.createdNotes[0].path).toContain("Projects/test-proj");
   });
 });
 
@@ -316,6 +325,39 @@ describe("Integration — modify_note (leer → regenerar → sobrescribir)", ()
     const response = await orch.handleMessage("en la nota que creaste, profundizá");
 
     expect(response.content).toContain("No encontré ninguna nota");
+    expect(mockNoteWriter.update).not.toHaveBeenCalled();
+  });
+
+  it("nota encontrada pero sin permisos de escritura → no modifica nada", async () => {
+    mockProjectStore.loadThreadData.mockResolvedValue({
+      thread: { thread_id: "test", project_id: "test-proj", title: "Test", created_at: 0, updated_at: 0, starred: false },
+      messages: [],
+      pendingAction: undefined,
+      createdNotes: [{ path: "Projects/test-proj/Restricted.md", title: "Restricted Note", created_at: Date.now() }],
+    });
+    mockAdapter.read.mockImplementation((path: string) => {
+      if (path === "sanctum-agents/orchestrator.md") {
+        return Promise.resolve(`---\nid: orchestrator\ninternal: true\n---\nEres el orquestador.\n{{user_prompt}}`);
+      }
+      if (path === "Projects/test-proj/Restricted.md") {
+        return Promise.resolve("# Restricted\n\ncontenido no modificable");
+      }
+      return Promise.reject(new Error("not found"));
+    });
+    mockAdapter.exists.mockResolvedValue(true);
+    mockOpenCodeClient.chat.mockResolvedValue({
+      content: JSON.stringify({ mode: "implicit", action: "modify_note", reason: "test" }),
+      usage: { prompt: 5, completion: 5 },
+    });
+
+    // Mock canWriteToPath to reject the specific path
+    mockCanWriteToPath.mockReturnValueOnce(false);
+
+    const svc = makeServices();
+    const orch = new ChatOrchestrator(svc);
+    const response = await orch.handleMessage("en la nota Restricted Note, modificá el contenido");
+
+    expect(response.content).toContain("Permiso denegado");
     expect(mockNoteWriter.update).not.toHaveBeenCalled();
   });
 });
