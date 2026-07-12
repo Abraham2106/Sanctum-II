@@ -218,6 +218,23 @@ export class ChatComposer {
     }
   }
 
+  setActiveSkill(name: string | null): void {
+    this.skillChipsEl.empty();
+    if (!name) {
+      this.skillChipsEl.style.display = "none";
+      return;
+    }
+    const chip = this.skillChipsEl.createDiv({ cls: "s-skill-chip" });
+    chip.createSpan({ text: `/ ${name}` });
+    const removeBtn = chip.createSpan({ cls: "s-skill-chip-remove" });
+    removeBtn.textContent = "×";
+    removeBtn.onclick = async () => {
+      if (this.plugin.setSkillContext) await this.plugin.setSkillContext(null);
+      this.setActiveSkill(null);
+    };
+    this.skillChipsEl.style.display = "";
+  }
+
   getMeshMode(): boolean { return this.meshMode; }
   setMeshMode(v: boolean): void { this.meshMode = v; }
 }

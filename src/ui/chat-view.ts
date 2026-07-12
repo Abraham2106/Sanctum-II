@@ -131,8 +131,9 @@ export class SanctumChatView extends ItemView {
     this.right.build(rightEl);
 
     // Initialize autocomplete
-    this.autocomplete.init(this.composer.inputEl, this.composer.dropdownEl, (skillId) => {
+    this.autocomplete.init(this.composer.inputEl, this.composer.dropdownEl, (skillId, skillName) => {
       if (this.plugin.setSkillContext) this.plugin.setSkillContext(skillId);
+      this.composer.setActiveSkill(skillName || null);
     });
 
     // Load autocomplete data
@@ -181,11 +182,13 @@ export class SanctumChatView extends ItemView {
     }
 
     this.composer.inputEl.value = "";
+    this.messenger.addMsg("user", text);
     this.messenger.addMsg("agent", "Pensando...", agentLabel);
+    const thinkingEl = this.threadEl.lastElementChild;
     const history = this.messenger.messages.slice(0, -1).map(m => ({ role: m.role === "user" ? "user" as const : "assistant" as const, content: m.content }));
     const response = await this.plugin.sendChatMessage(text, history);
     this.messenger.messages.pop();
-    this.threadEl.lastElementChild?.remove();
+    thinkingEl?.remove();
     this.messenger.addMsg("agent", response, agentLabel);
     this.composer.inputEl.disabled = false;
     this.composer.sendBtn.disabled = false;

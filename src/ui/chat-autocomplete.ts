@@ -33,7 +33,7 @@ export class ChatAutocomplete {
 
   setOnSelect(cb: () => void): void { this.onSelectCallback = cb; }
 
-  init(inputEl: HTMLInputElement, dropdownEl: HTMLElement, onSkillSelect?: (id: string) => void): void {
+  init(inputEl: HTMLInputElement, dropdownEl: HTMLElement, onSkillSelect?: (id: string, name: string) => void): void {
     this.inputEl = inputEl;
     this.dropdownEl = dropdownEl;
     this.onSkillSelect = onSkillSelect;
@@ -228,7 +228,7 @@ export class ChatAutocomplete {
       this.inputEl.value = val.slice(0, this.activeQuery.startIdx) + val.slice(this.activeQuery.endIdx);
       this.inputEl.focus();
       this.close();
-      if (this.onSkillSelect) this.onSkillSelect(opt.value);
+      if (this.onSkillSelect) this.onSkillSelect(opt.value, opt.label);
       return;
     }
 
