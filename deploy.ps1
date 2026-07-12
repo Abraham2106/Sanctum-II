@@ -16,6 +16,7 @@ if (Test-Path "sanctum-skills") {
 New-Item -ItemType Directory -Path "$vault\sanctum-chains" -Force
 New-Item -ItemType Directory -Path "$vault\sanctum-logs\traces" -Force
 New-Item -ItemType Directory -Path "$vault\sanctum-projects" -Force
+New-Item -ItemType Directory -Path "$vault\Projects" -Force
 New-Item -ItemType Directory -Path "$vault\sanctum-memory" -Force
 New-Item -ItemType Directory -Path "$vault\sanctum-logs\threads" -Force
 New-Item -ItemType Directory -Path "$vault\sanctum-logs\index" -Force

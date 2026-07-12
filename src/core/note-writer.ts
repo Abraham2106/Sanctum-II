@@ -14,6 +14,13 @@ export class NoteWriter {
     }
   ) {}
 
+  private async ensureDir(filePath: string): Promise<void> {
+    const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+    try {
+      await this.adapter.write(`${dir}/.gitkeep`, "");
+    } catch {}
+  }
+
   async create(path: string, content: string): Promise<WriteResult> {
     const exists = await this.adapter.exists(path);
     if (exists) {
@@ -24,6 +31,7 @@ export class NoteWriter {
         message: `La nota ya existe: ${path}`,
       };
     }
+    await this.ensureDir(path);
     await this.adapter.write(path, content);
     return {
       success: true,
@@ -43,6 +51,7 @@ export class NoteWriter {
         message: `La nota no existe: ${path}`,
       };
     }
+    await this.ensureDir(path);
     await this.adapter.write(path, content);
     return {
       success: true,
@@ -60,6 +69,7 @@ export class NoteWriter {
       // la nota no existe, se crea
     }
     const newContent = existing ? `${existing}\n\n${content}` : content;
+    await this.ensureDir(path);
     await this.adapter.write(path, newContent);
     return {
       success: true,
@@ -83,6 +93,7 @@ export class NoteWriter {
         };
       }
       const newContent = content.replace(search, replacement);
+      await this.ensureDir(path);
       await this.adapter.write(path, newContent);
       return {
         success: true,
