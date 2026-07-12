@@ -262,6 +262,16 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     if (!exists) {
       await this.projectStore.createProject(this.settings.activeProjectId, this.settings.activeProjectId);
     }
+    // Migrate old project files: ensure write_paths includes Projects/{pid}/
+    const stored = await this.projectStore.loadProject(this.settings.activeProjectId).catch(() => null);
+    if (stored) {
+      const projPath = `/Projects/${this.settings.activeProjectId}/`;
+      let changed = false;
+      if (!stored.read_paths.includes(projPath)) { stored.read_paths.push(projPath); changed = true; }
+      if (!stored.write_paths.includes(projPath)) { stored.write_paths.push(projPath); changed = true; }
+      if (!stored.outputPath) { stored.outputPath = `Projects/${this.settings.activeProjectId}`; changed = true; }
+      if (changed) await this.projectStore.saveProject(stored);
+    }
     const pid = this.settings.activeProjectId;
     await ensureDir(`sanctum-memory/${pid}`);
     await ensureDir(`sanctum-logs/threads/${pid}`);
