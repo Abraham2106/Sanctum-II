@@ -228,7 +228,7 @@ export class VectorStore {
   }
 
   filterByPaths(results: { chunk: Chunk; score: number }[], allowedPaths: string[]): { chunk: Chunk; score: number }[] {
-    if (allowedPaths.length === 0) return results;
+    if (allowedPaths.length === 0) return [];
     return results.filter((r) => pathMatchesAny(r.chunk.note_path, allowedPaths));
   }
 }

@@ -13,7 +13,8 @@ export function globMatch(path: string, pattern: string): boolean {
 }
 
 export function pathMatchesAny(filePath: string, patterns: string[] | undefined): boolean {
-  if (!patterns || patterns.length === 0) return true;
+  if (!patterns) return true;
+  if (patterns.length === 0) return false;
   if (patterns.includes("/**") || patterns.includes("**")) return true;
   return patterns.some(p => globMatch(filePath, p));
 }

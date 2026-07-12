@@ -88,11 +88,6 @@ export async function executeTurn(
           chunk: { id: "", note_path: ac.note_path, chunk_text: ac.chunk_text, embedding: [] },
           score: ac.score,
         });
-      }
-      for (const ac of expansion.added_chunks) {
-        const passesPathFilter = !activePathFilter?.length || pathMatchesAny(ac.note_path, activePathFilter);
-        const passesAgentPerms = !agentPerms?.length || pathMatchesAny(ac.note_path, agentPerms);
-        if (!passesPathFilter || !passesAgentPerms) continue;
         deps.tracer.addChunk({
           source: "kg",
           chunk: ac.chunk_text,

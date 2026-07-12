@@ -44,8 +44,8 @@ describe("pathMatchesAny", () => {
     expect(pathMatchesAny("Research/nota.md", undefined)).toBe(true);
   });
 
-  it("returns true when patterns is empty array", () => {
-    expect(pathMatchesAny("Research/nota.md", [])).toBe(true);
+  it("returns false when patterns is empty array (fail-closed)", () => {
+    expect(pathMatchesAny("Research/nota.md", [])).toBe(false);
   });
 
   it("returns true for /** wildcard", () => {
@@ -124,7 +124,7 @@ describe("Brecha #3 — Path intersection via sequential filterByPaths", () => {
     expect(results).toHaveLength(1);
   });
 
-  it("neither filter active → all chunks pass", () => {
+  it("empty filter array rejects all (fail-closed)", () => {
     const store = new VectorStore();
     const chunks = [
       makeChunk("Research/nota.md"),
@@ -132,9 +132,9 @@ describe("Brecha #3 — Path intersection via sequential filterByPaths", () => {
       makeChunk("Quantum/papers.md"),
     ];
 
-    // No pathFilter, no agentPerms
+    // Empty pattern list = no paths allowed (fail-closed)
     const results = store.filterByPaths(chunks, []);
-    expect(results).toHaveLength(3);
+    expect(results).toHaveLength(0);
   });
 });
 
