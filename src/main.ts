@@ -284,6 +284,16 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     if (!this.settings.projectsEnabled) return;
     try {
       const project = await this.projectStore.loadProject(projectId);
+      // Ensure Projects/{projectId}/ directory exists for generated notes
+      const ensureDir = async (dir: string) => { await this.app.vault.adapter.write(`${dir}/.gitkeep`, "").catch(() => {}); };
+      await ensureDir(`Projects/${projectId}`);
+      // Migrate old project files: add Projects/{id}/ to paths if missing
+      const projPath = `/Projects/${projectId}/`;
+      let changed = false;
+      if (!project.read_paths.includes(projPath)) { project.read_paths.push(projPath); changed = true; }
+      if (!project.write_paths.includes(projPath)) { project.write_paths.push(projPath); changed = true; }
+      if (!project.outputPath) { project.outputPath = `Projects/${projectId}`; changed = true; }
+      if (changed) await this.projectStore.saveProject(project);
       const { store, load } = this.getVectorStoreForProject(projectId);
       await load();
       this.vectorStore = store;
