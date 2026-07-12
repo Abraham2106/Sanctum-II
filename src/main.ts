@@ -342,7 +342,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     const thread: any = existing?.thread || { thread_id: threadId, project_id: this.activeProject.id, title: "Nueva conversación", created_at: Date.now(), updated_at: Date.now(), starred: false };
     thread.updated_at = Date.now();
     thread.title = messages.find((m: any) => m.role === "user")?.content?.slice(0, 60) || thread.title;
-    await this.projectStore.saveThreadData(this.activeProject.id, thread, messages);
+    await this.projectStore.saveThreadData(this.activeProject.id, thread, messages, existing || undefined);
   }
 
   // ── Other legacy methods ──

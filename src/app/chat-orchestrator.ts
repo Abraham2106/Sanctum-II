@@ -107,7 +107,9 @@ export class ChatOrchestrator {
         return this.handleAgentMessage(userMessage, null, convMessages, convSummary);
       }
       if (action === "create_note") {
-        return this.executeWriteIntent(userMessage);
+        const name = userMessage.slice(0, 40).replace(/[^a-zA-Z0-9áéíóúñ\s-]/g, "").trim() || "nota";
+        const content = await this.createNoteFromIntent(name, userMessage);
+        return { content };
       }
       if (action === "modify_note") {
         const threadData = (this.svc.activeProject && this.svc.activeThreadId)
@@ -165,7 +167,7 @@ export class ChatOrchestrator {
     const intent = classifyIntent(userMessage, data.pendingAction);
     if (intent.type === "rejection") {
       data.pendingAction = undefined;
-      await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || []);
+      await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || [], data);
       return { content: "👍 Ok, no se realiza la acción." };
     }
 
@@ -183,7 +185,7 @@ export class ChatOrchestrator {
               noteWriter: this.svc.noteWriter,
               tracer: this.svc.tracer,
               vaultAdapter: this.svc.adapter,
-              writePaths: agent.permissions?.write_paths || [],
+              writePaths: this.svc.activeProject?.write_paths || [],
               outputPath: this.svc.activeProject?.outputPath,
             },
             { name: noteName, topic: pa.params.fullProposal || pa.description || noteName },
@@ -191,7 +193,7 @@ export class ChatOrchestrator {
           if (!data.createdNotes) data.createdNotes = [];
           const created: CreatedNote = { path: `Projects/${this.svc.activeProject.id}/${noteName}.md`, title: noteName, created_at: Date.now() };
           data.createdNotes.push(created);
-          await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || []);
+          await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || [], data);
           return { content: result };
         } catch (err: any) {
           return { content: `Error al crear nota: ${err.message}` };
@@ -269,7 +271,7 @@ export class ChatOrchestrator {
         if (result.conversationSummary) data.summary = result.conversationSummary;
         const action = detectPendingAction(result.content);
         if (action) data.pendingAction = action;
-        await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || []);
+        await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || [], data);
       }
     }
   }
@@ -281,6 +283,15 @@ export class ChatOrchestrator {
     const intent = nameMatch
       ? { name: nameMatch[1].trim(), topic: nameMatch[2]?.trim() || nameMatch[1].trim() }
       : { topic: topicMatch![1].trim() };
+    return await this.createNoteFromIntent(intent.name || intent.topic!, intent.topic!);
+  }
+
+  /**
+   * Core note creation: executes the LLM call and registers createdNotes.
+   * No regex parsing — trusts the caller has already classified the intent.
+   * Used by executeWriteIntent (regex path) and handleImplicitMessage (orchestrator path).
+   */
+  private async createNoteFromIntent(name: string, topic: string): Promise<string> {
     const agent = this.svc.agent || this.fallbackAgent();
     try {
       const result = await executeWriteIntentFromNoteGen(
@@ -290,18 +301,17 @@ export class ChatOrchestrator {
           noteWriter: this.svc.noteWriter,
           tracer: this.svc.tracer,
           vaultAdapter: this.svc.adapter,
-          writePaths: agent.permissions?.write_paths || [],
+          writePaths: this.svc.activeProject?.write_paths || [],
           outputPath: this.svc.activeProject?.outputPath,
         },
-        intent,
+        { name, topic },
       );
-      // Register created note in thread data
       if (this.svc.activeThreadId && this.svc.activeProject) {
         const data = await this.svc.projectStore.loadThreadData(this.svc.activeProject.id, this.svc.activeThreadId).catch(() => null);
         if (data) {
           if (!data.createdNotes) data.createdNotes = [];
-          data.createdNotes.push({ path: `${this.svc.activeProject.outputPath}/${intent.name || intent.topic}.md`, title: intent.name || intent.topic, created_at: Date.now() });
-          await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || []);
+          data.createdNotes.push({ path: `${this.svc.activeProject.outputPath}/${name}.md`, title: name, created_at: Date.now() });
+          await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || [], data);
         }
       }
       return result;

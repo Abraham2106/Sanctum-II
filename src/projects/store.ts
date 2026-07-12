@@ -1,4 +1,4 @@
-import type { MemoryEntry, Project, Thread, ThreadData } from "./types";
+import type { MemoryEntry, Project, Thread, ThreadData, PendingAction, CreatedNote } from "./types";
 import { defaultProject } from "./types";
 
 const PROJECTS_DIR = "sanctum-projects";
@@ -232,11 +232,20 @@ export class ProjectStore {
     }
   }
 
-  async saveThreadData(id: string, thread: Thread, messages: any[]): Promise<void> {
+  async saveThreadData(id: string, thread: Thread, messages: any[], extra?: { summary?: string; pendingAction?: PendingAction; createdNotes?: CreatedNote[] }): Promise<void> {
     const dir = this.threadsDir(id);
     await this.ensureDir(dir);
     if (!thread.starred) thread.starred = false;
-    const data: ThreadData = { thread, messages };
+    // Merge with existing disk data to preserve createdNotes, summary, pendingAction
+    // when the caller does not pass them explicitly (defensive fallback)
+    let disk: Partial<ThreadData> = {};
+    try {
+      const raw = await this.adapter.read(`${dir}/${thread.thread_id}.json`);
+      const parsed = JSON.parse(raw);
+      disk = { summary: parsed.summary, pendingAction: parsed.pendingAction, createdNotes: parsed.createdNotes };
+    } catch {}
+    // Order: thread+messages (params) + disk (fallback) + extra (explicit override)
+    const data: ThreadData = { thread, messages, ...disk, ...extra };
     await this.adapter.write(`${dir}/${thread.thread_id}.json`, JSON.stringify(data, null, 2));
   }
 
@@ -250,14 +259,14 @@ export class ProjectStore {
     if (!data) return;
     data.thread.title = newTitle;
     data.thread.updated_at = Date.now();
-    await this.saveThreadData(id, data.thread, data.messages);
+    await this.saveThreadData(id, data.thread, data.messages, data);
   }
 
   async toggleStarThread(id: string, threadId: string): Promise<Thread | null> {
     const data = await this.loadThreadData(id, threadId);
     if (!data) return null;
     data.thread.starred = !data.thread.starred;
-    await this.saveThreadData(id, data.thread, data.messages);
+    await this.saveThreadData(id, data.thread, data.messages, data);
     return data.thread;
   }
 
@@ -265,7 +274,7 @@ export class ProjectStore {
     const data = await this.loadThreadData(id, threadId);
     if (!data) return;
     data.thread.project_id = targetProjectId;
-    await this.saveThreadData(id, data.thread, data.messages);
+    await this.saveThreadData(id, data.thread, data.messages, data);
     // Copy to target project
     const targetDir = this.threadsDir(targetProjectId);
     await this.ensureDir(targetDir);
