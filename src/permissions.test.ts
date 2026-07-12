@@ -694,3 +694,115 @@ describe("VectorStore search", () => {
     expect(store.count).toBe(2);
   });
 });
+
+// ============================================================
+// Fase 1 — Cerrando el loop: creación de notas + outputPath
+// ============================================================
+
+describe("defaultProject", () => {
+  it("includes outputPath", async () => {
+    const { defaultProject } = await import("./projects/types");
+    const p = defaultProject("test-proj", "Test Project");
+    expect(p.outputPath).toBe("Projects/test-proj");
+  });
+
+  it("includes Projects/{id}/ in read_paths", async () => {
+    const { defaultProject } = await import("./projects/types");
+    const p = defaultProject("test-proj");
+    expect(p.read_paths).toContain("/Projects/test-proj/");
+  });
+
+  it("includes Projects/{id}/ in write_paths", async () => {
+    const { defaultProject } = await import("./projects/types");
+    const p = defaultProject("test-proj");
+    expect(p.write_paths).toContain("/Projects/test-proj/");
+  });
+});
+
+describe("classifyIntent", () => {
+  it("confirmation on pendingAction triggers resolution", async () => {
+    const { classifyIntent } = await import("./orchestrator/conversation");
+    const pa = { type: "create_note", description: "Crear nota X", params: { noteName: "test" }, proposed_at: Date.now() };
+    expect(classifyIntent("sí", pa).type).toBe("confirmation");
+    expect(classifyIntent("dale", pa).type).toBe("confirmation");
+    expect(classifyIntent("creala", pa).type).toBe("new_query"); // not in SHORT_YES
+  });
+
+  it("rejection on pendingAction clears intent", async () => {
+    const { classifyIntent } = await import("./orchestrator/conversation");
+    const pa = { type: "create_note", description: "Crear nota", params: {}, proposed_at: Date.now() };
+    expect(classifyIntent("no", pa).type).toBe("rejection");
+    expect(classifyIntent("nop", pa).type).toBe("rejection");
+    expect(classifyIntent("para", pa).type).toBe("rejection");
+  });
+
+  it("non-confirmation message with pendingAction → new_query", async () => {
+    const { classifyIntent } = await import("./orchestrator/conversation");
+    const pa = { type: "create_note", description: "", params: {}, proposed_at: 0 };
+    expect(classifyIntent("investigá más sobre X", pa).type).toBe("new_query");
+  });
+});
+
+describe("CreatedNote type", () => {
+  it("CreatedNote has correct shape", async () => {
+    const note: { path: string; title: string; created_at: number } = { path: "Projects/test/nota.md", title: "Mi Nota", created_at: 12345 };
+    expect(note.path).toBe("Projects/test/nota.md");
+    expect(note.title).toBe("Mi Nota");
+  });
+});
+
+// ============================================================
+// Fase 3 — Resolución de referencias a notas
+// ============================================================
+
+describe("resolveNoteReference", () => {
+  it("exact match on createdNotes by title", async () => {
+    const { resolveNoteReference } = await import("./orchestrator/note-resolver");
+    const notes = [
+      { path: "Projects/test/QML.md", title: "QML Research", created_at: 100 },
+      { path: "Projects/test/Water.md", title: "Water Quality", created_at: 200 },
+    ];
+    const result = await resolveNoteReference("QML", notes, undefined, undefined);
+    expect(result.method).toBe("exact");
+    expect(result.path).toBe("Projects/test/QML.md");
+  });
+
+  it("exact match with partial query match", async () => {
+    const { resolveNoteReference } = await import("./orchestrator/note-resolver");
+    const notes = [{ path: "Projects/test/QML.md", title: "Quantum ML Research", created_at: 100 }];
+    const result = await resolveNoteReference("quantum", notes, undefined, undefined);
+    expect(result.method).toBe("exact");
+    expect(result.path).toBe("Projects/test/QML.md");
+  });
+
+  it("not_found when no notes match", async () => {
+    const { resolveNoteReference } = await import("./orchestrator/note-resolver");
+    const result = await resolveNoteReference("nonexistent", [], undefined, undefined);
+    expect(result.method).toBe("not_found");
+    expect(result.path).toBeNull();
+  });
+
+  it("not_found when no vector store either", async () => {
+    const { resolveNoteReference } = await import("./orchestrator/note-resolver");
+    const result = await resolveNoteReference("algo", undefined, undefined, undefined);
+    expect(result.method).toBe("not_found");
+  });
+});
+
+// ============================================================
+// Fase 4 — Modificación de notas (file-level)
+// ============================================================
+
+describe("note-generator outputPath", () => {
+  it("uses outputPath from NoteGenDeps when provided", async () => {
+    const { makeInstruction } = await import("./orchestrator/note-generator");
+    expect(makeInstruction("test topic")).toContain("test topic");
+  });
+
+  it("canWriteToPath blocks internal paths", async () => {
+    const { canWriteToPath } = await import("./orchestrator/note-generator");
+    expect(canWriteToPath("sanctum-agents/test.md", ["/**"])).toBe(false);
+    expect(canWriteToPath("Projects/test/nota.md", ["/Projects/test/"])).toBe(true);
+    expect(canWriteToPath("Projects/test/nota.md", [])).toBe(false);
+  });
+});

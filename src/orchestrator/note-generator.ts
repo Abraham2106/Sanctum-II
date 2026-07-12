@@ -23,6 +23,7 @@ export interface NoteGenDeps {
   tracer: Tracer;
   vaultAdapter: { exists(p: string): Promise<boolean> };
   writePaths: string[];
+  outputPath?: string;
 }
 
 export interface GenerateResult {
@@ -35,7 +36,8 @@ async function generateNoteContent(deps: NoteGenDeps, instruction: string): Prom
   const rendered = renderSystemPrompt(deps.agent, "", instruction);
   const result = await deps.opencodeClient.chat(rendered, instruction);
   const title = extractTitle(result.content) || slugify(instruction.slice(0, 40));
-  const path = `${RESEARCH_PATH}/${slugify(title)}.md`;
+  const basePath = deps.outputPath || RESEARCH_PATH;
+  const path = `${basePath}/${slugify(title)}.md`;
 
   if (deps.writePaths.length > 0 && !canWriteToPath(path, deps.writePaths)) {
     throw new Error(`Sin permisos de escritura para ${path}`);

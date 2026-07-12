@@ -4,6 +4,96 @@
 
 ---
 
+## 2026-07-11 — Unificación del orquestador, permisos, tests y modo implícito
+
+### Cambios
+
+**Orquestador unificado (etapa 1):**
+- Creado `sanctum-agents/orchestrator.md` con `internal: true` como agente formal de ruteo
+- `src/orchestrator/mesh.ts`: consolidado como único punto de verdad (antes duplicado en `mesh-orchestrator.ts`)
+- `src/app/mesh-orchestrator.ts`: eliminado
+- `main.ts`: agregados 4 métodos de interfaz faltantes (testEmbeddings, testChat, runOrchestrate, createNoteWithAI)
+
+**Permisos por intersección (etapa 2):**
+- pathFilter y agent.read_paths ahora SIEMPRE se intersectan en `agent-turn.ts`
+- Expansión KG verifica ambos filtros antes de agregar chunks
+- Chain executor ya no pasa `[]` como pathFilter
+- Skills advierten si expanden tools del agente
+- `globMatch` y `filterByPaths` consolidados en `pathMatchesAny()` en `utils.ts`
+
+**Exclusión de carpetas internas (etapa 3):**
+- `isInternalPath()` en `utils.ts`: excluye `sanctum-*` y `docs/` de RAG y KG
+- Aplicado en indexadores (`rag/indexer.ts`, `projects/indexer.ts`) y KG explícito (`native-links.ts`)
+- Write path protegido con `isInternalPath` en `canWriteToPath`
+- Autocomplete del chat usa `isInternalPath`
+
+**Tests (etapa 4):**
+- vitest configurado (`npm test`)
+- `src/permissions.test.ts`: 77 tests pasando
+- Cobertura: permisos, glob-match, intersección, critic, conversación, topologicalOrder, VectorStore, note-resolver, skills, slugify, extractTitle, renderSystemPrompt
+- `kg.test.ts`: 34 assertions, ejecutables con `npx tsx`
+
+**Bug fixes:**
+- `classifyIntent`: separados `SHORT_YES` y `SHORT_NO` (antes ambos en un solo set, "no" se clasificaba como "confirmation")
+- `detectPendingAction`: corregido índice de capturing group (5 → 6) para el nombre de nota
+- `parseAgentMd`: lee `read_paths`/`write_paths` del nivel raíz del frontmatter (fallback para YAML nesting no soportado)
+- `setActiveFolder`: implementado (faltaba en la clase)
+
+**Modo implícito — Sección 13 (Fases 1-4):**
+- **Fase 1:** pendingAction → confirmación crea nota real en `Projects/<projectId>/`
+- **Fase 2:** modo implícito: sin `@agente` → orquestador clasifica (respond_only / create_note / modify_note / clarify)
+- **Fase 3:** `note-resolver.ts`: resuelve referencias a notas por exact match + RAG semántico
+- **Fase 4:** modificación de notas: lee, regenera con agente, escribe con `NoteWriter.update`
+- Proyecto ahora usa `outputPath: Projects/<projectId>` y `Projects/{id}/` en read_paths/write_paths
+
+### Justificación
+Cierre de 16 brechas de arquitectura identificadas en auditoría. Implementación completa de las 4 fases de la Sección 13 de la Visión.
+
+### Diagrama (arquitectura actualizada)
+```
+┌──────────────────────────────────────────────────────────────┐
+│                         VAULT (.md)                            │
+│       Indexado por proyecto (manual) + RAG con permisos        │
+└───────────────────────────┬──────────────────────────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+      ┌───────────┐  ┌───────────┐  ┌───────────────┐
+      │    RAG     │  │    KG      │  │ Lectura/      │
+      │  JSONL     │  │ (semántico │  │ escritura      │
+      │  vector    │  │  + nativo) │  │ directa        │
+      └─────┬──────┘  └─────┬──────┘  └───────┬────────┘
+            │               │                  │
+            └───────────────┼──────────────────┘
+                             │
+                 ┌────────────────────┐
+                 │  intersección       │  ← isInternalPath + pathMatchesAny
+                 │  pathFilter × perms │
+                 └──────────┬─────────┘
+                             ▼
+                 ┌────────────────────┐
+                 │    ORQUESTADOR      │  ← orchestrador.md (internal:true)
+                 │  mesh + modo implíc.│
+                 └──────────┬─────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+   ┌───────────┐       ┌───────────┐      ┌───────────┐
+   │ @forager   │       │@researcher │      │  @critic   │  + custom
+   │ skills     │──────▶│ web_search │─────▶│ score 0-100│  + cadenas
+   └───────────┘       └───────────┘      └─────┬─────┘
+                            ▲                     │
+                            │    loop 3 intentos   │
+                            └─────────────────────┘
+
+                 ┌────────────────────┐
+                 │  PROYECTOS          │  ← Projects/{id}/ indexable
+                 │  MEMORIA (separada) │  ← /sanctum-memory/ no indexable
+                 └────────────────────┘
+```
+
+---
+
 ## 2026-07-08 — Estado inicial (solo docs)
 
 ### Cambios

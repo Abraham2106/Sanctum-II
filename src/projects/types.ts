@@ -22,6 +22,7 @@ export interface Project {
   instructions: string;
   read_paths: string[];
   write_paths: string[];
+  outputPath: string;
   model: string;
   rag: ProjectRag;
   files: string[];
@@ -48,6 +49,7 @@ export interface ThreadData {
   messages: any[];
   summary?: string;
   pendingAction?: PendingAction;
+  createdNotes?: CreatedNote[];
 }
 
 export interface PendingAction {
@@ -55,6 +57,12 @@ export interface PendingAction {
   description: string;
   params: Record<string, any>;
   proposed_at: number;
+}
+
+export interface CreatedNote {
+  path: string;
+  title: string;
+  created_at: number;
 }
 
 export const DEFAULT_PROJECT_RAG: ProjectRag = {
@@ -72,8 +80,9 @@ export function defaultProject(id: string, name?: string): Project {
     icon: "◈",
     description: "",
     instructions: "",
-    read_paths: ["/Research/"],
-    write_paths: ["/sanctum-memory/" + id + "/"],
+    read_paths: [`/Research/`, `/Projects/${id}/`],
+    write_paths: [`/Projects/${id}/`, `/sanctum-memory/${id}/`],
+    outputPath: `Projects/${id}`,
     model: "deepseek-v4-flash",
     rag: { ...DEFAULT_PROJECT_RAG },
     files: [],

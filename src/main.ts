@@ -260,13 +260,13 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     await ensureDir("sanctum-projects");
     const exists = await this.projectStore.projectExists(this.settings.activeProjectId).catch(() => false);
     if (!exists) {
-      const p = await this.projectStore.createProject(this.settings.activeProjectId, this.settings.activeProjectId);
-      p.read_paths = ["/Research/"]; await this.projectStore.saveProject(p);
+      await this.projectStore.createProject(this.settings.activeProjectId, this.settings.activeProjectId);
     }
     const pid = this.settings.activeProjectId;
     await ensureDir(`sanctum-memory/${pid}`);
     await ensureDir(`sanctum-logs/threads/${pid}`);
     await ensureDir(`sanctum-logs/index/${pid}`);
+    await ensureDir(`Projects/${pid}`);
     await this.setActiveProject(this.settings.activeProjectId, false);
   }
 
@@ -366,6 +366,9 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     try {
       if (!folder) this.vectorStore.clear();
       const result = await indexResearchFolder(this.app.vault.adapter, this.geminiBalancer, this.vectorStore, folder);
+      const storePath = this.vectorStore.getStorePath();
+      const dir = storePath.substring(0, storePath.lastIndexOf("/"));
+      await this.app.vault.adapter.write(`${dir}/.gitkeep`, "").catch(() => {});
       await this.vectorStore.save(this.app.vault.adapter);
       notice.hide();
       if (result.errors.length > 0) {

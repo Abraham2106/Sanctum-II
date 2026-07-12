@@ -6,6 +6,8 @@ import { executeWriteIntent as executeWriteIntentFromNoteGen } from "../orchestr
 import { classifyIntent, detectPendingAction, buildConversationPayload } from "../orchestrator/conversation";
 import { executeChain, topologicalOrder } from "../chains/executor";
 import type { ConversationMessage } from "../orchestrator/conversation";
+import type { PendingAction, CreatedNote } from "../projects/types";
+import { resolveNoteReference } from "../orchestrator/note-resolver";
 
 export interface ChatResponse {
   content: string;
@@ -26,6 +28,11 @@ export class ChatOrchestrator {
   ): Promise<ChatResponse> {
     if (!this.svc.opencodeClient.configured) return { content: "OPENCODE_GO_API_KEY no configurada." };
 
+    // 1. Resolve pending action (confirmation/rejection of a previous offer)
+    const pendingResult = await this.tryResolvePendingAction(userMessage, convMessages, convSummary);
+    if (pendingResult) return pendingResult;
+
+    // 2. Write intent detection
     const writeIntent = await this.executeWriteIntent(userMessage);
     if (writeIntent) return { content: writeIntent };
 
@@ -57,7 +64,146 @@ export class ChatOrchestrator {
     }
 
     // ── Agent flow ──
+    if (!mentionMatch) {
+      return this.handleImplicitMessage(userMessage, convMessages, convSummary);
+    }
     return this.handleAgentMessage(userMessage, mentionMatch, convMessages, convSummary);
+  }
+
+  private async handleImplicitMessage(
+    userMessage: string,
+    convMessages?: any[],
+    convSummary?: string,
+  ): Promise<ChatResponse> {
+    // Load orchestrator and build context
+    let orchestratorPrompt = "";
+    try {
+      const orch = await loadAgentFromVault(this.svc.adapter, "orchestrator.md");
+      orchestratorPrompt = orch.system_prompt.replace("{{user_prompt}}", JSON.stringify({
+        mode: "implicit",
+        userMessage,
+        historySummary: convSummary || "(sin historial previo)",
+        createdNotes: (this.svc.activeProject && this.svc.activeThreadId)
+          ? (await this.svc.projectStore.loadThreadData(this.svc.activeProject.id, this.svc.activeThreadId).catch(() => null))?.createdNotes?.map(n => n.title) || []
+          : [],
+      }, null, 2));
+    } catch {
+      // No orchestrator → treat as normal agent query
+      return this.handleAgentMessage(userMessage, null, convMessages, convSummary);
+    }
+
+    try {
+      const result = await this.svc.opencodeClient.chat(orchestratorPrompt, userMessage);
+      const jsonStr = result.content.slice(
+        result.content.indexOf("{"),
+        result.content.lastIndexOf("}") + 1,
+      );
+      const decision = JSON.parse(jsonStr);
+      const action = decision.action;
+      new Notice(`🎯 Orquestador: ${action}`, 2000);
+      console.log(`[Orchestrator] implicit decision: ${action} — ${decision.reason}`);
+
+      if (action === "respond_only") {
+        return this.handleAgentMessage(userMessage, null, convMessages, convSummary);
+      }
+      if (action === "create_note") {
+        return this.executeWriteIntent(userMessage);
+      }
+      if (action === "modify_note") {
+        const threadData = (this.svc.activeProject && this.svc.activeThreadId)
+          ? await this.svc.projectStore.loadThreadData(this.svc.activeProject.id, this.svc.activeThreadId).catch(() => null)
+          : null;
+        const resolution = await resolveNoteReference(
+          userMessage,
+          threadData?.createdNotes,
+          this.svc.vectorStore,
+          this.svc.geminiBalancer,
+        );
+        if (resolution.method === "not_found") {
+          return { content: "No encontré ninguna nota que coincida. ¿Podrías decirme el nombre exacto?" };
+        }
+        if (resolution.method === "ambiguous") {
+          const names = resolution.candidates!.map(c => c.title).join(", ");
+          return { content: `Encontré varias notas posibles: ${names}. ¿A cuál te referís?` };
+        }
+        // Note resolved — modify it
+        try {
+          const currentContent = await this.svc.adapter.read(resolution.path!);
+          const modPrompt = `Nota actual:\n${currentContent.slice(0, 3000)}\n\nInstrucción del usuario: ${userMessage}\n\nRegenerá la nota completa incorporando los cambios pedidos. Responde SOLO con el contenido Markdown completo de la nota modificada.`;
+          const agent = this.svc.agent || this.fallbackAgent();
+          const result = await executeTurn(
+            { ...this.buildTurnDeps(modPrompt), agent, tavilyQuery: undefined, conversationMessages: undefined, conversationSummary: undefined },
+            modPrompt,
+            true,
+            this.svc.pathFilter,
+          );
+          const wr = await this.svc.noteWriter.update(resolution.path!, result.content);
+          return { content: `✏️ **${wr.message}**\n\n${result.content.slice(0, 300)}…` };
+        } catch (err: any) {
+          return { content: `Error al modificar nota: ${err.message}` };
+        }
+      }
+      if (action === "clarify") {
+        return { content: "¿Podrías darme más detalles sobre qué querés hacer? ¿Crear una nota nueva, modificar una existente, o solo consultar algo?" };
+      }
+    } catch (err: any) {
+      console.warn("[Orchestrator] implicit parse failed:", err.message);
+    }
+    // Fallback: treat as normal agent query
+    return this.handleAgentMessage(userMessage, null, convMessages, convSummary);
+  }
+
+  private async tryResolvePendingAction(
+    userMessage: string,
+    convMessages?: any[],
+    convSummary?: string,
+  ): Promise<ChatResponse | null> {
+    if (!this.svc.activeThreadId || !this.svc.activeProject) return null;
+    const data = await this.svc.projectStore.loadThreadData(this.svc.activeProject.id, this.svc.activeThreadId).catch(() => null);
+    if (!data?.pendingAction) return null;
+
+    const intent = classifyIntent(userMessage, data.pendingAction);
+    if (intent.type === "rejection") {
+      data.pendingAction = undefined;
+      await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || []);
+      return { content: "👍 Ok, no se realiza la acción." };
+    }
+
+    if (intent.type === "confirmation") {
+      const pa = data.pendingAction;
+      data.pendingAction = undefined;
+      if (pa.type === "create_note") {
+        const agent = this.svc.agent || this.fallbackAgent();
+        const noteName = pa.params.noteName || pa.params.title || "nota";
+        try {
+          const result = await executeWriteIntentFromNoteGen(
+            {
+              agent,
+              opencodeClient: this.svc.opencodeClient,
+              noteWriter: this.svc.noteWriter,
+              tracer: this.svc.tracer,
+              vaultAdapter: this.svc.adapter,
+              writePaths: agent.permissions?.write_paths || [],
+              outputPath: this.svc.activeProject?.outputPath,
+            },
+            { name: noteName, topic: pa.params.fullProposal || pa.description || noteName },
+          );
+          if (!data.createdNotes) data.createdNotes = [];
+          const created: CreatedNote = { path: `Projects/${this.svc.activeProject.id}/${noteName}.md`, title: noteName, created_at: Date.now() };
+          data.createdNotes.push(created);
+          await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || []);
+          return { content: result };
+        } catch (err: any) {
+          return { content: `Error al crear nota: ${err.message}` };
+        }
+      }
+      if (pa.type === "research") {
+        const followUp = pa.params.fullProposal || pa.description || "profundizar";
+        return this.handleAgentMessage(followUp, null, convMessages, convSummary);
+      }
+    }
+
+    return null;
   }
 
   private async handleAgentMessage(
@@ -85,7 +231,7 @@ export class ChatOrchestrator {
         const forager = await loadAgentFromVault(this.svc.adapter, "forager.md");
         const foragerDeps = { ...this.buildTurnDeps(actualMessage), agent: forager, tavilyApiKey: undefined, tavilyQuery: undefined };
         const foragerResult = await executeTurn(foragerDeps, actualMessage, false, this.svc.pathFilter);
-        const refined = foragerResult.content.slice(0, 2000);
+        const refined = foragerResult.content.slice(0, 4000);
         actualMessage = `${refined}\n\n---\nPregunta original del usuario: ${originalQuery}\n\nResponde usando el contexto recopilado${mentionMatch[1] === "web-search" ? " y la búsqueda web" : ""}.`;
       } catch {}
     }
@@ -137,7 +283,7 @@ export class ChatOrchestrator {
       : { topic: topicMatch![1].trim() };
     const agent = this.svc.agent || this.fallbackAgent();
     try {
-      return await executeWriteIntentFromNoteGen(
+      const result = await executeWriteIntentFromNoteGen(
         {
           agent,
           opencodeClient: this.svc.opencodeClient,
@@ -145,9 +291,20 @@ export class ChatOrchestrator {
           tracer: this.svc.tracer,
           vaultAdapter: this.svc.adapter,
           writePaths: agent.permissions?.write_paths || [],
+          outputPath: this.svc.activeProject?.outputPath,
         },
         intent,
       );
+      // Register created note in thread data
+      if (this.svc.activeThreadId && this.svc.activeProject) {
+        const data = await this.svc.projectStore.loadThreadData(this.svc.activeProject.id, this.svc.activeThreadId).catch(() => null);
+        if (data) {
+          if (!data.createdNotes) data.createdNotes = [];
+          data.createdNotes.push({ path: `${this.svc.activeProject.outputPath}/${intent.name || intent.topic}.md`, title: intent.name || intent.topic, created_at: Date.now() });
+          await this.svc.projectStore.saveThreadData(this.svc.activeProject.id, data.thread, data.messages || []);
+        }
+      }
+      return result;
     } catch (err: any) {
       return `Error al crear nota: ${err.message}`;
     }

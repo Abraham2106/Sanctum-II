@@ -90,6 +90,7 @@ function parseProjectMd(content: string): Project {
     instructions: data.instructions || bodyRaw,
     read_paths: data.read_paths || [],
     write_paths: data.write_paths || [],
+    outputPath: data.outputPath || `Projects/${id}`,
     model: data.model || "deepseek-v4-flash",
     rag: {
       embed_model: data.rag?.embed_model || "gemini-embedding-2",
@@ -112,6 +113,7 @@ function serializeProject(p: Project): string {
   lines.push(`model: ${p.model}`);
   lines.push(`read_paths: [${p.read_paths.map(x => `"${x}"`).join(", ")}]`);
   lines.push(`write_paths: [${p.write_paths.map(x => `"${x}"`).join(", ")}]`);
+  lines.push(`outputPath: ${p.outputPath || `Projects/${p.id}`}`);
   lines.push("rag:");
   lines.push(`  embed_model: ${p.rag.embed_model}`);
   lines.push(`  dims: ${p.rag.dims}`);

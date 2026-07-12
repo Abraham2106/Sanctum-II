@@ -162,7 +162,7 @@ export async function executeTurn(
       const agentTools = new Set(deps.agent.tools || []);
       const extraTools = deps.skillContext.tools.filter(t => !agentTools.has(t));
       if (extraTools.length > 0) {
-        console.warn(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent.id}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent.permissions?.read_paths || "none")}.`);
+        console.log(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent.id}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent.permissions?.read_paths || "none")}.`);
       }
     }
     renderedPrompt = `--- Skill: ${deps.skillContext.name} ---\n${deps.skillContext.instructions}\n\n---\n\n${renderedPrompt}`;

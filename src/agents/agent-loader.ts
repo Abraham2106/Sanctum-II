@@ -37,7 +37,9 @@ function parseAgentMd(content: string): AgentDefinition {
   const bodyRaw = parts.slice(2).join("---").trim();
 
   const frontmatter = parseFrontmatter(frontmatterRaw);
-  const permissionsRaw = frontmatter.permissions || {};
+  const permissionsRaw = (frontmatter.permissions && typeof frontmatter.permissions === "object")
+    ? frontmatter.permissions
+    : {};
 
   return {
     id: frontmatter.id || "unknown",
@@ -48,8 +50,8 @@ function parseAgentMd(content: string): AgentDefinition {
     triggers: frontmatter.triggers || [],
     tools: frontmatter.tools || [],
     permissions: {
-      read_paths: permissionsRaw.read_paths || [],
-      write_paths: permissionsRaw.write_paths || [],
+      read_paths: permissionsRaw.read_paths || frontmatter.read_paths || [],
+      write_paths: permissionsRaw.write_paths || frontmatter.write_paths || [],
     },
     system_prompt: bodyRaw,
     internal: frontmatter.internal === true || undefined,
