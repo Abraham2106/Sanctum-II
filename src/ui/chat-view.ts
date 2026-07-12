@@ -186,10 +186,16 @@ export class SanctumChatView extends ItemView {
     this.messenger.addMsg("agent", "Pensando...", agentLabel);
     const thinkingEl = this.threadEl.lastElementChild;
     const history = this.messenger.messages.slice(0, -1).map(m => ({ role: m.role === "user" ? "user" as const : "assistant" as const, content: m.content }));
-    const response = await this.plugin.sendChatMessage(text, history);
-    this.messenger.messages.pop();
-    thinkingEl?.remove();
-    this.messenger.addMsg("agent", response, agentLabel);
+    try {
+      const response = await this.plugin.sendChatMessage(text, history);
+      this.messenger.messages.pop();
+      thinkingEl?.remove();
+      this.messenger.addMsg("agent", response, agentLabel);
+    } catch (err: any) {
+      this.messenger.messages.pop();
+      thinkingEl?.remove();
+      this.messenger.addMsg("agent", `❌ Error: ${err.message}`, "bot Error");
+    }
     this.composer.inputEl.disabled = false;
     this.composer.sendBtn.disabled = false;
     this.composer.inputEl.focus();
@@ -210,8 +216,9 @@ export class SanctumChatView extends ItemView {
     this.messenger.addMsg("agent", "⏳ Ejecutando pipeline Forager → Researcher → Critic…", "shuffle Mesh");
     this.composer.showPipeline(true, "forager");
 
-    const result = await this.plugin.runMesh(text);
-    this.composer.showPipeline(true, "done", result.criticScore, result.attempts);
+    try {
+      const result = await this.plugin.runMesh(text);
+      this.composer.showPipeline(true, "done", result.criticScore, result.attempts);
 
     this.messenger.messages.pop();
     this.threadEl.lastElementChild?.remove();
@@ -257,7 +264,13 @@ export class SanctumChatView extends ItemView {
       }
     }
 
-    this.right.renderTracePanel(result);
+      this.right.renderTracePanel(result);
+    } catch (err: any) {
+      this.messenger.messages.pop();
+      this.threadEl.lastElementChild?.remove();
+      this.composer.showPipeline(false);
+      this.messenger.addMsg("agent", `❌ Error en el mesh: ${err.message}`, "shuffle Error");
+    }
     this.composer.inputEl.disabled = false;
     this.composer.sendBtn.disabled = false;
     this.composer.inputEl.focus();
