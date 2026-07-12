@@ -1,5 +1,6 @@
 import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import { VectorStore, type Chunk } from "./vector-store";
+import { isInternalPath } from "../utils";
 
 const RESEARCH_PATH = "Research";
 const CHUNK_MAX_WORDS = 400;
@@ -44,9 +45,14 @@ export async function indexResearchFolder(
   const mdFiles = listing.files.filter((f) => f.endsWith(".md"));
 
   for (const filePath of mdFiles) {
+    const noteName = filePath.replace(/\\/g, "/");
+    if (isInternalPath(noteName)) {
+      console.log(`[RAG-old] ⏭ Saltando path interno: ${noteName}`);
+      continue;
+    }
+
     try {
       const content = await vaultAdapter.read(filePath);
-      const noteName = filePath.replace(/\\/g, "/");
       const textChunks = chunkText(content, noteName);
 
       const newChunks: Chunk[] = [];

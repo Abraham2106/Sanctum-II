@@ -14,7 +14,7 @@ import type { SanctumSettings } from "./constants";
 import { SanctumChatView, type ChatViewPlugin } from "./ui/chat-view";
 import { SanctumSettingTab, type SettingsTabPlugin } from "./ui/settings-tab";
 import { registerCommands } from "./core/commands";
-import { testEmbeddings, testChat } from "./core/tests";
+import { testEmbeddings as testEmbeddingsFn, testChat as testChatFn } from "./core/tests";
 import { executeWriteIntent, createNoteAction, canWriteToPath } from "./orchestrator/note-generator";
 import type { NoteGenDeps } from "./orchestrator/note-generator";
 import { runMeshWithCritic } from "./orchestrator/mesh";
@@ -33,9 +33,10 @@ import { buildProjectContext } from "./projects/context";
 import type { ProjectContext } from "./projects/context";
 import { indexProject } from "./projects/indexer";
 import { classifyIntent, detectPendingAction } from "./orchestrator/conversation";
+import { executeTurn } from "./orchestrator/agent-turn";
 import { AppServices } from "./app/services";
 import { ChatOrchestrator } from "./app/chat-orchestrator";
-import { MeshOrchestrator } from "./app/mesh-orchestrator";
+
 
 export default class SanctumPlugin extends Plugin implements ChatViewPlugin, SettingsTabPlugin {
   settings: SanctumSettings;
@@ -51,7 +52,6 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   chainStore: ChainStore;
   services!: AppServices;
   chatOrch!: ChatOrchestrator;
-  meshOrch!: MeshOrchestrator;
 
   private vectorStores = new Map<string, VectorStore>();
   private activeProject: Project | null = null;
@@ -112,7 +112,6 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
     // ── Orchestrators ──
     this.chatOrch = new ChatOrchestrator(this.services);
-    this.meshOrch = new MeshOrchestrator(this.services);
 
     await this.initProjects();
 
@@ -221,7 +220,20 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
     const notice = new Notice(`🔀 Ejecutando mesh...`, 0);
     try {
-      const result = await this.meshOrch.execute(actualPrompt, this.activeFolder ? [`${this.activeFolder}/**`] : undefined);
+      const result = await runMeshWithCritic({
+        userPrompt: actualPrompt,
+        vaultAdapter: this.app.vault.adapter,
+        opencodeClient: this.opencodeClient,
+        geminiBalancer: this.geminiBalancer,
+        vectorStore: this.vectorStore,
+        tracer: this.tracer,
+        pathFilter: this.activeFolder ? [`${this.activeFolder}/**`] : undefined,
+        tavilyApiKey: this.settings.tavilyApiKey,
+        kgOptions: this.services.kgOptions,
+        edgeStore: this.kgEdgeStore,
+        projectContext: this.activeProjectContext || undefined,
+        skillContext: this.skillContext || undefined,
+      });
       if (result.criticVerdict === "accept" && writeIntent) {
         if (!noteName) {
           const fileMatch = result.researcherOutput.match(/^filename:\s*(.+)/m);
@@ -369,6 +381,61 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     const topicMatch = text.match(/cre[áa]\s*una\s+nota\s+(?:sobre\s+)?(.+)/i);
     if (topicMatch) return { topic: topicMatch[1].trim() };
     return null;
+  }
+
+  // ── Diagnostics and actions (required by ChatViewPlugin / SettingsTabPlugin) ──
+
+  async testEmbeddings(): Promise<void> {
+    const msg = await testEmbeddingsFn(this.geminiBalancer);
+    new Notice(msg);
+  }
+
+  async testChat(): Promise<void> {
+    if (!this.opencodeClient.configured) { new Notice("OPENCODE_GO_API_KEY no configurada"); return; }
+    const msg = await testChatFn(this.opencodeClient, this.agent);
+    new Notice(msg);
+  }
+
+  async runOrchestrate(prompt: string): Promise<void> {
+    const agent = this.agent || fallbackAgent();
+    try {
+      const result = await executeTurn(
+        {
+          agent,
+          opencodeClient: this.opencodeClient,
+          geminiBalancer: this.geminiBalancer,
+          vectorStore: this.vectorStore,
+          tracer: this.tracer,
+          tavilyApiKey: this.settings.tavilyApiKey,
+          projectContext: this.activeProjectContext || undefined,
+        },
+        prompt,
+        false,
+        this.pathFilter,
+      );
+      new Notice(`✅ Orquestación completada (${result.content.slice(0, 80)}…)`);
+      console.log("Sanctum orchestrate result:", result.content);
+    } catch (err: any) {
+      new Notice(`❌ Error: ${err.message}`);
+    }
+  }
+
+  async createNoteWithAI(): Promise<void> {
+    if (!this.opencodeClient.configured) { new Notice("OPENCODE_GO_API_KEY no configurada"); return; }
+    const agent = this.agent || fallbackAgent();
+    try {
+      const path = await createNoteAction({
+        agent,
+        opencodeClient: this.opencodeClient,
+        noteWriter: this.noteWriter,
+        tracer: this.tracer,
+        vaultAdapter: this.app.vault.adapter,
+        writePaths: agent.permissions?.write_paths || [],
+      });
+      new Notice(`✅ Nota creada: ${path}`);
+    } catch (err: any) {
+      new Notice(`❌ Error: ${err.message}`);
+    }
   }
 
   // ── View activation ──

@@ -1,4 +1,4 @@
-import { loadAgentFromVault } from "../agents/agent-loader";
+import { loadAgentFromVault, renderSystemPrompt } from "../agents/agent-loader";
 import { executeTurn } from "./agent-turn";
 import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import type { OpenCodeClient } from "../llm/opencode-client";
@@ -81,6 +81,13 @@ const ACCEPT_THRESHOLD = 80;
 const ESCALATE_THRESHOLD = 40;
 const MAX_ATTEMPTS = 3;
 
+type OrchestratorAction = "accept" | "escalate" | "regenerate";
+
+interface OrchestratorDecision {
+  action: OrchestratorAction;
+  reason: string;
+}
+
 function buildResearcherInput(foragerOutput: string, history: HistoryEntry[], attempt: number): string {
   let input = foragerOutput;
   if (attempt > 1) {
@@ -151,6 +158,88 @@ export function parseCriticJSON(raw: string): CriticEvaluation {
   }
 }
 
+function parseOrchestratorDecision(raw: string): OrchestratorDecision | null {
+  try {
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start === -1 || end === -1) return null;
+    const jsonStr = raw.substring(start, end + 1);
+    const parsed = JSON.parse(jsonStr);
+    const action = parsed.action;
+    if (action === "accept" || action === "escalate" || action === "regenerate") {
+      return { action, reason: parsed.reason || "" };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function buildOrchestratorInput(state: LoopState, evaluation: CriticEvaluation): string {
+  const historySummary = state.history.map(h => {
+    if (h.agent === "critic") {
+      return `[${h.agent}] score=${h.score}, verdict=${h.verdict}, feedback=${JSON.stringify(h.feedback)}`;
+    }
+    return `[${h.agent}] output (first 200 chars): ${h.output.slice(0, 200)}`;
+  }).join("\n");
+
+  return `Loop state actual:
+- original_prompt: "${state.original_prompt}"
+- current_step: ${state.current_step}
+- attempt: ${state.attempt} / max_attempts: ${state.max_attempts}
+
+Historial del loop:
+${historySummary}
+
+Última evaluación del Critic:
+- total_score: ${evaluation.total_score}
+- threshold: ${evaluation.threshold}
+- verdict: ${evaluation.verdict}
+- criteria: ${JSON.stringify(evaluation.criteria.map(c => ({ name: c.name, score: c.score, note: c.note })))}
+- feedback_for_regeneration: ${JSON.stringify(evaluation.feedback_for_regeneration)}
+- best_total_score so far: ${state.attempts.length > 0 ? Math.max(...state.attempts.map(a => a.total_score)) : "N/A"}
+
+Decidí el siguiente paso.`;
+}
+
+async function resolveOrchestratorDecision(
+  opts: MeshOptions,
+  state: LoopState,
+  evaluation: CriticEvaluation,
+  orchestratorAgent: { system_prompt: string },
+): Promise<OrchestratorAction> {
+  const orchestratorInput = buildOrchestratorInput(state, evaluation);
+  const renderedPrompt = renderSystemPrompt(
+    { id: "orchestrator", name: "orchestrator", avatar: "", model: "", description: "", triggers: [], tools: [], permissions: { read_paths: [], write_paths: [] }, system_prompt: orchestratorAgent.system_prompt },
+    "",
+    orchestratorInput,
+  );
+
+  try {
+    const result = await opts.opencodeClient.chat(renderedPrompt, orchestratorInput);
+    const decision = parseOrchestratorDecision(result.content);
+    if (decision) {
+      console.log(`[Mesh] Orchestrator decision: ${decision.action} — ${decision.reason}`);
+      return decision.action;
+    }
+    console.warn("[Mesh] Orchestrator response unparseable, falling back to hardcoded thresholds. Raw:", result.content.slice(0, 200));
+  } catch (err: any) {
+    console.warn("[Mesh] Orchestrator invocation failed, falling back to hardcoded thresholds:", err.message);
+  }
+
+  // Fallback to hardcoded thresholds
+  if (evaluation.total_score >= ACCEPT_THRESHOLD) return "accept";
+  if (evaluation.total_score <= ESCALATE_THRESHOLD) return "escalate";
+  if (state.attempt >= state.max_attempts) return "accept";
+
+  const bestScore = state.attempts.length > 1
+    ? Math.max(...state.attempts.slice(0, -1).map(a => a.total_score))
+    : 0;
+  if (state.attempt > 1 && evaluation.total_score <= bestScore) return "accept";
+
+  return "regenerate";
+}
+
 function pickTurnDeps(opts: MeshOptions) {
   return {
     opencodeClient: opts.opencodeClient,
@@ -174,12 +263,21 @@ function pickBestAttempt(state: LoopState): AttemptRecord | null {
   return best;
 }
 
+function buildAttemptHistory(state: LoopState) {
+  return state.attempts.map(a => ({
+    attempt: a.attempt,
+    total_score: a.total_score,
+    criteria: a.criteria,
+  }));
+}
+
 export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFull> {
   const { userPrompt, vaultAdapter, tracer } = opts;
 
   const forager = await loadAgentFromVault(vaultAdapter, "forager.md");
   const researcher = await loadAgentFromVault(vaultAdapter, "researcher.md");
   const critic = await loadAgentFromVault(vaultAdapter, "critic.md");
+  const orchestrator = await loadAgentFromVault(vaultAdapter, "orchestrator.md");
 
   const traceId = tracer.start("mesh-orchestrator", "", userPrompt);
 
@@ -206,7 +304,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
 
     let bestResearcherOutput = "";
 
-    // Loop: Researcher ↔ Critic
+    // Loop: Researcher ↔ Critic ↔ Orchestrator
     while (state.attempt <= state.max_attempts) {
       const researcherInput = buildResearcherInput(foragerResult.content, state.history, state.attempt);
 
@@ -248,10 +346,10 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
         usage: criticResult.usage,
       });
 
-      // --- Decision logic ---
+      // Orchestrator decides the next step
+      const action = await resolveOrchestratorDecision(opts, state, evaluation, orchestrator);
 
-      // 1) Accept if score meets threshold
-      if (evaluation.total_score >= ACCEPT_THRESHOLD || evaluation.verdict === "accept") {
+      if (action === "accept") {
         state.current_step = "done";
         state.best_attempt = state.attempts.length - 1;
         await tracer.finish(bestResearcherOutput, {
@@ -259,7 +357,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
           critic_score: evaluation.total_score,
           critic_verdict: "accept",
           attempts: state.attempt,
-          attempt_history: state.attempts.map(a => ({ attempt: a.attempt, total_score: a.total_score, criteria: a.criteria })),
+          attempt_history: buildAttemptHistory(state),
         });
         return {
           foragerOutput: foragerResult.content,
@@ -271,8 +369,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
         };
       }
 
-      // 2) Escalate if score is hopelessly low
-      if (evaluation.total_score <= ESCALATE_THRESHOLD) {
+      if (action === "escalate") {
         state.current_step = "escalated";
         state.best_attempt = state.attempts.length - 1;
         await tracer.finish(bestResearcherOutput, {
@@ -281,8 +378,8 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
           critic_verdict: "escalated",
           attempts: state.attempt,
           feedback: evaluation.feedback_for_regeneration,
-          reason: "score_below_escalate_threshold",
-          attempt_history: state.attempts.map(a => ({ attempt: a.attempt, total_score: a.total_score, criteria: a.criteria })),
+          reason: "escalated_by_orchestrator",
+          attempt_history: buildAttemptHistory(state),
         });
         return {
           foragerOutput: foragerResult.content,
@@ -294,21 +391,20 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
         };
       }
 
-      // 3) If this is the last attempt, accept the best we have
+      // action === "regenerate"
+      // If we're already at max_attempts, accept the best (safety net)
       if (state.attempt >= state.max_attempts) {
         const best = pickBestAttempt(state);
-        if (best) {
-          bestResearcherOutput = best.researcherOutput;
-          state.best_attempt = best.attempt - 1;
-        }
+        if (best) bestResearcherOutput = best.researcherOutput;
         state.current_step = "done";
+        state.best_attempt = best?.attempt ? best.attempt - 1 : 0;
         await tracer.finish(bestResearcherOutput, {
           loopState: state,
           critic_score: best?.total_score ?? evaluation.total_score,
           critic_verdict: "accept",
           attempts: state.attempt,
           reason: "max_attempts_reached",
-          attempt_history: state.attempts.map(a => ({ attempt: a.attempt, total_score: a.total_score, criteria: a.criteria })),
+          attempt_history: buildAttemptHistory(state),
         });
         return {
           foragerOutput: foragerResult.content,
@@ -320,36 +416,11 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
         };
       }
 
-      // 4) If score dropped or stalled compared to best, take the best
-      const best = pickBestAttempt(state);
-      if (best && state.attempt > 1 && evaluation.total_score <= best.total_score) {
-        bestResearcherOutput = best.researcherOutput;
-        state.best_attempt = best.attempt - 1;
-        state.current_step = "done";
-        await tracer.finish(bestResearcherOutput, {
-          loopState: state,
-          critic_score: best.total_score,
-          critic_verdict: "accept",
-          attempts: state.attempt,
-          reason: "score_stalled",
-          attempt_history: state.attempts.map(a => ({ attempt: a.attempt, total_score: a.total_score, criteria: a.criteria })),
-        });
-        return {
-          foragerOutput: foragerResult.content,
-          researcherOutput: bestResearcherOutput,
-          criticScore: best.total_score,
-          criticVerdict: "accept",
-          attempts: state.attempt,
-          loopState: state,
-        };
-      }
-
-      // 5) Score is improving but not there yet — regenerate
       state.attempt += 1;
       state.current_step = "research";
     }
 
-    // Safety net
+    // Safety net (should not normally reach here)
     state.current_step = "done";
     const best = pickBestAttempt(state);
     if (best) {

@@ -14,6 +14,7 @@ import type { ProjectContext } from "../projects/context";
 import type { Skill } from "../skills/types";
 import { buildConversationPayload } from "./conversation";
 import type { ConversationMessage } from "./conversation";
+import { pathMatchesAny } from "../utils";
 
 const MIN_SIMILARITY = 0.65;
 
@@ -54,6 +55,7 @@ export async function executeTurn(
   const topK = project?.rag?.top_k || 5;
   const minSim = project?.rag?.min_similarity || MIN_SIMILARITY;
   const activePathFilter = pathFilter?.length ? pathFilter : project?.read_paths;
+  const agentPerms = deps.agent.permissions?.read_paths;
 
   let ragContext = "";
   if (!skipRag && deps.geminiBalancer.hasKeys && deps.vectorStore.count > 0) {
@@ -79,12 +81,18 @@ export async function executeTurn(
       const seedNotes = [...new Set(results.map(r => r.chunk.note_path))];
       const expansion = expandFromSeeds(deps.vectorStore, seedNotes, queryEmbedding, kgOpts, deps.edgeStore);
       for (const ac of expansion.added_chunks) {
+        const passesPathFilter = !activePathFilter?.length || pathMatchesAny(ac.note_path, activePathFilter);
+        const passesAgentPerms = !agentPerms?.length || pathMatchesAny(ac.note_path, agentPerms);
+        if (!passesPathFilter || !passesAgentPerms) continue;
         results.push({
           chunk: { id: "", note_path: ac.note_path, chunk_text: ac.chunk_text, embedding: [] },
           score: ac.score,
         });
       }
       for (const ac of expansion.added_chunks) {
+        const passesPathFilter = !activePathFilter?.length || pathMatchesAny(ac.note_path, activePathFilter);
+        const passesAgentPerms = !agentPerms?.length || pathMatchesAny(ac.note_path, agentPerms);
+        if (!passesPathFilter || !passesAgentPerms) continue;
         deps.tracer.addChunk({
           source: "kg",
           chunk: ac.chunk_text,
@@ -95,11 +103,18 @@ export async function executeTurn(
       }
     }
 
+    const beforeFilterCount = results.length;
     if (activePathFilter && activePathFilter.length > 0) {
       results = deps.vectorStore.filterByPaths(results, activePathFilter);
-      console.log(`[RAG] post-filter (${JSON.stringify(activePathFilter)}): ${results.length} chunks`);
-    } else if (deps.agent.permissions?.read_paths) {
-      results = deps.vectorStore.filterByPaths(results, deps.agent.permissions.read_paths);
+    }
+    if (agentPerms && agentPerms.length > 0) {
+      results = deps.vectorStore.filterByPaths(results, agentPerms);
+    }
+    if (beforeFilterCount > 0 && results.length === 0) {
+      console.warn(`[Permissions] Filtro combinado vacío (${beforeFilterCount} chunks descartados). pathFilter=${JSON.stringify(activePathFilter || "none")}, agent.read_paths=${JSON.stringify(agentPerms || "none")}`);
+    }
+    if (activePathFilter?.length || agentPerms?.length) {
+      console.log(`[RAG] post-filter (pathFilter=${JSON.stringify(activePathFilter || "none")} × agentPerms=${JSON.stringify(agentPerms || "none")}): ${results.length} chunks`);
     }
     results = results.slice(0, topK);
     if (results.length === 0) {
@@ -148,6 +163,13 @@ export async function executeTurn(
   }
 
   if (deps.skillContext?.instructions) {
+    if (deps.skillContext.tools?.length) {
+      const agentTools = new Set(deps.agent.tools || []);
+      const extraTools = deps.skillContext.tools.filter(t => !agentTools.has(t));
+      if (extraTools.length > 0) {
+        console.warn(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent.id}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent.permissions?.read_paths || "none")}.`);
+      }
+    }
     renderedPrompt = `--- Skill: ${deps.skillContext.name} ---\n${deps.skillContext.instructions}\n\n---\n\n${renderedPrompt}`;
   }
 

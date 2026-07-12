@@ -12,6 +12,19 @@ export function globMatch(path: string, pattern: string): boolean {
   return regex.test(path);
 }
 
+export function pathMatchesAny(filePath: string, patterns: string[] | undefined): boolean {
+  if (!patterns || patterns.length === 0) return true;
+  if (patterns.includes("/**") || patterns.includes("**")) return true;
+  return patterns.some(p => globMatch(filePath, p));
+}
+
+const SYSTEM_PREFIXES = ["sanctum-", "docs/"];
+
+export function isInternalPath(filePath: string): boolean {
+  const normalized = filePath.startsWith("/") ? filePath.slice(1) : filePath;
+  return SYSTEM_PREFIXES.some(p => normalized.startsWith(p));
+}
+
 export function slugify(text: string): string {
   return text
     .toLowerCase()

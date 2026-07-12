@@ -68,7 +68,6 @@ export async function executeChain(
       { ...baseDeps, agent },
       enrichedInput,
       false,
-      [],
     );
 
     results.push({ nodeId, agentId: node.agentId, output: result.content, usage: result.usage });

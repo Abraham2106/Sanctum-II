@@ -2,18 +2,22 @@
   "name": "sanctum-ii",
   "version": "0.1.0",
   "description": "Sanctum II — MVP de plugin de Obsidian con mesh de agentes de IA",
+  "type": "module",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
+    "test": "vitest run",
     "deploy": "npm run build && powershell -File deploy.ps1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
     "obsidian": "^1.7.7",
     "tslib": "^2.8.0",
+    "tsx": "^4.23.0",
     "typescript": "^5.6.0",
-    "esbuild": "^0.25.0"
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "dotenv": "^16.4.0"

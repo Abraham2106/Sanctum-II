@@ -10,6 +10,8 @@ function assert(cond: boolean, msg: string): void {
 }
 
 // --- Mock chunks ---
+
+// --- Mock chunks ---
 const dims = 4;
 function makeChunk(notePath: string, id: string, vec: number[]): Chunk {
   return { id, note_path: notePath, chunk_text: `content of ${id}`, embedding: vec };

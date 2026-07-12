@@ -1,6 +1,7 @@
 import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import { VectorStore, type Chunk } from "../rag/vector-store";
 import type { Project } from "./types";
+import { isInternalPath } from "../utils";
 
 const CHUNK_MAX_WORDS = 400;
 
@@ -89,6 +90,11 @@ export async function indexProject(
   for (const filePath of allFiles) {
     const noteName = filePath.replace(/\\/g, "/");
     filesToPrune.delete(noteName);
+
+    if (isInternalPath(noteName)) {
+      console.log(`[KG] ⏭ Saltando path interno: ${noteName}`);
+      continue;
+    }
 
     try {
       const content = await adapter.read(filePath);

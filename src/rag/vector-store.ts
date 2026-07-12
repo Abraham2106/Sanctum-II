@@ -1,3 +1,5 @@
+import { pathMatchesAny } from "../utils";
+
 export interface Chunk {
   id: string;
   note_path: string;
@@ -227,21 +229,7 @@ export class VectorStore {
 
   filterByPaths(results: { chunk: Chunk; score: number }[], allowedPaths: string[]): { chunk: Chunk; score: number }[] {
     if (allowedPaths.length === 0) return results;
-    return results.filter((r) => {
-      if (allowedPaths.includes("/**") || allowedPaths.includes("**")) return true;
-      return allowedPaths.some((p) => {
-        const pat = p.startsWith("/") ? p.slice(1) : p;
-        if (pat === "**" || pat === "") return true;
-        return new RegExp(
-          "^" + pat
-            .replace(/\*\*/g, "___DS___")
-            .replace(/\*/g, "[^/]*")
-            .replace(/___DS___/g, ".*")
-            .replace(/\//g, "\\/")
-            .replace(/\./g, "\\.")
-        ).test(r.chunk.note_path);
-      });
-    });
+    return results.filter((r) => pathMatchesAny(r.chunk.note_path, allowedPaths));
   }
 }
 
