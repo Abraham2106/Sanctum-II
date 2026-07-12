@@ -79,10 +79,18 @@ export class ChatOrchestrator {
     let orchestratorPrompt = "";
     try {
       const orch = await loadAgentFromVault(this.svc.adapter, "orchestrator.md");
+      // Build recent conversation context from convMessages
+      let recentContext = convSummary || "";
+      if (!recentContext && convMessages && convMessages.length > 0) {
+        const lastMsgs = convMessages.slice(-4).map((m: any) =>
+          `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.content.slice(0, 300)}`
+        ).join("\n");
+        recentContext = lastMsgs || "(sin historial previo)";
+      }
       orchestratorPrompt = orch.system_prompt.replace("{{user_prompt}}", JSON.stringify({
         mode: "implicit",
         userMessage,
-        historySummary: convSummary || "(sin historial previo)",
+        historySummary: recentContext || "(sin historial previo)",
         createdNotes: (this.svc.activeProject && this.svc.activeThreadId)
           ? (await this.svc.projectStore.loadThreadData(this.svc.activeProject.id, this.svc.activeThreadId).catch(() => null))?.createdNotes?.map(n => n.title) || []
           : [],
