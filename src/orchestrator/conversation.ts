@@ -1,7 +1,8 @@
 import type { PendingAction } from "../projects/types";
 
-const MAX_HISTORY_TOKENS = 4000; // rough limit before rolling summary
-const SHORT_YES_NO = new Set(["si", "sí", "yes", "yep", "dale", "ok", "okay", "claro", "seguro", "hazlo", "adelante", "no", "nop", "no gracias", "para", "detente"]);
+const MAX_HISTORY_TOKENS = 4000;
+const SHORT_YES = new Set(["si", "sí", "yes", "yep", "dale", "ok", "okay", "claro", "seguro", "hazlo", "adelante"]);
+const SHORT_NO = new Set(["no", "nop", "no gracias", "para", "detente"]);
 
 export interface ConversationMessage {
   role: "user" | "assistant" | "system";
@@ -18,8 +19,8 @@ export function classifyIntent(userMsg: string, pendingAction?: PendingAction): 
   const clean = userMsg.trim().toLowerCase().replace(/[.!?]+$/, "");
   if (!pendingAction) return { type: "new_query", message: userMsg };
 
-  const isAffirmative = SHORT_YES_NO.has(clean) || clean === "si" || clean === "sí";
-  const isNegative = clean === "no" || clean === "nop" || clean === "no gracias";
+  const isAffirmative = SHORT_YES.has(clean) || clean === "si" || clean === "sí";
+  const isNegative = SHORT_NO.has(clean);
 
   if (isAffirmative) return { type: "confirmation", message: userMsg };
   if (isNegative) return { type: "rejection", message: userMsg };
@@ -31,7 +32,7 @@ export function detectPendingAction(assistantMsg: string): PendingAction | null 
   // Look for "¿Quieres que cree" / "¿Te gustaría que" patterns
   const createMatch = assistantMsg.match(/¿(quieres|te gustaría|deseas|puedo)\s+(que\s+)?(crear|crea|generar|genere|hacer|haga)\s+(una\s+)?nota\s+(llamada\s+)?["']?([^"'\n?]+)["']?/i);
   if (createMatch) {
-    const noteName = (createMatch[5] || "nota sin título").trim();
+    const noteName = (createMatch[6] || "nota sin título").trim();
     return {
       type: "create_note",
       description: `Crear nota "${noteName}"`,

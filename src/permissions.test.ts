@@ -1,6 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
-import { globMatch, pathMatchesAny, isInternalPath } from "./utils";
+import { globMatch, pathMatchesAny, isInternalPath, slugify, extractTitle } from "./utils";
 import { VectorStore, type Chunk } from "./rag/vector-store";
+
+vi.mock("obsidian", () => ({
+  Notice: class Notice { constructor(msg: string) { console.log("[Notice]", msg); } },
+  requestUrl: async () => ({ status: 200, json: {}, text: "", arrayBuffer: new ArrayBuffer(0) }),
+  Plugin: class Plugin {},
+  TFile: class TFile {},
+  setIcon: () => {},
+}));
 
 function makeChunk(notePath: string): { chunk: Chunk; score: number } {
   return {
@@ -352,5 +360,337 @@ describe("KG explicit edges — internal path exclusion", () => {
     expect(edges).toHaveLength(2);
     expect(edges.every(e => e.type === "explicit")).toBe(true);
     expect(edges.every(e => e.weight === 1.0)).toBe(true);
+  });
+});
+
+// ============================================================
+// slugify
+// ============================================================
+
+describe("slugify", () => {
+  it("converts tildes and ñ", () => {
+    expect(slugify("Investigación cuántica")).toBe("investigacion-cuantica");
+  });
+
+  it("replaces spaces with hyphens", () => {
+    expect(slugify("Mi Nota de prueba")).toBe("mi-nota-de-prueba");
+  });
+
+  it("strips non-alphanumeric characters", () => {
+    expect(slugify("Nota: ¿qué es? (teoría)")).toBe("nota-que-es-teoria");
+  });
+
+  it("truncates at 60 chars", () => {
+    const long = "a".repeat(100);
+    expect(slugify(long)).toHaveLength(60);
+  });
+
+  it("returns 'nota' for empty input", () => {
+    expect(slugify("")).toBe("nota");
+  });
+});
+
+// ============================================================
+// extractTitle
+// ============================================================
+
+describe("extractTitle", () => {
+  it("extracts first H1", () => {
+    expect(extractTitle("# Mi Título\n\ncontenido")).toBe("Mi Título");
+  });
+
+  it("returns null when no H1", () => {
+    expect(extractTitle("## Subtítulo\n\ncontenido")).toBeNull();
+  });
+
+  it("returns first H1 even inside code block (no special case)", () => {
+    expect(extractTitle("```\n# Título en código\n```")).toBe("Título en código");
+  });
+
+  it("returns null for empty content", () => {
+    expect(extractTitle("")).toBeNull();
+  });
+});
+
+// ============================================================
+// renderSystemPrompt
+// ============================================================
+
+describe("renderSystemPrompt", () => {
+  it("replaces {{rag_context}} and {{user_prompt}}", async () => {
+    const { renderSystemPrompt } = await import("./agents/agent-loader");
+    const agent = {
+      id: "test", name: "Test", avatar: "🤖", model: "deepseek-v4-flash",
+      description: "", triggers: [], tools: [],
+      permissions: { read_paths: [], write_paths: [] },
+      system_prompt: "Contexto:\n{{rag_context}}\n\nPregunta:\n{{user_prompt}}",
+    };
+    const result = renderSystemPrompt(agent, "datos del vault", "¿qué es X?");
+    expect(result).toBe("Contexto:\ndatos del vault\n\nPregunta:\n¿qué es X?");
+  });
+
+  it("leaves unmatched placeholders intact", async () => {
+    const { renderSystemPrompt } = await import("./agents/agent-loader");
+    const agent = {
+      id: "test", name: "Test", avatar: "🤖", model: "deepseek-v4-flash",
+      description: "", triggers: [], tools: [],
+      permissions: { read_paths: [], write_paths: [] },
+      system_prompt: "Hola {{rag_context}} y {{web_context}}",
+    };
+    const result = renderSystemPrompt(agent, "ctx", "usr");
+    expect(result).toBe("Hola ctx y {{web_context}}");
+  });
+});
+
+// ============================================================
+// parseCriticJSON
+// ============================================================
+
+describe("parseCriticJSON", () => {
+  it("parses full evaluation with 5 criteria", async () => {
+    const { parseCriticJSON } = await import("./orchestrator/mesh");
+    const raw = JSON.stringify({
+      evaluation: {
+        criteria: [
+          { name: "coherencia_interna", score: 18, note: "ok" },
+          { name: "uso_de_fuentes", score: 15, note: "bien" },
+          { name: "completitud_vs_prompt", score: 20, note: "" },
+          { name: "actualidad_de_datos", score: 10, note: "desactualizado" },
+          { name: "claridad_de_escritura", score: 17, note: "" },
+        ],
+        total_score: 80,
+        threshold: 80,
+        verdict: "accept",
+        feedback_for_regeneration: [],
+      },
+    });
+    const ev = parseCriticJSON(raw);
+    expect(ev.total_score).toBe(80);
+    expect(ev.verdict).toBe("accept");
+    expect(ev.criteria).toHaveLength(5);
+    expect(ev.criteria[0].name).toBe("coherencia_interna");
+    expect(ev.criteria[0].score).toBe(18);
+  });
+
+  it("parses reject verdict with feedback", async () => {
+    const { parseCriticJSON } = await import("./orchestrator/mesh");
+    const raw = JSON.stringify({
+      evaluation: {
+        criteria: [{ name: "coherencia_interna", score: 10, note: "contradicción" }],
+        total_score: 45,
+        threshold: 80,
+        verdict: "reject",
+        feedback_for_regeneration: ["Resolver contradicción", "Agregar fuentes"],
+      },
+    });
+    const ev = parseCriticJSON(raw);
+    expect(ev.verdict).toBe("reject");
+    expect(ev.total_score).toBe(45);
+    expect(ev.feedback_for_regeneration).toHaveLength(2);
+  });
+
+  it("falls back to defaults on unparseable input", async () => {
+    const { parseCriticJSON } = await import("./orchestrator/mesh");
+    const ev = parseCriticJSON("esto no es JSON");
+    expect(ev.total_score).toBe(80);
+    expect(ev.verdict).toBe("accept");
+    expect(ev.criteria).toHaveLength(0);
+  });
+
+  it("accepts evaluation without wrapper object", async () => {
+    const { parseCriticJSON } = await import("./orchestrator/mesh");
+    const raw = JSON.stringify({
+      criteria: [{ name: "coherencia_interna", score: 18, note: "" }],
+      total_score: 85,
+      threshold: 80,
+      verdict: "accept",
+      feedback_for_regeneration: [],
+    });
+    const ev = parseCriticJSON(raw);
+    expect(ev.total_score).toBe(85);
+    expect(ev.verdict).toBe("accept");
+  });
+});
+
+// ============================================================
+// topologicalOrder
+// ============================================================
+
+describe("topologicalOrder", () => {
+  it("simple linear chain", async () => {
+    const { topologicalOrder } = await import("./chains/executor");
+    const nodes = [
+      { id: "a", agentId: "agent1", x: 0, y: 0 },
+      { id: "b", agentId: "agent2", x: 100, y: 0 },
+      { id: "c", agentId: "agent3", x: 200, y: 0 },
+    ];
+    const edges = [
+      { id: "e1", from: "a", to: "b" },
+      { id: "e2", from: "b", to: "c" },
+    ];
+    const order = topologicalOrder(nodes, edges);
+    expect(order).toEqual(["a", "b", "c"]);
+  });
+
+  it("diamond shape", async () => {
+    const { topologicalOrder } = await import("./chains/executor");
+    const nodes = [
+      { id: "a", agentId: "a1", x: 0, y: 0 },
+      { id: "b", agentId: "a2", x: 100, y: 0 },
+      { id: "c", agentId: "a3", x: 100, y: 100 },
+      { id: "d", agentId: "a4", x: 200, y: 0 },
+    ];
+    const edges = [
+      { id: "e1", from: "a", to: "b" },
+      { id: "e2", from: "a", to: "c" },
+      { id: "e3", from: "b", to: "d" },
+      { id: "e4", from: "c", to: "d" },
+    ];
+    const order = topologicalOrder(nodes, edges);
+    expect(order[0]).toBe("a");
+    expect(order[order.length - 1]).toBe("d");
+  });
+
+  it("handles disconnected nodes", async () => {
+    const { topologicalOrder } = await import("./chains/executor");
+    const nodes = [
+      { id: "a", agentId: "a1", x: 0, y: 0 },
+      { id: "b", agentId: "a2", x: 100, y: 0 },
+      { id: "c", agentId: "a3", x: 200, y: 0 },
+    ];
+    const edges = [{ id: "e1", from: "a", to: "b" }];
+    const order = topologicalOrder(nodes, edges);
+    expect(order).toContain("a");
+    expect(order).toContain("b");
+    expect(order).toContain("c");
+    expect(order.indexOf("a")).toBeLessThan(order.indexOf("b"));
+  });
+
+  it("handles single node", async () => {
+    const { topologicalOrder } = await import("./chains/executor");
+    const nodes = [{ id: "a", agentId: "a1", x: 0, y: 0 }];
+    const order = topologicalOrder(nodes, []);
+    expect(order).toEqual(["a"]);
+  });
+});
+
+// ============================================================
+// classifyIntent
+// ============================================================
+
+describe("classifyIntent", () => {
+  it("affirmative without pending action → new_query", async () => {
+    const { classifyIntent } = await import("./orchestrator/conversation");
+    expect(classifyIntent("sí").type).toBe("new_query");
+  });
+
+  it("affirmative with pending action → confirmation", async () => {
+    const { classifyIntent } = await import("./orchestrator/conversation");
+    const pa = { type: "create_note", description: "", params: {}, proposed_at: 0 };
+    expect(classifyIntent("sí", pa).type).toBe("confirmation");
+  });
+
+  it("negative with pending action → rejection", async () => {
+    const { classifyIntent } = await import("./orchestrator/conversation");
+    const pa = { type: "create_note", description: "", params: {}, proposed_at: 0 };
+    expect(classifyIntent("nop", pa).type).toBe("rejection");
+  });
+
+  it("recognizes all affirmative variants", async () => {
+    const { classifyIntent } = await import("./orchestrator/conversation");
+    const pa = { type: "research", description: "", params: {}, proposed_at: 0 };
+    for (const word of ["dale", "ok", "claro", "seguro", "hazlo", "adelante"]) {
+      expect(classifyIntent(word, pa).type).toBe("confirmation");
+    }
+  });
+
+  it("new query bypasses pending action", async () => {
+    const { classifyIntent } = await import("./orchestrator/conversation");
+    const pa = { type: "create_note", description: "", params: {}, proposed_at: 0 };
+    expect(classifyIntent("investiga X", pa).type).toBe("new_query");
+  });
+});
+
+// ============================================================
+// detectPendingAction
+// ============================================================
+
+describe("detectPendingAction", () => {
+  it("detects create_note intent", async () => {
+    const { detectPendingAction } = await import("./orchestrator/conversation");
+    const msg = "¿Quieres que crea una nota llamada Quantum Computing?";
+    const action = detectPendingAction(msg);
+    expect(action).not.toBeNull();
+    expect(action!.type).toBe("create_note");
+    expect(action!.params.noteName).toContain("Quantum");
+  });
+
+  it("returns null for normal message", async () => {
+    const { detectPendingAction } = await import("./orchestrator/conversation");
+    expect(detectPendingAction("Aquí tienes la respuesta completa.")).toBeNull();
+  });
+});
+
+// ============================================================
+// VectorStore operations
+// ============================================================
+
+describe("VectorStore search", () => {
+  it("returns topK results sorted by score descending", () => {
+    const store = new VectorStore();
+    const chunks = [
+      { id: "c1", note_path: "Research/a.md", chunk_text: "text a", embedding: [1, 0, 0] },
+      { id: "c2", note_path: "Research/b.md", chunk_text: "text b", embedding: [0, 1, 0] },
+      { id: "c3", note_path: "Research/c.md", chunk_text: "text c", embedding: [0, 0, 1] },
+    ];
+    store.addChunks(chunks, "Research/batch");
+    const results = store.search([1, 0, 0], 2);
+    expect(results).toHaveLength(2);
+    expect(results[0].chunk.id).toBe("c1");
+    expect(results[0].score).toBeGreaterThan(results[1].score);
+  });
+
+  it("search with count=0 returns empty", () => {
+    const store = new VectorStore();
+    const chunks = [
+      { id: "c1", note_path: "Research/a.md", chunk_text: "text a", embedding: [1, 0, 0] },
+    ];
+    store.addChunks(chunks, "Research/batch");
+    expect(store.search([1, 0, 0], 0)).toHaveLength(0);
+  });
+
+  it("remains empty after clear", () => {
+    const store = new VectorStore();
+    store.addChunks([
+      { id: "c1", note_path: "Research/a.md", chunk_text: "text a", embedding: [1, 0, 0] },
+    ], "Research/a.md");
+    store.clear();
+    expect(store.count).toBe(0);
+    expect(store.search([1, 0, 0], 5)).toHaveLength(0);
+  });
+
+  it("reindexing replaces old chunks (tombstone)", () => {
+    const store = new VectorStore();
+    store.addChunks([
+      { id: "a1", note_path: "Research/a.md", chunk_text: "v1", embedding: [1, 0, 0] },
+    ], "Research/a.md");
+    expect(store.count).toBe(1);
+    store.addChunks([
+      { id: "a2", note_path: "Research/a.md", chunk_text: "v2", embedding: [1, 0, 0] },
+    ], "Research/a.md");
+    expect(store.count).toBe(1);
+    expect(store.allChunks[0].id).toBe("a2");
+    expect(store.allChunks[0].chunk_text).toBe("v2");
+  });
+
+  it("adds chunks for different notes", () => {
+    const store = new VectorStore();
+    store.addChunks([
+      { id: "a1", note_path: "Research/a.md", chunk_text: "a", embedding: [1, 0, 0] },
+    ], "Research/a.md");
+    store.addChunks([
+      { id: "b1", note_path: "Research/b.md", chunk_text: "b", embedding: [0, 1, 0] },
+    ], "Research/b.md");
+    expect(store.count).toBe(2);
   });
 });
