@@ -30,13 +30,18 @@ export async function ragQuery(
   store: VectorStore,
   agent: AgentDefinition | null,
   query: string,
+  pathFilter?: string[],
 ): Promise<string> {
   if (!balancer.hasKeys || store.count === 0) return "";
   try {
     const queryEmbedding = await balancer.embed(query);
     let results = store.search(queryEmbedding, 5).filter((r) => r.score >= MIN_SIMILARITY);
-    if (agent?.permissions?.read_paths) {
-      results = store.filterByPaths(results, agent.permissions.read_paths);
+    const agentPerms = agent?.permissions?.read_paths;
+    if (pathFilter && pathFilter.length > 0) {
+      results = store.filterByPaths(results, pathFilter);
+    }
+    if (agentPerms && agentPerms.length > 0) {
+      results = store.filterByPaths(results, agentPerms);
     }
     return results
       .map((r, i) => `[${i + 1}] (score: ${r.score.toFixed(3)}) de ${r.chunk.note_path}:\n${r.chunk.chunk_text}`)

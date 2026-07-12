@@ -1,6 +1,7 @@
 import { setIcon } from "obsidian";
 import type { ChatViewPlugin, RailAgent } from "./chat-types";
 import { renderAvatar } from "./chat-types";
+import { isInternalPath } from "../utils";
 
 interface Suggestion {
   type: "agent" | "note" | "skill";
@@ -164,7 +165,7 @@ export class ChatAutocomplete {
       try {
         const mdFiles = this.getApp().vault.getMarkdownFiles();
         for (const file of mdFiles) {
-          if (file.path.startsWith("sanctum-agents/")) continue;
+          if (isInternalPath(file.path)) continue;
           if (file.basename.toLowerCase().includes(q) || file.path.toLowerCase().includes(q)) {
             notes.push({ type: "note" as const, label: file.basename, value: `[[${file.path}]]`, detail: file.path, avatar: "file-text" });
             if (notes.length >= 10) break;
