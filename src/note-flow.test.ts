@@ -187,6 +187,40 @@ describe("Integration — handleImplicitMessage (clasificación de intención)",
     expect(response.content).toContain("Nota creada");
   });
 
+  it("create_note usa noteName del orquestador, no slice(0,40) del mensaje", async () => {
+    // Orchestrator returns noteName="QML" vs the message begins with "che, dale..."
+    mockProjectStore.loadThreadData.mockResolvedValue({
+      thread: { thread_id: "test", project_id: "test-proj", title: "Test", created_at: 0, updated_at: 0, starred: false },
+      messages: [],
+      pendingAction: undefined,
+    });
+    mockAdapter.read.mockImplementation((path: string) => {
+      if (path === "sanctum-agents/orchestrator.md") {
+        return Promise.resolve(`---\nid: orchestrator\ninternal: true\n---\nEres el orquestador.\n{{user_prompt}}`);
+      }
+      return Promise.reject(new Error("not found"));
+    });
+    mockAdapter.exists.mockResolvedValue(true);
+    mockOpenCodeClient.chat.mockResolvedValue({
+      content: JSON.stringify({ mode: "implicit", action: "create_note", noteName: "QML", reason: "test" }),
+      usage: { prompt: 5, completion: 5 },
+    });
+    mockNoteWriter.create.mockResolvedValue({ success: true, message: "Creada", path: "Projects/test-proj/QML.md" });
+    mockAdapter.exists.mockResolvedValue(false);
+
+    const svc = makeServices();
+    const orch = new ChatOrchestrator(svc);
+    const response = await orch.handleMessage("che, dale, guardá esto como nota sobre QML");
+
+    // The note was created with the orquestrador's noteName, not a slice of the greeting
+    expect(mockExecuteWriteIntent).toHaveBeenCalled();
+    const callArgs = mockExecuteWriteIntent.mock.calls;
+    const lastIntent = callArgs[callArgs.length - 1][1];
+    // The name used for the file should be "QML", not "che, dale, guardá esto como not"
+    expect(lastIntent.name).toBe("QML");
+    expect(response.content).toContain("Nota creada");
+  });
+
   it("respond_only → no dispara escritura ni modificación", async () => {
     setupForAction("respond_only");
 

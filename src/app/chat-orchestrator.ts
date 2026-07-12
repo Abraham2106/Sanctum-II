@@ -107,11 +107,13 @@ export class ChatOrchestrator {
         return this.handleAgentMessage(userMessage, null, convMessages, convSummary);
       }
       if (action === "create_note") {
-        const name = userMessage.slice(0, 40).replace(/[^a-zA-Z0-9áéíóúñ\s-]/g, "").trim() || "nota";
-        const content = await this.createNoteFromIntent(name, userMessage);
+        const noteName = (decision.noteName || userMessage.slice(0, 40))
+          .replace(/[^a-zA-Z0-9áéíóúñ\s-]/g, "").trim() || "nota";
+        const content = await this.createNoteFromIntent(noteName, userMessage);
         return { content };
       }
       if (action === "modify_note") {
+        const noteName = decision.noteName; // optional, used by resolver
         const threadData = (this.svc.activeProject && this.svc.activeThreadId)
           ? await this.svc.projectStore.loadThreadData(this.svc.activeProject.id, this.svc.activeThreadId).catch(() => null)
           : null;

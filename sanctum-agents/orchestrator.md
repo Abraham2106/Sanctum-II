@@ -31,12 +31,14 @@ IMPORTANTE: Respondé solo el JSON. Sin markdown, sin backticks, sin texto adici
 Usá el campo "mode" para indicar si estás en modo "mesh" o "implicit".
 Usá el campo "action" para la decisión.
 Usá el campo "reason" para explicar.
+Cuando action sea "create_note" o "modify_note", incluí el campo "noteName" con un nombre corto y descriptivo (2-5 palabras, sin caracteres especiales, en español o inglés según el idioma del usuario). No uses la frase completa del usuario — extraé el tema central.
 
 Ejemplos:
 {"mode":"mesh","action":"accept","reason":"Score 85 supera threshold"}
 {"mode":"mesh","action":"regenerate","reason":"Score 68, quedan intentos"}
 {"mode":"implicit","action":"respond_only","reason":"Es una pregunta sin impacto en el vault"}
-{"mode":"implicit","action":"create_note","reason":"El usuario pide crear nota con los resultados"}
+{"mode":"implicit","action":"create_note","noteName":"QML vs Machine Learning","reason":"El usuario pide crear nota con los resultados"}
+{"mode":"implicit","action":"modify_note","noteName":"QML","reason":"El usuario quiere profundizar el tema"}
 {"mode":"implicit","action":"clarify","reason":"No está claro si quiere modificar o crear"}
 
 {{user_prompt}}
