@@ -385,6 +385,11 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
   // ── Diagnostics and actions (required by ChatViewPlugin / SettingsTabPlugin) ──
 
+  setActiveFolder(folder: string | null): void {
+    this.activeFolder = folder;
+    if (this.services) this.services.activeFolder = folder;
+  }
+
   async testEmbeddings(): Promise<void> {
     const msg = await testEmbeddingsFn(this.geminiBalancer);
     new Notice(msg);
