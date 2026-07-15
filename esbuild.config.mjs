@@ -1,14 +1,17 @@
 import esbuild from "esbuild";
 import process from "process";
+import path from "node:path";
 
 const prod = process.argv[2] === "production";
+const rootDir = process.cwd();
 
 // ── Plugin de Obsidian (entry point existente) ──
 const pluginCtx = await esbuild.context({
+  absWorkingDir: rootDir,
   banner: {
     js: `const __SANCTUM_DEV__ = ${!prod};`,
   },
-  entryPoints: ["src/main.ts"],
+  entryPoints: [path.resolve(rootDir, "src/main.ts")],
   bundle: true,
   external: [
     "obsidian",
@@ -32,12 +35,13 @@ const pluginCtx = await esbuild.context({
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
-  outfile: "main.js",
+  outfile: path.resolve(rootDir, "main.js"),
 });
 
 // ── MCP Server (standalone Node process) ──
 const mcpCtx = await esbuild.context({
-  entryPoints: ["mcp-server/index.ts"],
+  absWorkingDir: rootDir,
+  entryPoints: [path.resolve(rootDir, "mcp-server/index.ts")],
   bundle: true,
   platform: "node",
   format: "cjs",
@@ -45,7 +49,7 @@ const mcpCtx = await esbuild.context({
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
-  outfile: "mcp-server/dist/index.cjs",
+  outfile: path.resolve(rootDir, "mcp-server/dist/index.cjs"),
 });
 
 if (prod) {

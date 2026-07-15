@@ -53,14 +53,14 @@ async function generateNoteContent(deps: NoteGenDeps, instruction: string): Prom
 
 export async function executeWriteIntent(deps: NoteGenDeps, intent: { name: string; topic: string }): Promise<string> {
   const instruction = makeInstruction(intent.topic);
-  deps.tracer.start(deps.agent.id, deps.agent.system_prompt, instruction);
+  const traceId = deps.tracer.start(deps.agent.id, deps.agent.system_prompt, instruction);
 
   try {
     const { content, path, writeResult } = await generateNoteContent(deps, instruction);
-    await deps.tracer.finish(content, { action: "create_note", path, topic: intent.topic });
+    await deps.tracer.finish(traceId, content, { action: "create_note", path, topic: intent.topic });
     return `✏️ **${writeResult.message}**\n\n${content}`;
   } catch (err: any) {
-    deps.tracer.abort(err.message);
+    deps.tracer.abort(traceId, err.message);
     return `Error: ${err.message}`;
   }
 }
@@ -72,14 +72,14 @@ export async function executeWriteIntent(deps: NoteGenDeps, intent: { name: stri
  */
 export async function createNoteAction(deps: NoteGenDeps): Promise<string> {
   const instruction = makeInstruction("un tema interesante de investigación");
-  deps.tracer.start(deps.agent.id, deps.agent.system_prompt, instruction);
+  const traceId = deps.tracer.start(deps.agent.id, deps.agent.system_prompt, instruction);
 
   try {
     const { content, path, writeResult } = await generateNoteContent(deps, instruction);
-    await deps.tracer.finish(content, { action: "create_note", path });
+    await deps.tracer.finish(traceId, content, { action: "create_note", path });
     return path;
   } catch (err: any) {
-    deps.tracer.abort(err.message);
+    deps.tracer.abort(traceId, err.message);
     throw err;
   }
 }

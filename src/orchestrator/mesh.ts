@@ -116,7 +116,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
 
   try {
     const foragerResult = await executeTurn(
-      { agent: forager, ...pickTurnDeps(opts) },
+      { agent: forager, traceId, ...pickTurnDeps(opts) },
       userPrompt,
       false,
       opts.pathFilter,
@@ -130,7 +130,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
       const researcherInput = buildResearcherInput(foragerResult.content, state.history, state.attempt);
 
       const researcherResult = await executeTurn(
-        { agent: researcher, ...pickTurnDeps(opts) },
+        { agent: researcher, traceId, ...pickTurnDeps(opts) },
         researcherInput,
         false,
         opts.pathFilter,
@@ -141,7 +141,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
 
       const criticInput = buildCriticInput(state.original_prompt, researcherResult.content);
       const criticResult = await executeTurn(
-        { agent: critic, ...pickTurnDeps(opts) },
+        { agent: critic, traceId, ...pickTurnDeps(opts) },
         criticInput,
         true
       );
@@ -171,7 +171,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
       if (action === "accept") {
         state.current_step = "done";
         state.best_attempt = state.attempts.length - 1;
-        await tracer.finish(bestResearcherOutput, {
+        await tracer.finish(traceId, bestResearcherOutput, {
           loopState: state,
           critic_score: evaluation.total_score,
           critic_verdict: "accept",
@@ -191,7 +191,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
       if (action === "escalate") {
         state.current_step = "escalated";
         state.best_attempt = state.attempts.length - 1;
-        await tracer.finish(bestResearcherOutput, {
+        await tracer.finish(traceId, bestResearcherOutput, {
           loopState: state,
           critic_score: evaluation.total_score,
           critic_verdict: "escalated",
@@ -215,7 +215,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
         if (best) bestResearcherOutput = best.researcherOutput;
         state.current_step = "done";
         state.best_attempt = best?.attempt ? best.attempt - 1 : 0;
-        await tracer.finish(bestResearcherOutput, {
+        await tracer.finish(traceId, bestResearcherOutput, {
           loopState: state,
           critic_score: best?.total_score ?? evaluation.total_score,
           critic_verdict: "accept",
@@ -252,7 +252,7 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
       loopState: state,
     };
   } catch (err: any) {
-    tracer.abort(err.message);
+    tracer.abort(traceId, err.message);
     throw err;
   }
 }

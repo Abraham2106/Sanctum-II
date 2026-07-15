@@ -8,20 +8,23 @@ export class ChatMessages {
   private threadEl!: HTMLElement;
   private plugin: ChatViewPlugin;
   private threadId = "";
+  private projectId: string | null = null;
   private onSave: (() => void) | null = null;
 
   constructor(plugin: ChatViewPlugin) {
     this.plugin = plugin;
   }
 
-  init(threadEl: HTMLElement, threadId: string, onSave: () => void): void {
+  init(threadEl: HTMLElement, threadId: string, onSave: () => void, projectId?: string | null): void {
     this.threadEl = threadEl;
     this.threadId = threadId;
     this.onSave = onSave;
+    this.projectId = projectId ?? this.plugin.getActiveProjectId();
   }
 
   load(msgs: ChatMessage[]): void { this.messages = msgs; }
   setThreadId(id: string): void { this.threadId = id; }
+  setProjectContext(projectId: string | null): void { this.projectId = projectId; }
 
   addMsg(role: "user" | "agent", content: string, label?: string, meta?: Partial<ChatMessage>): ChatMessage {
     const msg: ChatMessage = { role, content, label, timestamp: Date.now(), ...meta };
@@ -96,24 +99,30 @@ export class ChatMessages {
     this.messages = [];
     this.threadEl.empty();
     if (this.threadId) {
-      this.plugin.saveThreadMessages(this.threadId, []).catch((err: any) => { if (err) console.warn("[Messages] clear save:", err.message); });
+      this.saveMessages([]).catch((err: any) => { if (err) console.warn("[Messages] clear save:", err.message); });
     }
   }
 
   private async save(): Promise<void> {
     if (!this.threadId) return;
     try {
-      await this.plugin.saveThreadMessages(this.threadId, this.messages);
+      await this.saveMessages(this.messages);
     } catch (err: any) {
       console.warn("[Messages] save:", err.message);
       new Notice("⚠ Error al guardar mensajes — se perderán al recargar", 5000);
     }
   }
 
+  private async saveMessages(messages: ChatMessage[]): Promise<void> {
+    if (!this.threadId || !this.projectId) return;
+    await this.plugin.saveThreadMessagesForProject(this.projectId, this.threadId, messages);
+  }
+
   async loadThreadMessages(): Promise<boolean> {
     if (!this.threadId) return false;
     try {
-      const parsed = await this.plugin.loadThreadMessages(this.threadId);
+      if (!this.projectId) return false;
+      const parsed = await this.plugin.loadThreadMessagesForProject(this.projectId, this.threadId);
       if (Array.isArray(parsed) && parsed.length > 0) {
         this.messages = parsed;
         this.renderAll();

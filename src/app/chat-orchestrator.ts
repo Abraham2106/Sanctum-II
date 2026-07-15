@@ -29,20 +29,37 @@ interface RequestSnapshot {
   pathFilter: string[] | undefined;
   projectContext: import("../projects/context").ProjectContext | null;
   skillContext: import("../skills/types").Skill | null;
+  vectorStore: AppServices["vectorStore"];
+  geminiBalancer: AppServices["geminiBalancer"];
+  kgEdgeStore: AppServices["kgEdgeStore"];
 }
 
 export class ChatOrchestrator {
   constructor(private svc: AppServices) {}
 
   private captureContext(): RequestSnapshot {
+    const active = this.svc.activeProject;
+    const project = active ? {
+      ...active,
+      read_paths: [...active.read_paths],
+      write_paths: [...active.write_paths],
+      rag: { ...active.rag },
+      files: [...(active.files || [])],
+      attachedFiles: [...(active.attachedFiles || [])],
+    } : null;
     return {
       projectId: this.svc.activeProject?.id,
       threadId: this.svc.activeThreadId,
-      project: this.svc.activeProject,
+      project,
       agent: this.svc.agent,
       pathFilter: this.svc.pathFilter,
       projectContext: this.svc.activeProjectContext,
       skillContext: this.svc.skillContext,
+      vectorStore: this.svc.vectorStore,
+      geminiBalancer: this.svc.geminiBalancer,
+      kgEdgeStore: typeof (this.svc.kgEdgeStore as any).snapshot === "function"
+        ? this.svc.kgEdgeStore.snapshot()
+        : this.svc.kgEdgeStore,
     };
   }
 
@@ -156,8 +173,8 @@ export class ChatOrchestrator {
         const resolution = await resolveNoteReference(
           userMessage,
           threadData?.createdNotes,
-          this.svc.vectorStore,
-          this.svc.geminiBalancer,
+          snap.vectorStore,
+          snap.geminiBalancer,
         );
         if (resolution.method === "not_found") {
           return { content: "No encontré ninguna nota que coincida. ¿Podrías decirme el nombre exacto?" };
@@ -299,13 +316,14 @@ export class ChatOrchestrator {
 
   private buildTurnDeps(userInput: string, snap: RequestSnapshot) {
     return {
+      agent: snap.agent || fallbackAgent(),
       opencodeClient: this.svc.opencodeClient,
-      geminiBalancer: this.svc.geminiBalancer,
-      vectorStore: this.svc.vectorStore,
+      geminiBalancer: snap.geminiBalancer,
+      vectorStore: snap.vectorStore,
       tracer: this.svc.tracer,
       tavilyApiKey: this.svc.settings?.tavilyApiKey,
       kgOptions: this.svc.kgOptions,
-      edgeStore: this.svc.kgEdgeStore,
+      edgeStore: snap.kgEdgeStore,
       projectContext: snap.projectContext || undefined,
       skillContext: snap.skillContext || undefined,
     };

@@ -11,7 +11,6 @@ interface ActiveTrace {
 
 export class Tracer {
   private traces = new Map<string, ActiveTrace>();
-  private currentId: string | null = null;
 
   constructor(
     private adapter: {
@@ -22,12 +21,7 @@ export class Tracer {
   ) {}
 
   start(agentId: string, systemPrompt: string, userPrompt: string): string {
-    if (this.currentId && this.traces.has(this.currentId)) {
-      console.warn("[Tracer] starting new trace while previous is still active — auto-finishing previous");
-      this.abort("overwritten_by_new_trace");
-    }
     const traceId = generateTraceId();
-    this.currentId = traceId;
     this.traces.set(traceId, {
       startTime: Date.now(),
       trace: {
@@ -47,9 +41,8 @@ export class Tracer {
     return traceId;
   }
 
-  addChunk(chunk: TraceChunk): void {
-    if (!this.currentId) return;
-    const entry = this.traces.get(this.currentId);
+  addChunk(traceId: string, chunk: TraceChunk): void {
+    const entry = this.traces.get(traceId);
     if (!entry?.trace.input) return;
     const exists = entry.trace.input.injected_context.some(
       c => c.chunk === chunk.chunk && c.from_note === chunk.from_note
@@ -59,16 +52,15 @@ export class Tracer {
     }
   }
 
-  async finish(output: string, loop_state?: Record<string, any>): Promise<void> {
-    if (!this.currentId) return;
-    const entry = this.traces.get(this.currentId);
-    if (!entry) { this.currentId = null; return; }
+  async finish(traceId: string, output: string, loop_state?: Record<string, any>): Promise<void> {
+    const entry = this.traces.get(traceId);
+    if (!entry) return;
     entry.trace.output = output;
     entry.trace.duration_ms = Date.now() - entry.startTime;
     entry.trace.loop_state = loop_state;
 
-    const traceId = entry.trace.trace_id!;
-    const filePath = `${TRACES_DIR}/${traceId}.json`;
+    const recordId = entry.trace.trace_id!;
+    const filePath = `${TRACES_DIR}/${recordId}.json`;
 
     try {
       const dirExists = await this.adapter.exists(TRACES_DIR).catch(() => false);
@@ -80,17 +72,15 @@ export class Tracer {
       console.warn("Sanctum tracer: no se pudo escribir trace:", err.message);
     }
 
-    this.traces.delete(this.currentId);
-    this.currentId = null;
+    this.traces.delete(traceId);
   }
 
-  abort(errorMessage: string): void {
-    if (!this.currentId) return;
-    const entry = this.traces.get(this.currentId);
+  abort(traceId: string, errorMessage: string): void {
+    const entry = this.traces.get(traceId);
     if (entry) {
       entry.trace.output = `ERROR: ${errorMessage}`;
       entry.trace.duration_ms = Date.now() - entry.startTime;
     }
-    this.finish(entry?.trace.output ?? `ERROR: ${errorMessage}`).catch((_err: any) => {});
+    this.finish(traceId, entry?.trace.output ?? `ERROR: ${errorMessage}`).catch((_err: any) => {});
   }
 }

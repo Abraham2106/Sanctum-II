@@ -33,8 +33,11 @@ export interface ChatViewPlugin {
   runMesh(prompt: string): Promise<MeshResultFull>;
   getLatestTrace(): Promise<string>;
   getActiveThreadId(): string;
+  getActiveProjectId(): string | null;
   loadThreadMessages(threadId: string): Promise<ChatMessage[]>;
   saveThreadMessages(threadId: string, messages: ChatMessage[]): Promise<void>;
+  loadThreadMessagesForProject(projectId: string, threadId: string): Promise<ChatMessage[]>;
+  saveThreadMessagesForProject(projectId: string, threadId: string, messages: ChatMessage[]): Promise<void>;
   getActiveProjectName(): string;
   getActiveProjectIcon(): string;
   setSkillContext?: (skillId: string | null) => void;

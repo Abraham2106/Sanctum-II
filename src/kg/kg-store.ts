@@ -16,6 +16,24 @@ export class KgEdgeStore {
     return [...this.edgesMap.values()];
   }
 
+  /** Returns an immutable-in-practice copy for an in-flight request. */
+  snapshot(): KgEdgeStore {
+    const copy = new KgEdgeStore();
+    for (const edge of this.edgesMap.values()) {
+      const key = [edge.from, edge.to].sort().join("::");
+      copy.edgesMap.set(key, { ...edge });
+      for (const notePath of [edge.from, edge.to]) {
+        let keys = copy.noteEdgesMap.get(notePath);
+        if (!keys) {
+          keys = new Set<string>();
+          copy.noteEdgesMap.set(notePath, keys);
+        }
+        keys.add(key);
+      }
+    }
+    return copy;
+  }
+
   getEdgesForNote(notePath: string): KgEdge[] {
     const keys = this.noteEdgesMap.get(notePath);
     if (!keys) return [];

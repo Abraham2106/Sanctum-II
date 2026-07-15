@@ -66,6 +66,7 @@ export class SanctumChatView extends ItemView {
   async reloadForProject(threadId: string): Promise<void> {
     this.threadId = threadId;
     if (!this.messenger) return;
+    this.messenger.setProjectContext(this.plugin.getActiveProjectId());
     this.messenger.setThreadId(threadId);
     this.messenger.messages = [];
     if (this.threadEl) {
@@ -125,7 +126,7 @@ export class SanctumChatView extends ItemView {
     this.threadEl = threadWrapper?.querySelector(".s-thread-inner") as HTMLElement;
 
     // Initialize messenger
-    this.messenger.init(this.threadEl, this.threadId, () => { /* auto-save on add */ });
+    this.messenger.init(this.threadEl, this.threadId, () => { /* auto-save on add */ }, this.plugin.getActiveProjectId());
     this.messenger.setThreadId(this.threadId);
 
     // Build right panel

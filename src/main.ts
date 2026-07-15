@@ -162,7 +162,11 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
     this.rebuildClients();
-    if (this.services) this.services.settings = this.settings;
+    if (this.services) {
+      this.services.settings = this.settings;
+      this.services.opencodeClient = this.opencodeClient;
+      this.services.geminiBalancer = this.geminiBalancer;
+    }
   }
 
   async loadAgent(): Promise<void> {
@@ -225,9 +229,33 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   }
 
   async runMesh(userPrompt: string): Promise<MeshResultFull> {
+    const activeProject = this.services.activeProject;
+    const projectSnapshot = activeProject ? {
+      ...activeProject,
+      read_paths: [...activeProject.read_paths],
+      write_paths: [...activeProject.write_paths],
+      rag: { ...activeProject.rag },
+      files: [...(activeProject.files || [])],
+      attachedFiles: [...(activeProject.attachedFiles || [])],
+    } : null;
+    const projectContextSnapshot = this.services.activeProjectContext;
+    const vectorStoreSnapshot = this.services.vectorStore;
+    const kgEdgeStoreSnapshot = this.kgEdgeStore.snapshot();
+    const activeFolderSnapshot = this.activeFolder;
+    const kgOptionsSnapshot = { ...this.services.kgOptions };
+    const skillContextSnapshot = this.services.skillContext ? {
+      ...this.services.skillContext,
+      tools: [...(this.services.skillContext.tools || [])],
+    } : null;
+    const writePathsSnapshot = [...(projectSnapshot?.write_paths || [])];
+    const outputPathSnapshot = projectSnapshot?.outputPath || "Research";
     const writeIntent = this.parseWriteIntent(userPrompt);
     let actualPrompt = userPrompt;
-    let noteName = writeIntent?.name || "";
+    let noteName = (writeIntent?.name || "")
+      .replace(/[<>:"/\\|?*]/g, "")
+      .replace(/\.\./g, "")
+      .trim();
+    if (noteName && !/\.md$/i.test(noteName)) noteName += ".md";
 
     if (writeIntent) {
       let instruction = `\n\n---\n**Instrucción automática — Modo Creación de Nota:**\nEl usuario ha pedido crear una nota en su base de conocimiento. Tu respuesta final debe estar formateada como un documento Markdown completo. Es OBLIGATORIO que incluyas al final del documento entre 3 y 5 etiquetas (hashtags como \`#quantum-computing\`, \`#concept\`) que conecten semánticamente los temas tratados, para que el sistema de grafos de Obsidian pueda relacionar esta nota con el resto del vault.`;
@@ -242,28 +270,27 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
         vaultAdapter: this.app.vault.adapter,
         opencodeClient: this.opencodeClient,
         geminiBalancer: this.geminiBalancer,
-        vectorStore: this.vectorStore,
+        vectorStore: vectorStoreSnapshot,
         tracer: this.tracer,
-        pathFilter: this.activeFolder ? [`${this.activeFolder}/**`] : undefined,
+        pathFilter: activeFolderSnapshot ? [`${activeFolderSnapshot}/**`] : undefined,
         tavilyApiKey: this.settings.tavilyApiKey,
-        kgOptions: this.services.kgOptions,
-        edgeStore: this.kgEdgeStore,
-        projectContext: this.services.activeProjectContext || undefined,
-        skillContext: this.services.skillContext || undefined,
+        kgOptions: kgOptionsSnapshot,
+        edgeStore: kgEdgeStoreSnapshot,
+        projectContext: projectContextSnapshot || undefined,
+        skillContext: skillContextSnapshot || undefined,
       });
       if (result.criticVerdict === "accept" && writeIntent) {
         if (!noteName) {
           const fileMatch = result.researcherOutput.match(/^filename:\s*(.+)/m);
-          if (fileMatch) noteName = fileMatch[1].trim().replace(/[<>:"/\\|?*]/g, "").slice(0, 60) + ".md";
-          else noteName = `${writeIntent.topic.replace(/\s+/g, "-").slice(0, 40)}.md`;
+          if (fileMatch) noteName = fileMatch[1].trim().replace(/[<>:"/\\|?*]/g, "").replace(/\.\./g, "").slice(0, 60) + ".md";
+          else noteName = `${writeIntent.topic.replace(/[<>:"/\\|?*]/g, "").replace(/\.\./g, "").replace(/\s+/g, "-").slice(0, 40)}.md`;
         }
-        const outputPath = this.services.activeProject?.outputPath || "Research";
-        const noteFullPath = `${outputPath}/${noteName}`;
+        const noteFullPath = `${outputPathSnapshot}/${noteName}`;
         const { canWriteToPath } = await import("./orchestrator/note-generator");
-        if (!canWriteToPath(noteFullPath, this.services.activeProject?.write_paths || [])) {
+        if (!canWriteToPath(noteFullPath, writePathsSnapshot)) {
           new Notice(`⚠️ Permiso denegado: no se puede escribir en ${noteFullPath}`);
         } else {
-          const wr = await this.noteWriter.create(noteName, result.researcherOutput);
+          const wr = await this.noteWriter.create(noteFullPath, result.researcherOutput);
           if (wr.success) result.createdNotePath = wr.path;
           else new Notice(`⚠️ ${wr.message}`);
         }
@@ -370,6 +397,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   private generateThreadId(): string { return `thread_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
 
   getActiveThreadId(): string { return this.services.activeThreadId; }
+  getActiveProjectId(): string | null { return this.services.activeProject?.id || null; }
   getActiveProjectName(): string { return this.services.activeProject?.name || this.settings.activeProjectId || "default"; }
   getActiveProjectIcon(): string { return this.services.activeProject?.icon || "◈"; }
 
@@ -382,6 +410,17 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   async saveThreadMessages(threadId: string, messages: any[]): Promise<void> {
     if (!this.services.activeProject || !threadId) return;
     await this.projectStore.updateThreadMessages(this.services.activeProject.id, threadId, messages);
+  }
+
+  async loadThreadMessagesForProject(projectId: string, threadId: string): Promise<any[]> {
+    if (!projectId || !threadId) return [];
+    const data = await this.projectStore.loadThreadData(projectId, threadId);
+    return data?.messages || [];
+  }
+
+  async saveThreadMessagesForProject(projectId: string, threadId: string, messages: any[]): Promise<void> {
+    if (!projectId || !threadId) return;
+    await this.projectStore.updateThreadMessages(projectId, threadId, messages);
   }
 
   // ── Other legacy methods ──

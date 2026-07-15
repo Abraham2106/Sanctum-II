@@ -178,7 +178,7 @@ var FsVaultAdapter = class {
       throw Object.assign(new Error("Access denied: path traversal not allowed"), { code: "EACCES" });
     }
     for (const seg of segments) {
-      if (FORBIDDEN_SEGMENTS.has(seg)) {
+      if (FORBIDDEN_SEGMENTS.has(seg.toLowerCase())) {
         throw Object.assign(new Error("Access denied: forbidden path segment"), { code: "EACCES" });
       }
     }
@@ -187,14 +187,26 @@ var FsVaultAdapter = class {
     if (!resolved.startsWith(normalizedRoot + import_node_path.default.sep) && resolved !== normalizedRoot) {
       throw Object.assign(new Error("Access denied: path escapes vault root"), { code: "EACCES" });
     }
-    try {
-      const realFile = await import_node_fs.promises.realpath(resolved);
-      const realRoot = await import_node_fs.promises.realpath(normalizedRoot);
-      if (!realFile.startsWith(realRoot + import_node_path.default.sep) && realFile !== realRoot) {
-        throw Object.assign(new Error("Access denied: symlink escapes vault root"), { code: "EACCES" });
+    const realRoot = await import_node_fs.promises.realpath(normalizedRoot);
+    let probe = resolved;
+    let realProbe;
+    while (true) {
+      try {
+        realProbe = await import_node_fs.promises.realpath(probe);
+        break;
+      } catch (err) {
+        if (err.code !== "ENOENT" && err.code !== "ENOTDIR") throw err;
+        const parent = import_node_path.default.dirname(probe);
+        if (parent === probe) throw err;
+        probe = parent;
       }
-    } catch (err) {
-      if (err.code === "EACCES") throw err;
+    }
+    const rootPrefix = realRoot.endsWith(import_node_path.default.sep) ? realRoot : realRoot + import_node_path.default.sep;
+    const comparable = process.platform === "win32" ? (value) => value.toLowerCase() : (value) => value;
+    const rootForCompare = comparable(realRoot);
+    const probeForCompare = comparable(realProbe);
+    if (probeForCompare !== rootForCompare && !probeForCompare.startsWith(comparable(rootPrefix))) {
+      throw Object.assign(new Error("Access denied: symlink escapes vault root"), { code: "EACCES" });
     }
     return resolved;
   }
@@ -230,8 +242,8 @@ var FsVaultAdapter = class {
   }
   async exists(p) {
     try {
-      await this.resolveSecure(p);
-      await import_node_fs.promises.access(p);
+      const full = await this.resolveSecure(p);
+      await import_node_fs.promises.access(full);
       return true;
     } catch {
       return false;

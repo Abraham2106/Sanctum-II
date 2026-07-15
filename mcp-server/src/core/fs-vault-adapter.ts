@@ -22,7 +22,7 @@ export class FsVaultAdapter implements VaultAdapter {
       throw Object.assign(new Error("Access denied: path traversal not allowed"), { code: "EACCES" })
     }
     for (const seg of segments) {
-      if (FORBIDDEN_SEGMENTS.has(seg)) {
+      if (FORBIDDEN_SEGMENTS.has(seg.toLowerCase())) {
         throw Object.assign(new Error("Access denied: forbidden path segment"), { code: "EACCES" })
       }
     }
@@ -34,14 +34,28 @@ export class FsVaultAdapter implements VaultAdapter {
       throw Object.assign(new Error("Access denied: path escapes vault root"), { code: "EACCES" })
     }
 
-    try {
-      const realFile = await fs.realpath(resolved)
-      const realRoot = await fs.realpath(normalizedRoot)
-      if (!realFile.startsWith(realRoot + path.sep) && realFile !== realRoot) {
-        throw Object.assign(new Error("Access denied: symlink escapes vault root"), { code: "EACCES" })
+    const realRoot = await fs.realpath(normalizedRoot)
+    let probe = resolved
+    let realProbe: string | undefined
+    while (true) {
+      try {
+        realProbe = await fs.realpath(probe)
+        break
+      } catch (err: any) {
+        if (err.code !== "ENOENT" && err.code !== "ENOTDIR") throw err
+        const parent = path.dirname(probe)
+        if (parent === probe) throw err
+        probe = parent
       }
-    } catch (err: any) {
-      if (err.code === "EACCES") throw err
+    }
+    const rootPrefix = realRoot.endsWith(path.sep) ? realRoot : realRoot + path.sep
+    const comparable = process.platform === "win32"
+      ? (value: string) => value.toLowerCase()
+      : (value: string) => value
+    const rootForCompare = comparable(realRoot)
+    const probeForCompare = comparable(realProbe)
+    if (probeForCompare !== rootForCompare && !probeForCompare.startsWith(comparable(rootPrefix))) {
+      throw Object.assign(new Error("Access denied: symlink escapes vault root"), { code: "EACCES" })
     }
 
     return resolved
@@ -82,8 +96,8 @@ export class FsVaultAdapter implements VaultAdapter {
 
   async exists(p: string): Promise<boolean> {
     try {
-      await this.resolveSecure(p)
-      await fs.access(p)
+      const full = await this.resolveSecure(p)
+      await fs.access(full)
       return true
     } catch {
       return false

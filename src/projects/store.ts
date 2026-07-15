@@ -128,6 +128,8 @@ function serializeProject(p: Project): string {
 }
 
 export class ProjectStore {
+  private threadLocks = new Map<string, Promise<void>>();
+
   constructor(
     private adapter: {
       read: (p: string) => Promise<string>;
@@ -137,6 +139,21 @@ export class ProjectStore {
       mkdir?: (p: string) => Promise<void>;
     }
   ) {}
+
+  private async withThreadLock<T>(id: string, threadId: string, work: () => Promise<T>): Promise<T> {
+    const key = `${id}/${sanitizeId(threadId) || threadId}`;
+    const previous = this.threadLocks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>(resolve => { release = resolve; });
+    this.threadLocks.set(key, current);
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.threadLocks.get(key) === current) this.threadLocks.delete(key);
+    }
+  }
 
   private projectPath(id: string): string { return `${PROJECTS_DIR}/${id}.md`; }
   private memoryDir(id: string): string { return `sanctum-memory/${id}`; }
@@ -232,6 +249,10 @@ export class ProjectStore {
   }
 
   async saveThreadData(id: string, thread: Thread, messages: any[], extra?: { summary?: string; pendingAction?: PendingAction; createdNotes?: CreatedNote[] }): Promise<void> {
+    await this.withThreadLock(id, thread.thread_id, () => this.saveThreadDataUnlocked(id, thread, messages, extra));
+  }
+
+  private async saveThreadDataUnlocked(id: string, thread: Thread, messages: any[], extra?: { summary?: string; pendingAction?: PendingAction; createdNotes?: CreatedNote[] }): Promise<void> {
     const dir = this.threadsDir(id);
     await this.ensureDir(dir);
     if (!thread.starred) thread.starred = false;
@@ -244,12 +265,14 @@ export class ProjectStore {
       if (parsed.pendingAction) disk.pendingAction = parsed.pendingAction;
       if (parsed.createdNotes) disk.createdNotes = parsed.createdNotes;
     } catch (err: any) { if (err) console.warn(`[Store] saveThreadData merge ${dir}/${safeTid}.json:`, err.message); }
+    const hasExtra = (key: "summary" | "pendingAction" | "createdNotes") =>
+      extra !== undefined && Object.prototype.hasOwnProperty.call(extra, key);
     const data: ThreadData = {
       thread,
       messages,
-      summary: extra?.summary ?? disk.summary,
-      pendingAction: extra?.pendingAction ?? disk.pendingAction,
-      createdNotes: extra?.createdNotes ?? disk.createdNotes,
+      summary: hasExtra("summary") ? extra?.summary : disk.summary,
+      pendingAction: hasExtra("pendingAction") ? extra?.pendingAction : disk.pendingAction,
+      createdNotes: hasExtra("createdNotes") ? extra?.createdNotes : disk.createdNotes,
     };
     await this.adapter.write(`${dir}/${safeTid}.json`, JSON.stringify(data, null, 2));
   }
@@ -262,28 +285,32 @@ export class ProjectStore {
   }
 
   /**
-   * Atomic read-modify-write for thread data.
+   * Serialized read-modify-write for thread data within this process.
    */
   async patchThreadData(id: string, threadId: string, updater: (data: ThreadData) => ThreadData): Promise<ThreadData | null> {
-    const data = await this.loadThreadData(id, threadId);
-    if (!data) return null;
-    const patched = updater(data);
-    await this.saveThreadData(id, patched.thread, patched.messages, patched);
-    return patched;
+    return this.withThreadLock(id, threadId, async () => {
+      const data = await this.loadThreadData(id, threadId);
+      if (!data) return null;
+      const patched = updater(data);
+      await this.saveThreadDataUnlocked(id, patched.thread, patched.messages, patched);
+      return patched;
+    });
   }
 
   /** Convenience: loads existing thread data or creates skeleton, then saves new messages atomically. */
   async updateThreadMessages(id: string, threadId: string, messages: any[]): Promise<void> {
-    const safeId = sanitizeId(threadId) || threadId;
-    const existing = await this.loadThreadData(id, safeId);
-    const thread: any = existing?.thread || {
-      thread_id: safeId, project_id: id,
-      title: "Nueva conversación", created_at: Date.now(), updated_at: Date.now(), starred: false,
-    };
-    thread.updated_at = Date.now();
-    const firstUserMsg = messages.find((m: any) => m.role === "user");
-    if (firstUserMsg?.content) thread.title = firstUserMsg.content.slice(0, 60);
-    await this.saveThreadData(id, thread, messages, existing || undefined);
+    await this.withThreadLock(id, threadId, async () => {
+      const safeId = sanitizeId(threadId) || threadId;
+      const existing = await this.loadThreadData(id, safeId);
+      const thread: any = existing?.thread || {
+        thread_id: safeId, project_id: id,
+        title: "Nueva conversación", created_at: Date.now(), updated_at: Date.now(), starred: false,
+      };
+      thread.updated_at = Date.now();
+      const firstUserMsg = messages.find((m: any) => m.role === "user");
+      if (firstUserMsg?.content) thread.title = firstUserMsg.content.slice(0, 60);
+      await this.saveThreadDataUnlocked(id, thread, messages, existing || undefined);
+    });
   }
 
   async renameThread(id: string, threadId: string, newTitle: string): Promise<void> {

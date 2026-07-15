@@ -20,7 +20,7 @@ import { RAG_DEFAULTS } from "../constants";
 const MIN_SIMILARITY = RAG_DEFAULTS.MIN_SIMILARITY;
 
 export interface TurnDeps {
-  agent?: AgentDefinition;
+  agent: AgentDefinition;
   opencodeClient: OpenCodeClient;
   geminiBalancer: GeminiBalancer;
   vectorStore: VectorStore;
@@ -33,6 +33,7 @@ export interface TurnDeps {
   skillContext?: Skill;
   conversationMessages?: ConversationMessage[];
   conversationSummary?: string;
+  traceId?: string;
 }
 
 export interface TurnResult {
@@ -89,7 +90,7 @@ export async function executeTurn(
           chunk: { id: "", note_path: ac.note_path, chunk_text: ac.chunk_text, embedding: [] },
           score: ac.score,
         });
-        deps.tracer.addChunk({
+        if (deps.traceId) deps.tracer.addChunk(deps.traceId, {
           source: "kg",
           chunk: ac.chunk_text,
           similarity_score: ac.score,
@@ -114,7 +115,7 @@ export async function executeTurn(
       new Notice(`⚠ RAG: 0 resultados. Store: ${deps.vectorStore.count} chunks · filtro: ${JSON.stringify(activePathFilter)} · rutas: ${samplePaths || "(vacío)"}`, 8000);
     }
     for (const r of results) {
-      deps.tracer.addChunk({
+      if (deps.traceId) deps.tracer.addChunk(deps.traceId, {
         source: "rag",
         chunk: r.chunk.chunk_text,
         similarity_score: r.score,
