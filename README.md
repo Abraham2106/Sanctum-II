@@ -1,421 +1,374 @@
-<!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
 <a id="readme-top"></a>
 
-<!--
-*** Sanctum II — README profesional en español.
-*** Basado en Best-README-Template (othneildrew).
-*** Próximas versiones incluirán traducción al inglés.
--->
-
-
-
-<!-- PROJECT SHIELDS -->
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![Release][release-shield]][release-url]
-
-
-
-<!-- PROJECT LOGO -->
-<br />
 <div align="center">
   <a href="https://github.com/Abraham2106/Sanctum-II">
-    <img src="docs/logo.png" alt="Sanctum II Chat" width="120">
+    <img src="docs/logo.png" alt="Logo de Sanctum II" width="128">
   </a>
 
-  <h3 align="center">Sanctum II</h3>
+  <h1>Sanctum II</h1>
 
-  <p align="center">
-    Plugin de Obsidian con mesh de agentes de IA que investigan, razonan y escriben sobre tu vault.
-    <br />
-    <a href="docs/registro-arquitectura.md"><strong>Explorar la documentación »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/Abraham2106/Sanctum-II/issues/new?labels=bug&template=bug-report---.md">Reportar Bug</a>
-    &middot;
-    <a href="https://github.com/Abraham2106/Sanctum-II/issues/new?labels=enhancement&template=feature-request---.md">Solicitar Feature</a>
+  <p>
+    Plataforma local-first de agentes de IA para investigar, organizar y convertir un vault de Obsidian en conocimiento reutilizable.
+  </p>
+
+  <p>
+    <a href="https://github.com/Abraham2106/Sanctum-II/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Abraham2106/Sanctum-II/ci.yml?branch=main&style=flat-square&label=CI"></a>
+    <a href="https://github.com/Abraham2106/Sanctum-II/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Abraham2106/Sanctum-II?style=flat-square"></a>
+    <a href="LICENSE"><img alt="Licencia MIT" src="https://img.shields.io/github/license/Abraham2106/Sanctum-II?style=flat-square"></a>
+    <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.6-3178C6?style=flat-square&logo=typescript&logoColor=white">
+    <img alt="Obsidian Desktop" src="https://img.shields.io/badge/Obsidian-Desktop-7C3AED?style=flat-square&logo=obsidian&logoColor=white">
+    <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-24292F?style=flat-square">
+  </p>
+
+  <p>
+    <a href="#inicio-rápido"><strong>Inicio rápido</strong></a>
+    ·
+    <a href="docs/registro-arquitectura.md"><strong>Arquitectura</strong></a>
+    ·
+    <a href="mcp-server/README.md"><strong>Servidor MCP</strong></a>
+    ·
+    <a href="https://github.com/Abraham2106/Sanctum-II/issues"><strong>Issues</strong></a>
   </p>
 </div>
 
+> [!IMPORTANT]
+> Sanctum II está en desarrollo activo (`v0.1.0`) y funciona únicamente en Obsidian Desktop. Antes de usarlo con información sensible, revisa la sección de [seguridad y privacidad](#seguridad-y-privacidad).
 
+## Visión general
 
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Tabla de contenidos</summary>
-  <ol>
-    <li>
-      <a href="#acerca-del-proyecto">Acerca del proyecto</a>
-      <ul>
-        <li><a href="#construido-con">Construido con</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#empezar">Empezar</a>
-      <ul>
-        <li><a href="#prerrequisitos">Prerrequisitos</a></li>
-        <li><a href="#instalación">Instalación</a></li>
-      </ul>
-    </li>
-    <li><a href="#uso">Uso</a></li>
-    <li><a href="#arquitectura">Arquitectura</a></li>
-    <li><a href="#agentes-y-habilidades">Agentes y habilidades</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contribuir">Contribuir</a></li>
-    <li><a href="#licencia">Licencia</a></li>
-    <li><a href="#contacto">Contacto</a></li>
-    <li><a href="#reconocimientos">Reconocimientos</a></li>
-  </ol>
-</details>
+Sanctum II integra chat, recuperación semántica, agentes especializados, proyectos aislados y escritura controlada de notas dentro de Obsidian. El contenido y el estado operativo permanecen en el vault: proyectos, threads, memoria, índices, trazas, agentes, skills y cadenas se almacenan como Markdown o JSONL inspeccionable.
 
+La plataforma ofrece dos superficies sobre el mismo conocimiento:
 
+- **Plugin de Obsidian:** experiencia visual para conversar, investigar, administrar proyectos, explorar el Knowledge Graph y diseñar cadenas de agentes.
+- **Servidor MCP standalone:** proceso Node sobre `stdio` que permite consultar el vault e invocar agentes desde VS Code, OpenCode y otros clientes compatibles, incluso sin Obsidian abierto.
 
-<!-- ABOUT THE PROJECT -->
-## Acerca del proyecto
+## Capacidades principales
 
-[![Sanctum II Chat][product-screenshot]](https://github.com/Abraham2106/Sanctum-II)
+| Área | Capacidad |
+|---|---|
+| **Chat contextual** | Conversaciones persistentes, resumen progresivo, menciones `@agente` y continuidad al crear notas desde una investigación previa. |
+| **RAG por proyecto** | Índices vectoriales independientes, filtros por `read_paths`, manifiesto incremental y reindexado total o parcial. |
+| **Mesh de investigación** | Pipeline Forager → Researcher ↔ Critic con evaluación, feedback, regeneración y escalado. |
+| **Proyectos** | Threads, memoria, archivos adjuntos, instrucciones, rutas de lectura/escritura y carpeta de salida propias. |
+| **Knowledge Graph** | Relaciones por wikilinks, similitud semántica y refuerzo de conexiones. |
+| **Notas accionables** | Creación y actualización de Markdown con permisos fail-closed y registro de la ruta realmente escrita. |
+| **Agentes y skills** | Definiciones declarativas en Markdown con frontmatter, herramientas y permisos explícitos. |
+| **Cadenas visuales** | Composición y ejecución de flujos dirigidos de agentes desde Obsidian. |
+| **MCP** | Cinco tools para listar agentes, leer notas, consultar RAG, invocar agentes y ejecutar el mesh. |
+| **Observabilidad** | Trazas JSON con origen, agente, duración, uso y estado de la ejecución. |
 
-**Sanctum II** es un plugin de Obsidian diseñado para convertir tu vault en un laboratorio de inteligencia artificial autocontenido. En lugar de depender de interfaces externas, los agentes viven dentro de Obsidian, leen tus notas, generan respuestas con fuentes, y crean nuevo conocimiento directamente en Markdown.
+## Capturas
 
-El corazón del sistema es un **orquestador con loop de investigación-crítica-regeneración**:
+### Chat y agentes
 
+![Vista de chat de Sanctum II](docs/MVP-Chat.png)
+
+### Mesh de investigación
+
+![Mesh Forager, Researcher y Critic](docs/MVP-Mesh.png)
+
+### Proyectos, memoria y threads
+
+![Vista de proyectos de Sanctum II](docs/MVP-Proyectos.png)
+
+## Cómo funciona
+
+```text
+Usuario / cliente MCP
+        │
+        ├── Chat directo ──► ChatOrchestrator ──► agente + skill
+        │                                           │
+        ├── Mesh ──────────► Forager ─► Researcher ◄┤
+        │                                  │        │
+        │                               Critic ─────┘
+        │
+        └── Contexto del proyecto
+              ├── read_paths / write_paths
+              ├── VectorStore + manifiesto
+              ├── Knowledge Graph
+              ├── memoria + thread + resumen
+              └── salida Markdown
 ```
-Usuario escribe una pregunta
-  └─ 🔍 Forager — reformula el prompt con contexto RAG del vault
-       └─ 📚 Researcher — produce investigación (hasta 3 intentos)
-            └─ ⚖️ Critic — evalúa con 5 criterios (score threshold: 80/100)
-                 ├─ Score ≥ 80 → ACCEPT → devuelve resultado
-                 └─ Score < 80 → feedback → Researcher regenera
-                                      └─ si ≥ 3 intentos → ESCALATE al usuario
+
+El flujo general de una consulta es:
+
+1. Capturar un snapshot del proyecto, thread, agente, skill e índices activos.
+2. Resolver confirmaciones o acciones pendientes de la conversación.
+3. Aplicar permisos y filtros de rutas.
+4. Recuperar contexto RAG y, cuando corresponde, contexto web.
+5. Ejecutar el agente o el mesh.
+6. Persistir resumen, acciones pendientes, notas creadas y trazas.
+
+Consulta [registro-arquitectura.md](docs/registro-arquitectura.md) y [arquitectura-uml.md](docs/arquitectura-uml.md) para una descripción más detallada.
+
+## Inicio rápido
+
+### Requisitos
+
+- Obsidian Desktop `1.0.0+`.
+- Node.js `22` recomendado y npm.
+- Una API key compatible con OpenCode para las respuestas LLM.
+- Una o más API keys de Gemini para embeddings y RAG.
+- Opcionalmente, una API key de Tavily para búsqueda web.
+
+### 1. Clonar e instalar
+
+```bash
+git clone https://github.com/Abraham2106/Sanctum-II.git
+cd Sanctum-II
+npm install
 ```
 
-### ¿Por qué Sanctum II?
+### 2. Configurar credenciales
 
-* Tu conocimiento permanece en tu vault: los agentes razonan sobre tus propias notas.
-* Resultados verificables: cada afirmación se cita con `[[wikilink]]` o referencias web.
-* Extensible: agentes, skills y cadenas se definen en archivos Markdown dentro del vault.
-* Transparente: cada ejecución se registra en `sanctum-logs/traces/` con historial, scores y tokens.
+Las credenciales pueden configurarse desde **Settings → Sanctum II** o mediante un archivo `.env` basado en `.env.example`:
 
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
+```env
+OPENCODE_GO_API_KEY=sk-tu-api-key
+OPENCODE_GO_BASE_URL=https://api.opencode.ai
+GEMINI_API_KEYS=AIza-key-1,AIza-key-2
+TAVILY_API_KEY=tvly-tu-api-key
+```
 
+`TAVILY_API_KEY` es opcional. Sin ella, las funciones de búsqueda web se omiten y el resto del flujo continúa disponible.
 
+> [!CAUTION]
+> No publiques `.env`, keys reales ni configuraciones MCP con secretos embebidos. Prefiere variables del entorno del sistema.
 
-### Construido con
+### 3. Compilar
 
-* [![TypeScript][typescript-shield]][typescript-url]
-* [![Obsidian][obsidian-shield]][obsidian-url]
-* [![esbuild][esbuild-shield]][esbuild-url]
-* [![Gemini][gemini-shield]][gemini-url]
-* [![OpenCode][opencode-shield]][opencode-url]
-* [![Tavily][tavily-shield]][tavily-url]
+```bash
+npm run build
+```
 
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
+El build produce:
 
+- `main.js`, bundle del plugin de Obsidian.
+- `mcp-server/dist/index.cjs`, servidor MCP standalone.
 
+### 4. Instalar en un vault
 
-<!-- GETTING STARTED -->
-## Empezar
+Crea `.obsidian/plugins/sanctum-ii/` dentro del vault y copia:
 
-Sigue estos pasos para ejecutar Sanctum II en tu vault local.
+```text
+main.js
+manifest.json
+styles.css
+```
 
-### Prerrequisitos
+Copia también los directorios `sanctum-agents/` y `sanctum-skills/` en la raíz del vault. Después, recarga Obsidian y habilita **Sanctum II** en **Settings → Community plugins**.
 
-* **Obsidian v1.7+** (escritorio, `isDesktopOnly: true`).
-* **Node.js v20+** y npm.
-* Una **API key de [OpenCode](https://opencode.ai)** (`OPENCODE_GO_API_KEY`).
-* Al menos una **API key de Gemini** (`GEMINI_API_KEYS`) para embeddings.
-* *(Opcional)* Una **API key de [Tavily](https://tavily.com)** para búsqueda web.
+En Windows puedes usar:
 
-### Instalación
+```powershell
+npm run deploy
+```
 
-1. Clona el repositorio
-   ```sh
-   git clone https://github.com/Abraham2106/Sanctum-II.git
-   ```
-2. Instala las dependencias
-   ```sh
-   npm install
-   ```
-3. Copia y configura las variables de entorno
-   ```sh
-   cp .env.example .env
-   ```
-   Edita `.env`:
-   ```env
-   OPENCODE_GO_API_KEY=sk-tu-api-key-aqui
-   OPENCODE_GO_BASE_URL=https://api.opencode.ai
-   GEMINI_API_KEYS=AIza...,AIza...,AIza...
-   TAVILY_API_KEY=tvly-tu-api-key-aqui
-   ```
-4. Compila el plugin
-   ```sh
-   npm run build
-   ```
-5. Despliega en tu vault de Obsidian
-   ```sh
-   npm run deploy
-   ```
-   > `deploy.ps1` copia `main.js`, `manifest.json`, `styles.css`, los agentes y skills al directorio `.obsidian/plugins/sanctum-ii/` y crea las carpetas necesarias.
-6. Recarga Obsidian (`Ctrl+R`) y habilita **Sanctum II** en Settings → Community plugins.
+Antes de ejecutarlo, cambia la variable `$vault` al inicio de `deploy.ps1`; el script incluido apunta al vault local de desarrollo y no es portable sin esa modificación.
 
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
+## Primer uso
 
+1. Abre **Proyectos** desde el ribbon de Obsidian.
+2. Crea o selecciona un proyecto.
+3. Configura sus `read_paths`, `write_paths` y carpeta de salida.
+4. Indexa el proyecto desde la vista o desde la paleta de comandos.
+5. Abre el chat y consulta el contenido indexado.
 
+Ejemplos:
 
-<!-- USAGE EXAMPLES -->
-## Uso
+```text
+@researcher Investiga QAOA, Ising y QUBO /deep-research
 
-### Chat con agentes
+Crea una nota en el vault con el contenido de la investigación
 
-1. Haz clic en el icono 🤖 de la barra lateral para abrir el chat.
-2. Escribe `@` para ver el autocompletado de agentes y notas del vault.
-3. Selecciona `@agente_base` o cualquier agente personalizado.
+@mi-cadena Analiza estas fuentes y prepara una revisión crítica
+```
 
-[![Sanctum II Chat][chat-screenshot]](https://github.com/Abraham2106/Sanctum-II)
+Cuando un agente ofrece guardar una investigación, Sanctum conserva el contenido fuente como una acción pendiente. Una confirmación posterior puede reformatearlo como nota autónoma sin perder fórmulas, referencias ni contexto.
 
-### Modo Mesh (investigación con crítica)
+## Proyectos y almacenamiento
 
-1. Indexa `/Research/` con el botón 📚 **Indexar**.
-2. Activa el modo 🔀 **Mesh**.
-3. Pregunta algo como:
-   > _"Crea una nota llamada Quantum sobre computación cuántica"_
+Cada proyecto mantiene su propio perímetro de contexto y persistencia:
 
-Sanctum II ejecutará el pipeline `Forager → Researcher ↔ Critic` y, si el veredicto es positivo, creará la nota en tu vault con etiquetas semánticas.
+| Ruta | Contenido |
+|---|---|
+| `sanctum-projects/{projectId}.md` | Configuración, permisos, modelo e instrucciones del proyecto. |
+| `sanctum-logs/index/{projectId}/vector-store.jsonl` | Chunks y embeddings del índice vectorial. |
+| `sanctum-logs/index/{projectId}/manifest.json` | Estado incremental de archivos indexados. |
+| `sanctum-logs/threads/{projectId}/` | Threads, mensajes, resúmenes y acciones pendientes. |
+| `sanctum-memory/{projectId}/memory.jsonl` | Memoria persistente del proyecto. |
+| `Projects/{projectId}/` | Notas generadas para el proyecto. |
+| `sanctum-logs/traces/` | Trazas del plugin y del servidor MCP. |
 
-[![Sanctum II Mesh][mesh-screenshot]](https://github.com/Abraham2106/Sanctum-II)
+La indexación por proyecto:
 
-### Proyectos y memoria
+- valida que las carpetas solicitadas pertenezcan a `read_paths`;
+- serializa solicitudes concurrentes por proyecto;
+- conserva otras carpetas durante un reindexado parcial;
+- elimina del índice archivos borrados durante un reindexado completo;
+- inicia vacío, sin tratar la ausencia del primer índice como error.
 
-Organiza tu conocimiento en proyectos con RAG aislado, threads persistentes y memoria asociada.
+## Agentes y skills
 
-[![Sanctum II Proyectos][projects-screenshot]](https://github.com/Abraham2106/Sanctum-II)
+Los agentes viven en `sanctum-agents/*.md` y las skills en `sanctum-skills/*.md`. Ambos usan frontmatter declarativo.
 
-### Comandos disponibles
+### Agentes incluidos
 
-| Comando | Atajo / Acceso | Descripción |
+| ID | Rol |
+|---|---|
+| `agente_base` | Chat general, RAG y acciones sobre notas. |
+| `forager` | Recolección y reformulación de contexto. |
+| `researcher` | Investigación extensa con fuentes internas y web. |
+| `critic` | Evaluación estructurada y feedback del mesh. |
+| `web-search` | Consulta web y síntesis contextual. |
+| `orchestrator` | Clasificación de intención para mensajes implícitos. |
+
+### Skill incluida
+
+| ID | Herramientas | Propósito |
 |---|---|---|
-| Abrir chat de Sanctum II | Ribbon icon 🤖 | Abre la vista de chat |
-| Abrir Knowledge Graph | Ribbon icon 🔀 | Visualiza conexiones entre notas |
-| Abrir Proyectos | Ribbon icon 📁 | Gestiona proyectos y threads |
-| Abrir Orquestador de Cadenas | Ribbon icon ⛓️ | Crea flujos visuales de agentes |
-| Probar embeddings | Command palette | Valida la conexión con Gemini |
-| Indexar `/Research/` | Command palette / Settings | Genera el índice RAG |
-| Ejecutar mesh | Command palette | Lanza Forager→Researcher↔Critic |
+| `deep-research` | `rag_query`, `web_search`, `create_note` | Investigación profunda, contrastada y con referencias. |
 
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
+Ejemplo mínimo de agente:
 
+```markdown
+---
+id: reviewer
+name: "Reviewer"
+model: "deepseek-v4-flash"
+tools: [rag_query]
+permissions:
+  read_paths: ["/Research/**"]
+  write_paths: []
+---
+Revisa críticamente el material recuperado.
 
-
-<!-- ARCHITECTURE -->
-## Arquitectura
-
-```
-src/
-├── main.ts                    # Plugin lifecycle + thin delegation
-├── constants.ts               # View types, settings, defaults
-├── utils.ts                   # Utilidades generales
-├── agents/
-│   ├── types.ts               # AgentDefinition interface
-│   ├── agent-loader.ts        # Parseo de agentes .md
-│   └── fallback.ts            # Agente por defecto
-├── app/
-│   ├── services.ts            # Contenedor central de dependencias (DI)
-│   ├── chat-orchestrator.ts   # Orquestador de chat directo
-│   └── mesh-orchestrator.ts   # Orquestador del loop Forager→Researcher↔Critic
-├── chains/
-│   ├── types.ts               # Chain, ChainNode, ChainEdge
-│   ├── store.ts               # Persistencia de cadenas
-│   └── executor.ts            # Ejecución de flujos visuales
-├── chat/                      # (reservado) utilidades de mensajería
-├── core/
-│   ├── commands.ts            # Comandos del plugin
-│   ├── env-loader.ts          # Variables de entorno
-│   ├── note-writer.ts         # Crear/actualizar notas del vault
-│   └── tests.ts               # Helpers de prueba
-├── embeddings/
-│   └── gemini-balancer.ts     # Rotación de keys + embeddings
-├── kg/
-│   ├── types.ts               # KgEdge, KgOptions
-│   ├── kg.ts                  # Cálculo de aristas
-│   ├── kg-store.ts            # Persistencia del grafo
-│   ├── layout.ts              # Layout del grafo
-│   └── native-links.ts        # Integración con wikilinks de Obsidian
-├── llm/
-│   └── opencode-client.ts     # Cliente OpenAI-compatible
-├── orchestrator/
-│   ├── agent-turn.ts          # RAG → render → chat pipeline
-│   ├── conversation.ts        # Clasificación de intenciones
-│   ├── mesh.ts                # Loop Forager→Researcher↔Critic
-│   └── note-generator.ts      # Ejecución de intenciones de escritura
-├── permissions/               # (reservado) reglas de permisos
-├── projects/
-│   ├── types.ts               # Project, Thread, MemoryEntry
-│   ├── store.ts               # Persistencia de proyectos
-│   ├── context.ts             # Contexto de proyecto
-│   └── indexer.ts             # Indexado por proyecto
-├── rag/
-│   ├── vector-store.ts        # Almacén vectorial JSONL + Base64
-│   └── indexer.ts             # Chunk + embed + store
-├── skills/
-│   ├── types.ts               # Skill interface
-│   └── loader.ts              # Carga de skills .md
-├── tools/
-│   └── tavily.ts              # Búsqueda web
-├── ui/
-│   ├── chat-view.ts           # Vista principal de chat
-│   ├── chat-*.ts              # Componentes del chat (autocomplete, mensajes, composer, etc.)
-│   ├── settings-tab.ts        # Panel de configuración
-│   ├── kg-view.ts             # Vista de Knowledge Graph
-│   ├── projects-view.ts       # Vista de proyectos
-│   ├── chain-view.ts          # Vista del orquestador de cadenas
-│   └── agent-generator-modal.ts # Modal para crear agentes
-└── observability/
-    └── tracer.ts              # Grabación de traces
+{{rag_context}}
+{{user_prompt}}
 ```
 
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
+## Servidor MCP
 
+El servidor MCP se ejecuta como un proceso Node independiente y se comunica mediante JSON-RPC 2.0 sobre `stdio`. `stdout` queda reservado para el protocolo; los logs estructurados se escriben exclusivamente en `stderr`.
 
+### Tools disponibles
 
-<!-- AGENTS & SKILLS -->
-## Agentes y habilidades
+| Tool | Dependencia | Función |
+|---|---|---|
+| `sanctum_list_agents` | Ninguna | Lista agentes fijos y personalizados. |
+| `sanctum_get_note` | Agente válido | Lee una nota aplicando sus `read_paths`. |
+| `sanctum_query_vault` | Gemini | Ejecuta búsqueda semántica sobre el índice. |
+| `sanctum_invoke_agent` | OpenCode | Invoca un agente individual. |
+| `sanctum_run_mesh` | OpenCode | Ejecuta Forager → Researcher → Critic. |
 
-### Agentes del sistema
+Configuración mínima para VS Code (`.vscode/mcp.json`):
 
-| Agente | ID | Avatar | Rol |
-|---|---|---|---|
-| Agente Base | `agente_base` | 🤖 | Chat directo con RAG y escritura de notas |
-| Forager | `forager` | 🔍 | Reformula prompts con contexto del vault |
-| Researcher | `researcher` | 📚 | Produce investigación combinando RAG + web |
-| Critic | `critic` | ⚖️ | Evalúa con 5 criterios (interno, no aparece en `@`) |
-| Web Search | `web-search` | 🌐 | Búsqueda web + síntesis con el índice |
+```jsonc
+{
+  "servers": {
+    "sanctum-ii": {
+      "command": "node",
+      "args": ["${workspaceFolder}/mcp-server/dist/index.cjs"],
+      "env": {
+        "SANCTUM_VAULT_PATH": "C:/ruta/al/vault",
+        "GEMINI_API_KEYS": "${env:GEMINI_API_KEYS}",
+        "OPENCODE_GO_API_KEY": "${env:OPENCODE_GO_API_KEY}",
+        "OPENCODE_GO_BASE_URL": "${env:OPENCODE_GO_BASE_URL}"
+      }
+    }
+  }
+}
+```
 
-### Habilidades (Skills)
+Documentación completa: [mcp-server/README.md](mcp-server/README.md). Especificación y decisiones: [Sanctum-II-MCP-Server.md](docs/Sanctum-II-MCP-Server.md).
 
-| Skill | ID | Herramientas | Descripción |
-|---|---|---|---|
-| Deep Research | `deep-research` | `rag_query`, `web_search`, `create_note` | Investigación profunda multi-fuente con síntesis |
+## Seguridad y privacidad
 
-Los agentes y skills se definen en archivos Markdown dentro de `sanctum-agents/` y `sanctum-skills/`, respectivamente, con frontmatter declarativo.
+Sanctum II aplica permisos en dos capas:
 
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
+- **Proyecto:** `read_paths` y `write_paths` delimitan el contexto y los destinos válidos.
+- **Agente:** cada definición declara las rutas y herramientas que puede utilizar.
 
+Las listas de permisos vacías son **fail-closed**. El adaptador filesystem del MCP también rechaza:
 
+- rutas absolutas y segmentos `..`;
+- null bytes;
+- acceso a `.env`, `.git`, `.obsidian` y `node_modules`;
+- rutas que escapen del vault mediante resolución o symlinks.
 
-<!-- ROADMAP -->
-## Roadmap
+Los archivos, índices y trazas se almacenan localmente. Sin embargo, al usar proveedores externos, los prompts y el contexto necesario para responder se envían a las APIs configuradas de OpenCode, Gemini o Tavily. Revisa sus políticas antes de procesar material confidencial.
 
-- [x] Mesh Forager → Researcher ↔ Critic con regeneración automática
-- [x] RAG con embeddings Gemini y vector store JSONL
-- [x] @mention autocomplete (agentes + notas)
-- [x] Creación de notas con IA y `#tags` semánticos
-- [x] Knowledge Graph (explícito + semántico + reforzado)
-- [x] Proyectos con memoria, threads y RAG aislado
-- [x] Orquestador visual de cadenas de agentes
-- [x] Skills declarativos (`deep-research`)
-- [x] Traces completos en `sanctum-logs/traces/`
-- [ ] Soporte multi-idioma (inglés)
-- [ ] Tests automatizados (jest/vitest)
-- [ ] CI/CD con GitHub Actions
-- [ ] Publicación en Community Plugins de Obsidian
-- [ ] Tooling adicional: recordatorios, tareas y calendario
+## Desarrollo y calidad
 
-Consulta los [issues abiertos](https://github.com/Abraham2106/Sanctum-II/issues) para ver la lista completa de features propuestas y bugs conocidos.
+| Comando | Descripción |
+|---|---|
+| `npm run dev` | Compila plugin y MCP en modo watch. |
+| `npm run typecheck` | Ejecuta TypeScript sin emitir archivos. |
+| `npm test` | Ejecuta la suite Vitest. |
+| `npm run build` | Genera los bundles de producción. |
+| `npm run mcp:smoke` | Comprueba protocolo, tools, permisos y errores MCP. |
+| `npm run verify` | Ejecuta typecheck, tests, build y smoke test. |
 
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
+La integración continua vive en `.github/workflows/ci.yml` y ejecuta `npm run verify` en pushes y pull requests.
 
+## Estructura del repositorio
 
+```text
+Sanctum-II/
+├── src/
+│   ├── app/             # Servicios y orquestación del chat
+│   ├── agents/          # Carga y tipos de agentes
+│   ├── orchestrator/    # Turnos, conversación, mesh y notas
+│   ├── projects/        # Proyectos, threads, memoria e indexación
+│   ├── rag/             # VectorStore persistente
+│   ├── kg/              # Knowledge Graph
+│   ├── chains/          # Persistencia y ejecución de cadenas
+│   ├── skills/          # Skills declarativas
+│   ├── core/            # Filesystem, escritura, comandos y entorno
+│   └── ui/              # Vistas y componentes de Obsidian
+├── mcp-server/          # Servidor MCP standalone y smoke tests
+├── sanctum-agents/      # Agentes incluidos
+├── sanctum-skills/      # Skills incluidas
+├── docs/                # Arquitectura, especificaciones y capturas
+└── .github/workflows/   # CI
+```
 
-<!-- CONTRIBUTING -->
+## Estado y roadmap
+
+Implementado:
+
+- [x] Chat multiagente con RAG y continuidad de conversación.
+- [x] Mesh Forager → Researcher ↔ Critic.
+- [x] Proyectos con índices, memoria y threads aislados.
+- [x] Knowledge Graph explícito y semántico.
+- [x] Creación y actualización controlada de notas.
+- [x] Skills, agentes personalizados y cadenas visuales.
+- [x] Servidor MCP standalone con cinco tools.
+- [x] Suite automatizada, smoke tests y CI.
+
+Próximos pasos:
+
+- [ ] Estabilizar contratos públicos y migraciones de datos.
+- [ ] Ampliar cobertura de pruebas end-to-end dentro de Obsidian.
+- [ ] Preparar distribución para Community Plugins.
+- [ ] Documentación y experiencia completa en inglés.
+
 ## Contribuir
 
-Las contribuciones son lo que hace grande a la comunidad open source. Cualquier aporte es **muy apreciado**.
+1. Crea un fork del repositorio.
+2. Abre una rama descriptiva: `git checkout -b feature/nombre`.
+3. Implementa el cambio y ejecuta `npm run verify`.
+4. Crea un commit claro y abre un Pull Request.
 
-1. Haz fork del proyecto
-2. Crea tu rama de feature (`git checkout -b feature/FeatureAsombrosa`)
-3. Commit tus cambios (`git commit -m 'Add some FeatureAsombrosa'`)
-4. Push a la rama (`git push origin feature/FeatureAsombrosa`)
-5. Abre un Pull Request
+Para cambios arquitectónicos, incluye la motivación, los límites de compatibilidad y las pruebas que protegen el nuevo comportamiento.
 
-### Contribuidores principales
-
-<a href="https://github.com/Abraham2106/Sanctum-II/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Abraham2106/Sanctum-II" alt="contrib.rocks image" />
-</a>
-
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
-
-
-
-<!-- LICENSE -->
 ## Licencia
 
-Distribuido bajo la licencia MIT. Consulta `LICENSE` para más información.
+Distribuido bajo la licencia MIT. Consulta [LICENSE](LICENSE).
 
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
+## Créditos
 
+Sanctum II se construye sobre [Obsidian](https://obsidian.md), [TypeScript](https://www.typescriptlang.org), [esbuild](https://esbuild.github.io), [Google Gemini](https://ai.google.dev), [OpenCode](https://opencode.ai) y [Tavily](https://tavily.com).
 
-
-<!-- CONTACT -->
-## Contacto
-
-Abraham2106 — [https://github.com/Abraham2106](https://github.com/Abraham2106)
-
-Link del proyecto: [https://github.com/Abraham2106/Sanctum-II](https://github.com/Abraham2106/Sanctum-II)
-
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
-
-
-
-<!-- ACKNOWLEDGMENTS -->
-## Reconocimientos
-
-* [Obsidian.md](https://obsidian.md) — la plataforma que hace posible este plugin.
-* [OpenCode](https://opencode.ai) — API de chat utilizada por los agentes.
-* [Google Gemini](https://ai.google.dev) — embeddings para RAG.
-* [Tavily](https://tavily.com) — búsqueda web para agentes de investigación.
-* [esbuild](https://esbuild.github.io) — bundler rápido para el plugin.
-* [Best-README-Template](https://github.com/othneildrew/Best-README-Template) — plantilla base para este README.
-
-<p align="right">(<a href="#readme-top">volver arriba</a>)</p>
-
-
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-
-<!-- Repository -->
-[contributors-shield]: https://img.shields.io/github/contributors/Abraham2106/Sanctum-II.svg?style=for-the-badge
-[contributors-url]: https://github.com/Abraham2106/Sanctum-II/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/Abraham2106/Sanctum-II.svg?style=for-the-badge
-[forks-url]: https://github.com/Abraham2106/Sanctum-II/network/members
-[stars-shield]: https://img.shields.io/github/stars/Abraham2106/Sanctum-II.svg?style=for-the-badge
-[stars-url]: https://github.com/Abraham2106/Sanctum-II/stargazers
-[issues-shield]: https://img.shields.io/github/issues/Abraham2106/Sanctum-II.svg?style=for-the-badge
-[issues-url]: https://github.com/Abraham2106/Sanctum-II/issues
-[license-shield]: https://img.shields.io/github/license/Abraham2106/Sanctum-II.svg?style=for-the-badge
-[license-url]: https://github.com/Abraham2106/Sanctum-II/blob/master/LICENSE
-[release-shield]: https://img.shields.io/github/v/release/Abraham2106/Sanctum-II?style=for-the-badge
-[release-url]: https://github.com/Abraham2106/Sanctum-II/releases
-
-<!-- Screenshots -->
-[product-screenshot]: docs/MVP-Chat.png
-[chat-screenshot]: docs/MVP-Chat.png
-[mesh-screenshot]: docs/MVP-Mesh.png
-[projects-screenshot]: docs/MVP-Proyectos.png
-
-<!-- Tech stack -->
-[typescript-shield]: https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white
-[typescript-url]: https://www.typescriptlang.org/
-[obsidian-shield]: https://img.shields.io/badge/Obsidian-7C3AED?style=for-the-badge&logo=obsidian&logoColor=white
-[obsidian-url]: https://obsidian.md
-[esbuild-shield]: https://img.shields.io/badge/esbuild-FFCF00?style=for-the-badge&logo=esbuild&logoColor=black
-[esbuild-url]: https://esbuild.github.io
-[gemini-shield]: https://img.shields.io/badge/Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white
-[gemini-url]: https://ai.google.dev
-[opencode-shield]: https://img.shields.io/badge/OpenCode-000000?style=for-the-badge&logo=opencode&logoColor=white
-[opencode-url]: https://opencode.ai
-[tavily-shield]: https://img.shields.io/badge/Tavily-FF6B6B?style=for-the-badge&logo=tavily&logoColor=white
-[tavily-url]: https://tavily.com
+<p align="right"><a href="#readme-top">Volver arriba ↑</a></p>
