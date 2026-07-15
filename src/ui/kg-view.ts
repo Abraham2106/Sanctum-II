@@ -68,6 +68,11 @@ export class KgView extends ItemView {
   getDisplayText(): string { return "Knowledge Graph"; }
   getIcon(): string { return "git-fork"; }
 
+  setEdgeStore(edgeStore: KgEdgeStore): void {
+    this.deps.edgeStore = edgeStore;
+    if (this.containerEl) this.render();
+  }
+
   async onOpen(): Promise<void> {
     this.buildDOM();
     this.loadEdges();

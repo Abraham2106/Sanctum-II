@@ -56,6 +56,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   get pathFilter(): string[] | undefined { return this.services?.pathFilter; }
 
   private vectorStores = new Map<string, VectorStore>();
+  private kgEdgeStores = new Map<string, KgEdgeStore>();
 
   async getSkills(): Promise<Skill[]> { return listSkills(this.app.vault.adapter); }
   async setSkillContext(skillId: string | null): Promise<void> {
@@ -353,16 +354,21 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
       const { store, load } = this.getVectorStoreForProject(projectId);
       await load();
       this.vectorStore = store;
+      const { store: kgStore, load: loadKg } = this.getKgEdgeStoreForProject(projectId);
+      await loadKg();
+      this.kgEdgeStore = kgStore;
       this.services.activeProject = project;
       this.settings.activeProjectId = projectId;
       this.services.activeProjectContext = await buildProjectContext(project, (id) => this.projectStore.loadMemory(id));
       if (newThread) this.services.activeThreadId = this.generateThreadId();
       this.services.vectorStore = this.vectorStore;
+      this.services.kgEdgeStore = this.kgEdgeStore;
       await this.saveSettings();
       new Notice(`Proyecto activo: ${project.name}`);
       if (this.settings.projectReindexOnOpen) await indexProject(this.app.vault.adapter, this.geminiBalancer, project, this.vectorStore);
       this.rebuildKgEdges();
       this.refreshChatViews();
+      this.refreshKgViews();
     } catch (err: any) { new Notice("Error al cambiar de proyecto: " + err.message); }
   }
 
@@ -370,6 +376,33 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     let store = this.vectorStores.get(projectId);
     if (!store) { store = new VectorStore(`sanctum-logs/index/${projectId}/vector-store.jsonl`); this.vectorStores.set(projectId, store); }
     return { store, load: async () => { await store!.load(this.app.vault.adapter); }, save: async () => { await store!.save(this.app.vault.adapter); } };
+  }
+
+  private getKgEdgeStoreForProject(projectId: string): { store: KgEdgeStore; load: () => Promise<void>; save: () => Promise<void> } {
+    let store = this.kgEdgeStores.get(projectId);
+    if (!store) {
+      store = new KgEdgeStore(`sanctum-logs/index/${projectId}/kg-edges.jsonl`);
+      this.kgEdgeStores.set(projectId, store);
+    }
+    const storePath = `sanctum-logs/index/${projectId}/kg-edges.jsonl`;
+    return {
+      store,
+      load: async () => {
+        const targetExists = await this.app.vault.adapter.exists(storePath).catch(() => false);
+        await store!.load(this.app.vault.adapter);
+        // One-time compatibility migration for vaults created before per-project KG storage.
+        if (!targetExists && projectId === this.settings.activeProjectId) {
+          const legacyPath = "sanctum-logs/kg-edges.jsonl";
+          if (await this.app.vault.adapter.exists(legacyPath).catch(() => false)) {
+            const legacy = new KgEdgeStore(legacyPath);
+            await legacy.load(this.app.vault.adapter);
+            for (const edge of legacy.getAllEdges()) store!.addEdge(edge);
+            await store!.save(this.app.vault.adapter);
+          }
+        }
+      },
+      save: async () => { await store!.save(this.app.vault.adapter); },
+    };
   }
 
   // ── KG management ──
@@ -527,6 +560,14 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     for (const leaf of leaves) {
       const view = leaf.view as any;
       if (view?.reloadForProject) view.reloadForProject(this.services.activeThreadId);
+    }
+  }
+
+  private refreshKgViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_KG);
+    for (const leaf of leaves) {
+      const view = leaf.view as any;
+      view?.setEdgeStore?.(this.kgEdgeStore);
     }
   }
 

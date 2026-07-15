@@ -254,6 +254,16 @@ var FsVaultAdapter = class {
     await import_node_fs.promises.mkdir(import_node_path.default.dirname(full), { recursive: true });
     await import_node_fs.promises.appendFile(full, data, "utf8");
   }
+  async rename(oldPath, newPath) {
+    const oldFull = await this.resolveSecure(oldPath);
+    const newFull = await this.resolveSecure(newPath);
+    await import_node_fs.promises.mkdir(import_node_path.default.dirname(newFull), { recursive: true });
+    await import_node_fs.promises.rename(oldFull, newFull);
+  }
+  async remove(p) {
+    const full = await this.resolveSecure(p);
+    await import_node_fs.promises.rm(full, { force: true });
+  }
 };
 
 // src/utils.ts

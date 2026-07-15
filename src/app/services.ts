@@ -18,6 +18,8 @@ export interface VaultAdapter {
   list: (p: string) => Promise<{ files: string[]; folders: string[] }>;
   exists: (p: string) => Promise<boolean>;
   append?: (p: string, c: string) => Promise<void>;
+  rename?: (oldPath: string, newPath: string) => Promise<void>;
+  remove?: (p: string) => Promise<void>;
 }
 
 /**

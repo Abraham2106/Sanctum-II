@@ -109,4 +109,16 @@ export class FsVaultAdapter implements VaultAdapter {
     await fs.mkdir(path.dirname(full), { recursive: true })
     await fs.appendFile(full, data, "utf8")
   }
+
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    const oldFull = await this.resolveSecure(oldPath)
+    const newFull = await this.resolveSecure(newPath)
+    await fs.mkdir(path.dirname(newFull), { recursive: true })
+    await fs.rename(oldFull, newFull)
+  }
+
+  async remove(p: string): Promise<void> {
+    const full = await this.resolveSecure(p)
+    await fs.rm(full, { force: true })
+  }
 }

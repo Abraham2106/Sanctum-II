@@ -137,6 +137,8 @@ export class ProjectStore {
       list: (p: string) => Promise<{ files: string[]; folders: string[] }>;
       exists: (p: string) => Promise<boolean>;
       mkdir?: (p: string) => Promise<void>;
+      rename?: (oldPath: string, newPath: string) => Promise<void>;
+      remove?: (p: string) => Promise<void>;
     }
   ) {}
 
@@ -167,6 +169,21 @@ export class ProjectStore {
     try { await this.adapter.write(`${dir}/.gitkeep`, ""); } catch (err: any) { if (err) console.warn(`[Store] .gitkeep ${dir}:`, err.message); }
   }
 
+  private async writeAtomic(path: string, content: string): Promise<void> {
+    if (!this.adapter.rename) {
+      await this.adapter.write(path, content);
+      return;
+    }
+    const tempPath = `${path}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      await this.adapter.write(tempPath, content);
+      await this.adapter.rename(tempPath, path);
+    } catch (err) {
+      await this.adapter.remove?.(tempPath).catch(() => {});
+      throw err;
+    }
+  }
+
   async loadProject(id: string): Promise<Project> {
     const path = this.projectPath(id);
     try {
@@ -179,7 +196,7 @@ export class ProjectStore {
 
   async saveProject(p: Project): Promise<void> {
     await this.ensureDir(PROJECTS_DIR);
-    await this.adapter.write(this.projectPath(p.id), serializeProject(p));
+    await this.writeAtomic(this.projectPath(p.id), serializeProject(p));
   }
 
   async projectExists(id: string): Promise<boolean> {
@@ -274,14 +291,17 @@ export class ProjectStore {
       pendingAction: hasExtra("pendingAction") ? extra?.pendingAction : disk.pendingAction,
       createdNotes: hasExtra("createdNotes") ? extra?.createdNotes : disk.createdNotes,
     };
-    await this.adapter.write(`${dir}/${safeTid}.json`, JSON.stringify(data, null, 2));
+    await this.writeAtomic(`${dir}/${safeTid}.json`, JSON.stringify(data, null, 2));
   }
 
   async deleteThread(id: string, threadId: string): Promise<void> {
     const safeId = sanitizeId(threadId);
     if (!safeId) return;
     const path = `${this.threadsDir(id)}/${safeId}.json`;
-    try { await this.adapter.write(path, ""); } catch (_err: any) {}
+    try {
+      if (this.adapter.remove) await this.adapter.remove(path);
+      else await this.adapter.write(path, "");
+    } catch (_err: any) {}
   }
 
   /**
@@ -336,13 +356,21 @@ export class ProjectStore {
   async moveThread(id: string, threadId: string, targetProjectId: string): Promise<void> {
     const safeId = sanitizeId(threadId);
     if (!safeId) return;
-    const data = await this.loadThreadData(id, safeId);
-    if (!data) return;
-    data.thread.project_id = targetProjectId;
-    await this.saveThreadData(id, data.thread, data.messages, data);
-    const targetDir = this.threadsDir(targetProjectId);
-    await this.ensureDir(targetDir);
-    await this.adapter.write(`${targetDir}/${safeId}.json`, JSON.stringify({ thread: data.thread, messages: data.messages }, null, 2));
+    if (id === targetProjectId) return;
+    await this.withThreadLock(id, safeId, async () => {
+      const data = await this.loadThreadData(id, safeId);
+      if (!data) return;
+      data.thread.project_id = targetProjectId;
+      data.thread.updated_at = Date.now();
+      await this.saveThreadData(targetProjectId, data.thread, data.messages, {
+        summary: data.summary,
+        pendingAction: data.pendingAction,
+        createdNotes: data.createdNotes,
+      });
+      const sourcePath = `${this.threadsDir(id)}/${safeId}.json`;
+      if (this.adapter.remove) await this.adapter.remove(sourcePath);
+      else await this.adapter.write(sourcePath, "");
+    });
   }
 
   async createProject(id: string, name?: string): Promise<Project> {
@@ -354,6 +382,9 @@ export class ProjectStore {
   /** Deletes a project's metadata file. Thread data and memory files remain orphaned. */
   async deleteProject(id: string): Promise<void> {
     const path = this.projectPath(id);
-    try { await this.adapter.write(path, ""); } catch (_err: any) {}
+    try {
+      if (this.adapter.remove) await this.adapter.remove(path);
+      else await this.adapter.write(path, "");
+    } catch (_err: any) {}
   }
 }

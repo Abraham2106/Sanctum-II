@@ -1,8 +1,9 @@
 import type { KgEdge } from "./types";
 
-const STORE_PATH = "sanctum-logs/kg-edges.jsonl";
+const DEFAULT_STORE_PATH = "sanctum-logs/kg-edges.jsonl";
 
 export class KgEdgeStore {
+  constructor(private storePath: string = DEFAULT_STORE_PATH) {}
   private edgesMap = new Map<string, KgEdge>();
   private noteEdgesMap = new Map<string, Set<string>>();
   private pendingTxns: string[] = [];
@@ -52,7 +53,7 @@ export class KgEdgeStore {
 
   async load(adapter: { read: (p: string) => Promise<string> }): Promise<void> {
     try {
-      const raw = await adapter.read(STORE_PATH);
+      const raw = await adapter.read(this.storePath);
       const lines = raw.split("\n");
 
       this.edgesMap.clear();
@@ -115,17 +116,17 @@ export class KgEdgeStore {
         }));
       }
       const content = txns.length > 0 ? txns.join("\n") + "\n" : "";
-      await adapter.write(STORE_PATH, content);
+      await adapter.write(this.storePath, content);
       this.shouldTruncate = false;
       this.pendingTxns = [];
     } else if (this.pendingTxns.length > 0) {
       const appendContent = this.pendingTxns.join("");
       if (typeof adapter.append === "function") {
-        await adapter.append(STORE_PATH, appendContent);
+        await adapter.append(this.storePath, appendContent);
       } else {
         let existing = "";
-        try { existing = (await adapter.read?.(STORE_PATH)) || ""; } catch {}
-        await adapter.write(STORE_PATH, existing + appendContent);
+        try { existing = (await adapter.read?.(this.storePath)) || ""; } catch {}
+        await adapter.write(this.storePath, existing + appendContent);
       }
       this.pendingTxns = [];
     }
