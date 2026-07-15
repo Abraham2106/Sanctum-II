@@ -40,3 +40,34 @@ export const DEFAULT_SETTINGS: SanctumSettings = {
   projectAutoMemory: false,
   projectReindexOnOpen: false,
 };
+
+// ── Shared constants ──
+
+export const AGENTS_DIR = "sanctum-agents";
+export const PROJECTS_DIR = "sanctum-projects";
+export const TRACES_DIR = "sanctum-logs/traces";
+export const THREADS_DIR_BASE = "sanctum-logs/threads";
+export const INDEX_DIR_BASE = "sanctum-logs/index";
+export const MEMORY_DIR_BASE = "sanctum-memory";
+export const CHAINS_DIR = "sanctum-chains";
+export const KG_DIR = "sanctum-logs/kg";
+
+export const DEFAULT_MODEL = "deepseek-v4-flash";
+
+export const BUILTIN_AGENTS = {
+  FORAGER: "forager",
+  RESEARCHER: "researcher",
+  CRITIC: "critic",
+  ORCHESTRATOR: "orchestrator",
+} as const;
+
+export const MESH_THRESHOLDS = {
+  ACCEPT: 80,
+  ESCALATE: 40,
+  MAX_ATTEMPTS: 3,
+} as const;
+
+export const RAG_DEFAULTS = {
+  MIN_SIMILARITY: 0.65,
+  TOP_K: 5,
+} as const;

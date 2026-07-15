@@ -8,6 +8,21 @@ import type { KgOptions } from "../kg/types";
 import type { KgEdgeStore } from "../kg/kg-store";
 import type { ProjectContext } from "../projects/context";
 import type { Skill } from "../skills/types";
+import { BUILTIN_AGENTS } from "../constants";
+
+// ── Shared module types and functions (imported for local use, re-exported for consumers) ──
+import { MESH_DEFAULTS } from "../shared/mesh/types";
+import type { CriteriaScore, CriticEvaluation, AttemptRecord, HistoryEntry, LoopState, OrchestratorAction, OrchestratorDecision } from "../shared/mesh/types";
+export type { CriteriaScore, CriticEvaluation, AttemptRecord, HistoryEntry, LoopState, OrchestratorAction, OrchestratorDecision } from "../shared/mesh/types";
+
+import { parseCriticJSON, parseOrchestratorDecision } from "../shared/mesh/parse";
+export { parseCriticJSON, parseOrchestratorDecision } from "../shared/mesh/parse";
+
+import { buildResearcherInput, buildCriticInput, buildOrchestratorInput, pickBestAttempt, buildAttemptHistory } from "../shared/mesh/core";
+export { buildResearcherInput, buildCriticInput, buildOrchestratorInput, pickBestAttempt, buildAttemptHistory } from "../shared/mesh/core";
+
+import type { MeshResultFull } from "./mesh-types";
+export type { MeshResultFull } from "./mesh-types";
 
 export interface MeshOptions {
   userPrompt: string;
@@ -24,190 +39,16 @@ export interface MeshOptions {
   skillContext?: Skill;
 }
 
-export interface CriteriaScore {
-  name: string;
-  score: number;
-  note: string;
-}
-
-export interface CriticEvaluation {
-  criteria: CriteriaScore[];
-  total_score: number;
-  threshold: number;
-  verdict: "accept" | "reject";
-  feedback_for_regeneration: string[];
-}
-
-export interface AttemptRecord {
-  attempt: number;
-  researcherOutput: string;
-  criteria: CriteriaScore[];
-  total_score: number;
-  verdict: "accept" | "reject";
-  feedback: string[];
-  usage?: { prompt: number; completion: number };
-}
-
-export interface HistoryEntry {
-  agent: string;
-  output: string;
-  score?: number;
-  verdict?: "accept" | "reject";
-  feedback?: string[];
-  usage?: { prompt: number; completion: number };
-}
-
-export interface LoopState {
-  original_prompt: string;
-  current_step: "forager" | "research" | "critic_review" | "done" | "escalated";
-  attempt: number;
-  max_attempts: number;
-  history: HistoryEntry[];
-  attempts: AttemptRecord[];
-  best_attempt: number;
-}
-
-export interface MeshResultFull {
-  foragerOutput: string;
-  researcherOutput: string;
-  criticScore?: number;
-  criticVerdict: "accept" | "escalated";
-  attempts: number;
-  loopState: LoopState;
-  createdNotePath?: string;
-}
-
-const ACCEPT_THRESHOLD = 80;
-const ESCALATE_THRESHOLD = 40;
-const MAX_ATTEMPTS = 3;
-
-type OrchestratorAction = "accept" | "escalate" | "regenerate";
-
-interface OrchestratorDecision {
-  action: OrchestratorAction;
-  reason: string;
-}
-
-function buildResearcherInput(foragerOutput: string, history: HistoryEntry[], attempt: number): string {
-  let input = foragerOutput;
-  if (attempt > 1) {
-    const criticEntries = history.filter(h => h.agent === "critic");
-    if (criticEntries.length > 0) {
-      input += `\n\n---\nFeedback del Critic para regeneración:\n`;
-      for (const ce of criticEntries) {
-        if (ce.feedback && ce.feedback.length > 0) {
-          for (const fb of ce.feedback) {
-            input += `- ${fb}\n`;
-          }
-        }
-      }
-      input += `\nPor favor, regenera tu respuesta teniendo en cuenta todo el feedback acumulado. Especialmente mejora los criterios con puntuación más baja.`;
-    }
-  }
-  return input;
-}
-
-function buildCriticInput(originalPrompt: string, researcherOutput: string): string {
-  return `Prompt original del usuario:\n${originalPrompt}\n\nOutput del Researcher a evaluar:\n${researcherOutput}`;
-}
-
-export function parseCriticJSON(raw: string): CriticEvaluation {
-  try {
-    const start = raw.indexOf('{');
-    const end = raw.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error("No JSON found");
-    const jsonStr = raw.substring(start, end + 1);
-    const parsed = JSON.parse(jsonStr);
-    const ev = parsed.evaluation || parsed;
-
-    const criteria: CriteriaScore[] = [];
-    if (Array.isArray(ev.criteria)) {
-      for (const c of ev.criteria) {
-        criteria.push({
-          name: String(c.name ?? ""),
-          score: typeof c.score === "number" ? c.score : 0,
-          note: String(c.note ?? ""),
-        });
-      }
-    }
-
-    const totalScore = ev.total_score ?? 80;
-    const threshold = ev.threshold ?? 80;
-    const verdict = ev.verdict === "reject" ? ("reject" as const) : ("accept" as const);
-    const feedback = Array.isArray(ev.feedback_for_regeneration) ? ev.feedback_for_regeneration : [];
-
-    if (criteria.length === 0) {
-      for (const name of ["coherencia_interna", "uso_de_fuentes", "completitud_vs_prompt", "actualidad_de_datos", "claridad_de_escritura"]) {
-        const score = ev[name];
-        if (typeof score === "number") {
-          criteria.push({ name, score, note: "" });
-        }
-      }
-    }
-
-    return { criteria, total_score: totalScore, threshold, verdict, feedback_for_regeneration: feedback };
-  } catch (err: any) {
-    console.warn("Sanctum: fallo parseo de Critic JSON", err.message);
-    return {
-      criteria: [],
-      total_score: 80,
-      threshold: 80,
-      verdict: "accept",
-      feedback_for_regeneration: [],
-    };
-  }
-}
-
-function parseOrchestratorDecision(raw: string): OrchestratorDecision | null {
-  try {
-    const start = raw.indexOf('{');
-    const end = raw.lastIndexOf('}');
-    if (start === -1 || end === -1) return null;
-    const jsonStr = raw.substring(start, end + 1);
-    const parsed = JSON.parse(jsonStr);
-    const action = parsed.action;
-    if (action === "accept" || action === "escalate" || action === "regenerate") {
-      return { action, reason: parsed.reason || "" };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function buildOrchestratorInput(state: LoopState, evaluation: CriticEvaluation): string {
-  const historySummary = state.history.map(h => {
-    if (h.agent === "critic") {
-      return `[${h.agent}] score=${h.score}, verdict=${h.verdict}, feedback=${JSON.stringify(h.feedback)}`;
-    }
-    return `[${h.agent}] output (first 200 chars): ${h.output.slice(0, 200)}`;
-  }).join("\n");
-
-  return `Loop state actual:
-- original_prompt: "${state.original_prompt}"
-- current_step: ${state.current_step}
-- attempt: ${state.attempt} / max_attempts: ${state.max_attempts}
-
-Historial del loop:
-${historySummary}
-
-Última evaluación del Critic:
-- total_score: ${evaluation.total_score}
-- threshold: ${evaluation.threshold}
-- verdict: ${evaluation.verdict}
-- criteria: ${JSON.stringify(evaluation.criteria.map(c => ({ name: c.name, score: c.score, note: c.note })))}
-- feedback_for_regeneration: ${JSON.stringify(evaluation.feedback_for_regeneration)}
-- best_total_score so far: ${state.attempts.length > 0 ? Math.max(...state.attempts.map(a => a.total_score)) : "N/A"}
-
-Decidí el siguiente paso.`;
-}
+const ACCEPT_THRESHOLD = MESH_DEFAULTS.ACCEPT_THRESHOLD;
+const ESCALATE_THRESHOLD = MESH_DEFAULTS.ESCALATE_THRESHOLD;
+const MAX_ATTEMPTS = MESH_DEFAULTS.MAX_ATTEMPTS;
 
 async function resolveOrchestratorDecision(
   opts: MeshOptions,
   state: LoopState,
   evaluation: CriticEvaluation,
   orchestratorAgent: { system_prompt: string },
-): Promise<OrchestratorAction> {
+): Promise<"accept" | "escalate" | "regenerate"> {
   const orchestratorInput = buildOrchestratorInput(state, evaluation);
   const renderedPrompt = renderSystemPrompt(
     { id: "orchestrator", name: "orchestrator", avatar: "", model: "", description: "", triggers: [], tools: [], permissions: { read_paths: [], write_paths: [] }, system_prompt: orchestratorAgent.system_prompt },
@@ -227,7 +68,6 @@ async function resolveOrchestratorDecision(
     console.warn("[Mesh] Orchestrator invocation failed, falling back to hardcoded thresholds:", err.message);
   }
 
-  // Fallback to hardcoded thresholds
   if (evaluation.total_score >= ACCEPT_THRESHOLD) return "accept";
   if (evaluation.total_score <= ESCALATE_THRESHOLD) return "escalate";
   if (state.attempt >= state.max_attempts) return "accept";
@@ -254,30 +94,13 @@ function pickTurnDeps(opts: MeshOptions) {
   };
 }
 
-function pickBestAttempt(state: LoopState): AttemptRecord | null {
-  if (state.attempts.length === 0) return null;
-  let best = state.attempts[0];
-  for (const a of state.attempts) {
-    if (a.total_score > best.total_score) best = a;
-  }
-  return best;
-}
-
-function buildAttemptHistory(state: LoopState) {
-  return state.attempts.map(a => ({
-    attempt: a.attempt,
-    total_score: a.total_score,
-    criteria: a.criteria,
-  }));
-}
-
 export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFull> {
   const { userPrompt, vaultAdapter, tracer } = opts;
 
-  const forager = await loadAgentFromVault(vaultAdapter, "forager.md");
-  const researcher = await loadAgentFromVault(vaultAdapter, "researcher.md");
-  const critic = await loadAgentFromVault(vaultAdapter, "critic.md");
-  const orchestrator = await loadAgentFromVault(vaultAdapter, "orchestrator.md");
+  const forager = await loadAgentFromVault(vaultAdapter, `${BUILTIN_AGENTS.FORAGER}.md`);
+  const researcher = await loadAgentFromVault(vaultAdapter, `${BUILTIN_AGENTS.RESEARCHER}.md`);
+  const critic = await loadAgentFromVault(vaultAdapter, `${BUILTIN_AGENTS.CRITIC}.md`);
+  const orchestrator = await loadAgentFromVault(vaultAdapter, `${BUILTIN_AGENTS.ORCHESTRATOR}.md`);
 
   const traceId = tracer.start("mesh-orchestrator", "", userPrompt);
 
@@ -292,7 +115,6 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
   };
 
   try {
-    // Step 1: Forager (once)
     const foragerResult = await executeTurn(
       { agent: forager, ...pickTurnDeps(opts) },
       userPrompt,
@@ -304,7 +126,6 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
 
     let bestResearcherOutput = "";
 
-    // Loop: Researcher ↔ Critic ↔ Orchestrator
     while (state.attempt <= state.max_attempts) {
       const researcherInput = buildResearcherInput(foragerResult.content, state.history, state.attempt);
 
@@ -326,7 +147,6 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
       );
       const evaluation = parseCriticJSON(criticResult.content);
 
-      // Record this attempt
       const record: AttemptRecord = {
         attempt: state.attempt,
         researcherOutput: researcherResult.content,
@@ -346,7 +166,6 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
         usage: criticResult.usage,
       });
 
-      // Orchestrator decides the next step
       const action = await resolveOrchestratorDecision(opts, state, evaluation, orchestrator);
 
       if (action === "accept") {
@@ -391,8 +210,6 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
         };
       }
 
-      // action === "regenerate"
-      // If we're already at max_attempts, accept the best (safety net)
       if (state.attempt >= state.max_attempts) {
         const best = pickBestAttempt(state);
         if (best) bestResearcherOutput = best.researcherOutput;
@@ -420,7 +237,6 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
       state.current_step = "research";
     }
 
-    // Safety net (should not normally reach here)
     state.current_step = "done";
     const best = pickBestAttempt(state);
     if (best) {

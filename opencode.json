@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "sanctum-ii": {
+      "type": "local",
+      "command": ["node", "mcp-server/dist/index.cjs"],
+      "enabled": true,
+      "environment": {
+        "SANCTUM_VAULT_PATH": ".",
+        "GEMINI_API_KEYS": "${GEMINI_API_KEYS}",
+        "OPENCODE_GO_API_KEY": "${OPENCODE_GO_API_KEY}",
+        "OPENCODE_GO_BASE_URL": "${OPENCODE_GO_BASE_URL}"
+      }
+    }
+  }
+}

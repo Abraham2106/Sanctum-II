@@ -1,31 +1,6 @@
 import type { AgentDefinition } from "./types";
-
-const AGENTS_DIR = "sanctum-agents";
-
-function parseFrontmatter(raw: string): Record<string, any> {
-  const result: Record<string, any> = {};
-  for (const line of raw.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed === "---") continue;
-    const colonIdx = trimmed.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = trimmed.slice(0, colonIdx).trim();
-    let value: any = trimmed.slice(colonIdx + 1).trim();
-
-    if (value.startsWith("[") && value.endsWith("]")) {
-      value = value.slice(1, -1).split(",").map((s: string) => s.trim().replace(/^["']|["']$/g, ""));
-    } else if (value === "true" || value === "false") {
-      value = value === "true";
-    } else if (!isNaN(Number(value))) {
-      value = Number(value);
-    } else {
-      value = value.replace(/^["']|["']$/g, "");
-    }
-
-    result[key] = value;
-  }
-  return result;
-}
+import { AGENTS_DIR, DEFAULT_MODEL } from "../constants";
+import { parseFrontmatter } from "../shared/agents/frontmatter";
 
 function parseAgentMd(content: string): AgentDefinition {
   const parts = content.split("---");
@@ -45,7 +20,7 @@ function parseAgentMd(content: string): AgentDefinition {
     id: frontmatter.id || "unknown",
     name: frontmatter.name || "Sin nombre",
     avatar: frontmatter.avatar || "🤖",
-    model: frontmatter.model || "deepseek-v4-flash",
+    model: frontmatter.model || DEFAULT_MODEL,
     description: frontmatter.description || "",
     triggers: frontmatter.triggers || [],
     tools: frontmatter.tools || [],

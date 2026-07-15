@@ -3,7 +3,8 @@ import process from "process";
 
 const prod = process.argv[2] === "production";
 
-const context = await esbuild.context({
+// ── Plugin de Obsidian (entry point existente) ──
+const pluginCtx = await esbuild.context({
   banner: {
     js: `const __SANCTUM_DEV__ = ${!prod};`,
   },
@@ -34,9 +35,24 @@ const context = await esbuild.context({
   outfile: "main.js",
 });
 
+// ── MCP Server (standalone Node process) ──
+const mcpCtx = await esbuild.context({
+  entryPoints: ["mcp-server/index.ts"],
+  bundle: true,
+  platform: "node",
+  format: "cjs",
+  target: "ES2021",
+  logLevel: "info",
+  sourcemap: prod ? false : "inline",
+  treeShaking: true,
+  outfile: "mcp-server/dist/index.cjs",
+});
+
 if (prod) {
-  await context.rebuild();
+  await pluginCtx.rebuild();
+  await mcpCtx.rebuild();
   process.exit(0);
 } else {
-  await context.watch();
+  // Watchers corren en paralelo
+  await Promise.all([pluginCtx.watch(), mcpCtx.watch()]);
 }
