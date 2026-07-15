@@ -72,6 +72,11 @@ export class FsVaultAdapter implements VaultAdapter {
     await fs.writeFile(full, data, "utf8")
   }
 
+  async mkdir(p: string): Promise<void> {
+    const full = await this.resolveSecure(p)
+    await fs.mkdir(full, { recursive: true })
+  }
+
   async list(p: string): Promise<{ files: string[]; folders: string[] }> {
     const full = await this.resolveSecure(p)
     const files: string[] = []
