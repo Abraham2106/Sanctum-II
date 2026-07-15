@@ -13,6 +13,7 @@ function memoryAdapter() {
       return value;
     },
     write: async (path: string, content: string) => { files.set(path, content); },
+    mkdir: async () => {},
     rename: async (oldPath: string, newPath: string) => {
       const value = files.get(oldPath);
       if (value === undefined) throw new Error("ENOENT");
@@ -32,6 +33,8 @@ describe("P0 regressions", () => {
       read: async () => "",
       exists: async () => { await new Promise(resolve => setTimeout(resolve, 1)); return true; },
       write: async (path, content) => { if (path.endsWith(".json")) writes.push(content); },
+      mkdir: async () => {},
+      list: async () => ({ files: [], folders: [] }),
     });
 
     const first = tracer.start("a", "", "one");
@@ -72,6 +75,32 @@ describe("P0 regressions", () => {
     const messages = (await store.loadThreadData("project", "thread"))?.messages || [];
     expect(messages).toHaveLength(1);
     expect(["first", "second"]).toContain(messages[0].content);
+  });
+
+  it("overwrites an existing thread when rename refuses destination replacement", async () => {
+    const files = new Map<string, string>();
+    const adapter = {
+      read: async (path: string) => {
+        const value = files.get(path);
+        if (value === undefined) throw Object.assign(new Error("destination missing"), { code: "ENOENT" });
+        return value;
+      },
+      write: async (path: string, content: string) => { files.set(path, content); },
+      rename: async (_from: string, to: string) => {
+        if (files.has(to)) throw new Error("Destination file already exists!");
+      },
+      remove: async (path: string) => { files.delete(path); },
+      mkdir: async () => {},
+      list: async () => ({ files: [], folders: [] }),
+      exists: async (path: string) => files.has(path),
+    };
+    const store = new ProjectStore(adapter);
+
+    await store.updateThreadMessages("project", "thread", [{ role: "user", content: "first" }]);
+    await store.updateThreadMessages("project", "thread", [{ role: "user", content: "second" }]);
+
+    const saved = JSON.parse(files.get("sanctum-logs/threads/project/thread.json")!);
+    expect(saved.messages[0].content).toBe("second");
   });
 
   it("moves a thread as a complete record and removes the source", async () => {

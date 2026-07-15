@@ -40,7 +40,6 @@ export async function executeChain(
   baseDeps: TurnDeps,
   getAgent: (agentId: string) => Promise<AgentDefinition>,
   userInput: string,
-  chatHistory?: any[],
 ): Promise<{ order: string[]; results: ExecutionResult[]; finalOutput: string }> {
   const order = topologicalOrder(chain.nodes, chain.edges);
   const results: ExecutionResult[] = [];

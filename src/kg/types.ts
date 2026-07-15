@@ -8,7 +8,7 @@ export interface KgEdge {
 
 export interface KgExpansionResult {
   edges_traversed: KgEdge[];
-  added_chunks: { note_path: string; chunk_text: string; score: number; relation?: string }[];
+  added_chunks: { note_path: string; chunk_text: string; score: number; relation?: "wikilink" | "semantic" | "wikilink+semantic" }[];
   seed_notes: string[];
   neighbor_notes: string[];
 }

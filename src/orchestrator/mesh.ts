@@ -60,7 +60,7 @@ async function resolveOrchestratorDecision(
     const result = await opts.opencodeClient.chat(renderedPrompt, orchestratorInput);
     const decision = parseOrchestratorDecision(result.content);
     if (decision) {
-      console.log(`[Mesh] Orchestrator decision: ${decision.action} — ${decision.reason}`);
+      console.error(`[Mesh] Orchestrator decision: ${decision.action} — ${decision.reason}`);
       return decision.action;
     }
     console.warn("[Mesh] Orchestrator response unparseable, falling back to hardcoded thresholds. Raw:", result.content.slice(0, 200));

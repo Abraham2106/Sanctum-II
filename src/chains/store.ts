@@ -1,17 +1,12 @@
 import type { Chain } from "./types";
 import { defaultChain } from "./types";
+import type { VaultAdapter } from "../core/vault-adapter";
+import { ensureVaultDirectory } from "../core/vault-fs";
 
 const CHAINS_DIR = "sanctum-chains";
 
 export class ChainStore {
-  constructor(
-    private adapter: {
-      read: (p: string) => Promise<string>;
-      write: (p: string, c: string) => Promise<void>;
-      list: (p: string) => Promise<{ files: string[]; folders: string[] }>;
-      exists: (p: string) => Promise<boolean>;
-    }
-  ) {}
+  constructor(private adapter: VaultAdapter) {}
 
   private chainPath(name: string): string { return `${CHAINS_DIR}/${name}.json`; }
 
@@ -23,11 +18,7 @@ export class ChainStore {
   }
 
   async save(chain: Chain): Promise<void> {
-    const dir = CHAINS_DIR;
-    try { await this.adapter.write(`${dir}/.gitkeep`, ""); } catch {
-      // If .gitkeep creation fails, the directory might not exist;
-      // The next write will also fail, which is caught by the caller.
-    }
+    await ensureVaultDirectory(this.adapter, CHAINS_DIR);
     await this.adapter.write(this.chainPath(chain.id), JSON.stringify(chain, null, 2));
   }
 

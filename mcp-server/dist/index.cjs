@@ -219,6 +219,10 @@ var FsVaultAdapter = class {
     await import_node_fs.promises.mkdir(import_node_path.default.dirname(full), { recursive: true });
     await import_node_fs.promises.writeFile(full, data, "utf8");
   }
+  async mkdir(p) {
+    const full = await this.resolveSecure(p);
+    await import_node_fs.promises.mkdir(full, { recursive: true });
+  }
   async list(p) {
     const full = await this.resolveSecure(p);
     const files = [];
@@ -280,6 +284,13 @@ function pathMatchesAny(filePath, patterns) {
   if (patterns.length === 0) return false;
   if (patterns.includes("/**") || patterns.includes("**")) return true;
   return patterns.some((p) => globMatch(filePath, p));
+}
+
+// src/core/vault-fs.ts
+function isNotFoundError(error) {
+  const candidate = error;
+  if (candidate?.code === "ENOENT") return true;
+  return typeof candidate?.message === "string" && /(?:ENOENT|not found|no such file|does not exist)/i.test(candidate.message);
 }
 
 // src/rag/vector-store.ts
@@ -392,10 +403,14 @@ var VectorStore = class {
       }
       this.chunks = Array.from(this.chunksMap.values());
       console.error(`[VectorStore] \u2705 Loaded ${this.chunks.length} chunks from ${this.storePath}`);
-    } catch {
+    } catch (error) {
       this.chunksMap.clear();
       this.noteToChunksMap.clear();
       this.chunks = [];
+      if (!isNotFoundError(error)) {
+        console.error(`[VectorStore] failed to load ${this.storePath}:`, error);
+        throw error;
+      }
       console.error(`[VectorStore] \u{1F4C4} No existing store at ${this.storePath} \u2014 starting empty`);
     }
   }
@@ -418,10 +433,11 @@ var VectorStore = class {
       this.pendingTxns = [];
       console.error(`[VectorStore] \u{1F4BE} Truncate-saved ${this.chunks.length} chunks to ${this.storePath} (${(fileContent.length / 1024).toFixed(1)}KB)`);
     } else if (this.pendingTxns.length > 0) {
+      const txnCount = this.pendingTxns.length;
       const appendContent = this.pendingTxns.join("");
       await appendToFile(adapter, this.storePath, appendContent);
       this.pendingTxns = [];
-      console.error(`[VectorStore] \u{1F4BE} Append-saved ${this.pendingTxns.length} txns to ${this.storePath}`);
+      console.info(`[VectorStore] \u{1F4BE} Append-saved ${txnCount} txns to ${this.storePath}`);
     }
   }
   addChunks(newChunks, notePath) {

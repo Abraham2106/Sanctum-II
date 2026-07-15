@@ -631,6 +631,30 @@ describe("detectPendingAction", () => {
     const { detectPendingAction } = await import("./orchestrator/conversation");
     expect(detectPendingAction("Aquí tienes la respuesta completa.")).toBeNull();
   });
+
+  it("detects the natural-language offer used by researcher and preserves the full source", async () => {
+    const { detectPendingAction } = await import("./orchestrator/conversation");
+    const research = `# QAOA, Ising y QUBO\n\n${"contenido tecnico ".repeat(300)}\n\nSi deseas que cree una nota permanente en tu vault con esta investigación completa, solo indícalo.`;
+    const action = detectPendingAction(research, { sourceAgentId: "researcher" });
+    expect(action?.type).toBe("create_note");
+    expect(action?.params.sourceContent).toBe(research);
+    expect(action?.params.sourceAgentId).toBe("researcher");
+    expect(action?.params.mode).toBe("reformat_source");
+    expect(action?.params.suggestedTitle).toContain("QAOA");
+  });
+});
+
+describe("contextual note confirmations", () => {
+  it("treats 'genera la nota' and 'genera una nota a partir de eso' as confirmation", async () => {
+    const { classifyIntent } = await import("./orchestrator/conversation");
+    const pending = { type: "create_note", description: "Crear nota", params: { sourceContent: "investigación" }, proposed_at: 0 };
+    expect(classifyIntent("Genera la nota", pending).type).toBe("confirmation");
+    expect(classifyIntent("genera la nota a partir de eso", pending).type).toBe("confirmation");
+    expect(classifyIntent("Crea una nota en el vault con el contenido de la investigacion", pending).type).toBe("confirmation");
+    expect(classifyIntent("Guarda el contenido anterior", pending).type).toBe("confirmation");
+    expect(classifyIntent("crea una nota sobre otra cosa", pending).type).toBe("new_query");
+    expect(classifyIntent("crea una nota sobre otra investigacion", pending).type).toBe("new_query");
+  });
 });
 
 // ============================================================

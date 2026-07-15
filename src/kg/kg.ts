@@ -200,8 +200,8 @@ export function expandFromSeeds(
     frontier = nextFrontier;
   }
 
-  const addedChunks: { note_path: string; chunk_text: string; score: number; relation: string }[] = [];
-  const noteToRelation = new Map<string, string>();
+  const addedChunks: { note_path: string; chunk_text: string; score: number; relation: "wikilink" | "semantic" | "wikilink+semantic" }[] = [];
+  const noteToRelation = new Map<string, "wikilink" | "semantic" | "wikilink+semantic">();
   for (const edge of edgesTraversed) {
     const neighbor = seedNotes.includes(edge.from) ? edge.to : edge.from;
     if (!noteToRelation.has(neighbor)) {
