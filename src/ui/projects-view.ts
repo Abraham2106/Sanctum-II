@@ -58,6 +58,7 @@ export class ProjectsView extends ItemView {
     const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
     container.addClass("sanctum-root");
+    container.addClass("sanctum-projects-view");
     container.style.height = "100%";
 
     this.leftEl = container.createDiv({ cls: "s-proj-left" });
@@ -112,7 +113,11 @@ export class ProjectsView extends ItemView {
     this.leftEl.empty();
 
     const header = this.leftEl.createDiv({ cls: "s-proj-left-header" });
-    header.createSpan({ text: "◈ Proyectos", attr: { style: "font-weight:700;font-size:14px" } });
+    const headerIcon = header.createSpan({ cls: "s-proj-header-icon" });
+    setIcon(headerIcon, "folders");
+    const headerCopy = header.createDiv();
+    headerCopy.createDiv({ cls: "s-proj-header-title", text: "Proyectos" });
+    headerCopy.createDiv({ cls: "s-proj-header-subtitle", text: `${this.projects.length} espacios de conocimiento` });
 
     const list = this.leftEl.createDiv({ cls: "s-proj-list" });
 
@@ -146,7 +151,9 @@ export class ProjectsView extends ItemView {
     }
 
     const footer = this.leftEl.createDiv({ cls: "s-proj-left-footer" });
-    const newBtn = footer.createEl("button", { cls: "s-proj-btn primary", text: "＋ Nuevo" });
+    const newBtn = footer.createEl("button", { cls: "s-proj-btn primary" });
+    setIcon(newBtn.createSpan(), "plus");
+    newBtn.createSpan({ text: "Nuevo proyecto" });
     newBtn.onclick = () => this.createProject();
   }
 
@@ -163,7 +170,8 @@ export class ProjectsView extends ItemView {
 
     // Breadcrumb
     const bread = this.centerEl.createDiv({ cls: "s-proj-bread" });
-    bread.createSpan({ text: "← Todos los proyectos", attr: { style: "cursor:pointer;color:var(--text-3)" } });
+    setIcon(bread.createSpan(), "arrow-left");
+    bread.createSpan({ text: "Todos los proyectos" });
 
     // Header
     const head = this.centerEl.createDiv({ cls: "s-proj-head" });
@@ -179,10 +187,18 @@ export class ProjectsView extends ItemView {
     };
     if (p.description) nameDiv.createDiv({ cls: "s-proj-head-desc", text: p.description });
 
-    // Context chip
-    const chip = this.centerEl.createDiv({ cls: "s-proj-chip-bar" });
+    // Project signals — operational data should scan as data, not prose.
     const vc = this.deps.getVectorCount(p.id);
-    chip.createSpan({ text: `📦 ${vc} chunks · ${p.read_paths?.length || 0} carpetas · ${this.memory.length} memorias` });
+    const stats = this.centerEl.createDiv({ cls: "s-proj-stats", attr: { "aria-label": "Resumen del proyecto" } });
+    for (const [value, label] of [
+      [vc, "chunks"],
+      [p.read_paths?.length || 0, "carpetas"],
+      [this.memory.length, "memorias"],
+    ] as Array<[number, string]>) {
+      const stat = stats.createDiv({ cls: "s-proj-stat" });
+      stat.createDiv({ cls: "s-proj-stat-value", text: String(value) });
+      stat.createDiv({ cls: "s-proj-stat-label", text: label });
+    }
 
     // Composer — like chat: textarea + send button on same row
     const comp = this.centerEl.createDiv({ cls: "s-proj-composer" });
@@ -191,9 +207,13 @@ export class ProjectsView extends ItemView {
       cls: "s-proj-composer-input",
       attr: { placeholder: "Continuar en el contexto de este proyecto…", rows: 1 },
     });
-    const sendBtn = compRow.createEl("button", { cls: "s-proj-btn primary", text: "Enviar" });
+    const sendBtn = compRow.createEl("button", { cls: "s-proj-btn primary" });
+    setIcon(sendBtn.createSpan(), "arrow-up");
+    sendBtn.createSpan({ text: "Enviar" });
     sendBtn.onclick = () => this.handleComposer();
-    const modelBadge = comp.createDiv({ cls: "s-proj-model-badge",     text: p.model || DEFAULT_MODEL, attr: { style: "margin-top:8px" } });
+    const compMeta = comp.createDiv({ cls: "s-proj-composer-meta" });
+    setIcon(compMeta.createSpan(), "cpu");
+    compMeta.createDiv({ cls: "s-proj-model-badge", text: p.model || DEFAULT_MODEL });
 
     // Threads list
     this.centerEl.createDiv({ cls: "s-proj-section-title", text: "Conversaciones" });
@@ -219,7 +239,10 @@ export class ProjectsView extends ItemView {
       };
     }
     if (this.threads.length === 0) {
-      this.threadListEl.createDiv({ cls: "s-proj-empty", text: "Aún no hay conversaciones" });
+      const empty = this.threadListEl.createDiv({ cls: "s-proj-empty s-proj-thread-empty" });
+      setIcon(empty.createSpan({ cls: "s-proj-empty-icon" }), "message-square-plus");
+      empty.createDiv({ text: "Todavía no hay conversaciones", attr: { style: "font-weight:600;color:var(--text-2)" } });
+      empty.createDiv({ text: "Escribí arriba para iniciar la primera dentro de este contexto." });
     }
   }
 
@@ -278,8 +301,9 @@ export class ProjectsView extends ItemView {
         this.deps.saveProject(this.activeProject);
         this.renderRight();
       };
-      const delBtn = row.createEl("span", { text: "✕" });
-      delBtn.style.cursor = "pointer"; delBtn.style.color = "var(--text-3)"; delBtn.style.fontSize = "10px"; delBtn.style.padding = "0 4px"; delBtn.style.opacity = "0"; delBtn.style.transition = "opacity .12s";
+      const delBtn = row.createEl("button", { cls: "s-proj-row-action", attr: { title: "Quitar acceso de lectura", "aria-label": "Quitar acceso de lectura" } });
+      setIcon(delBtn, "x");
+      delBtn.style.opacity = "0";
       row.onmouseenter = () => { delBtn.style.opacity = "1"; };
       row.onmouseleave = () => { delBtn.style.opacity = "0"; };
       delBtn.onclick = () => {
@@ -302,8 +326,9 @@ export class ProjectsView extends ItemView {
         this.deps.saveProject(this.activeProject);
         this.renderRight();
       };
-      const delBtn = row.createEl("span", { text: "✕" });
-      delBtn.style.cursor = "pointer"; delBtn.style.color = "var(--text-3)"; delBtn.style.fontSize = "10px"; delBtn.style.padding = "0 4px"; delBtn.style.opacity = "0"; delBtn.style.transition = "opacity .12s";
+      const delBtn = row.createEl("button", { cls: "s-proj-row-action", attr: { title: "Quitar acceso de escritura", "aria-label": "Quitar acceso de escritura" } });
+      setIcon(delBtn, "x");
+      delBtn.style.opacity = "0";
       row.onmouseenter = () => { delBtn.style.opacity = "1"; };
       row.onmouseleave = () => { delBtn.style.opacity = "0"; };
       delBtn.onclick = () => {
@@ -318,12 +343,20 @@ export class ProjectsView extends ItemView {
 
     // RAG Index
     const ragCard = this.rightEl.createDiv({ cls: "s-proj-card" });
-    ragCard.createDiv({ cls: "s-proj-card-title", text: "📊 Índice · RAG" });
+    this.cardTitle(ragCard, "database", "Índice RAG");
     const vc = this.deps.getVectorCount(p.id);
-    ragCard.createDiv({ cls: "s-trace-meta", text: `Chunks indexados: ${vc}` });
-    ragCard.createDiv({ cls: "s-trace-meta", text: `Embeddings: ${p.rag.embed_model} (${p.rag.dims}d)` });
-    ragCard.createDiv({ cls: "s-trace-meta", text: `Recuperación: top-${p.rag.top_k} / sim ≥ ${p.rag.min_similarity}` });
-    const reindexBtn = ragCard.createEl("button", { cls: "s-proj-btn", text: "↻ Reindexar proyecto" });
+    for (const [label, value] of [
+      ["Chunks", String(vc)],
+      ["Embeddings", `${p.rag.embed_model} · ${p.rag.dims}d`],
+      ["Recuperación", `top-${p.rag.top_k} · sim ≥ ${p.rag.min_similarity}`],
+    ]) {
+      const row = ragCard.createDiv({ cls: "s-proj-rag-row" });
+      row.createSpan({ cls: "s-proj-rag-label", text: label });
+      row.createSpan({ cls: "s-proj-rag-value", text: value });
+    }
+    const reindexBtn = ragCard.createEl("button", { cls: "s-proj-btn" });
+    setIcon(reindexBtn.createSpan(), "refresh-cw");
+    reindexBtn.createSpan({ text: "Reindexar proyecto" });
     reindexBtn.onclick = async () => {
       reindexBtn.setAttribute("disabled", "true");
       try { await this.reindex(); } finally { reindexBtn.removeAttribute("disabled"); }
@@ -331,7 +364,7 @@ export class ProjectsView extends ItemView {
 
     // Memory
     const memCard = this.rightEl.createDiv({ cls: "s-proj-card" });
-    memCard.createDiv({ cls: "s-proj-card-title", text: "🧠 Memoria persistente" });
+    this.cardTitle(memCard, "brain", "Memoria persistente");
     if (this.memory.length) {
       for (const m of this.memory) {
         const memRow = memCard.createDiv({ cls: "s-proj-memory-row" });
@@ -357,7 +390,8 @@ export class ProjectsView extends ItemView {
     addFileBtn.onclick = () => this.addFile();
 
     const dropZone = fileCard.createDiv({ cls: "s-proj-dropzone" });
-    dropZone.createSpan({ text: "Soltá archivos aquí", attr: { style: "color:var(--text-3);font-size:11px" } });
+    setIcon(dropZone.createSpan({ cls: "s-proj-dropzone-icon" }), "upload-cloud");
+    dropZone.createSpan({ text: "Soltá archivos aquí" });
     dropZone.ondragover = (e) => { e.preventDefault(); dropZone.addClass("active"); };
     dropZone.ondragleave = () => dropZone.removeClass("active");
     dropZone.ondrop = (e) => {
@@ -372,7 +406,7 @@ export class ProjectsView extends ItemView {
       for (const f of attached) {
         const fRow = fileList.createDiv({ cls: "s-proj-row" });
         const fIcon = fRow.createDiv({ cls: "s-proj-file-icon" });
-        fIcon.setText(f.ext.slice(0, 3).toUpperCase() || "📄");
+        fIcon.setText(f.ext.slice(0, 3).toUpperCase() || "DOC");
         const fInfo = fRow.createDiv({ cls: "s-proj-info" });
         fInfo.createSpan({ text: f.name, attr: { style: "font-size:12px;color:var(--text-2)" } });
         fInfo.createDiv({ text: `${f.lines} líneas`, attr: { style: "font-size:10px;color:var(--text-3)" } });
@@ -389,8 +423,7 @@ export class ProjectsView extends ItemView {
         };
       }
     } else {
-      const empty = fileList.createDiv({ cls: "s-config-group-empty", text: "Sin archivos adjuntos" });
-      empty.style.display = "none";
+      fileList.createDiv({ cls: "s-config-group-empty", text: "Sin archivos adjuntos" });
     }
     // Show dropzone only when no files
     if (attached.length === 0) dropZone.style.display = "block";

@@ -55,8 +55,13 @@ export class ChatMessages {
     const labelParts = msg.label?.split(" ") || [];
     const iconId = labelParts[0] || "bot";
     const name = labelParts.slice(1).join(" ") || this.plugin.agentName;
+    const agentId = name.toLowerCase().includes("forager") ? "forager"
+      : name.toLowerCase().includes("researcher") ? "researcher"
+      : name.toLowerCase().includes("critic") ? "critic"
+      : "base";
+    wrap.dataset.agent = agentId;
 
-    const avatar = meta.createDiv({ cls: "s-msg-avatar" });
+    const avatar = meta.createDiv({ cls: "s-msg-avatar", attr: { "data-agent": agentId } });
     setIcon(avatar, iconId);
     meta.createDiv({ cls: "s-msg-name", text: name });
     if (msg.timestamp) {
@@ -83,16 +88,18 @@ export class ChatMessages {
     const clipBtn = actions.createEl("button", { cls: "s-action-btn" });
     setIcon(clipBtn, "clipboard");
     clipBtn.title = "Copiar respuesta";
+    clipBtn.setAttribute("aria-label", "Copiar respuesta");
     clipBtn.onclick = () => {
       navigator.clipboard.writeText(msg.content);
-      clipBtn.setText("✅");
-      setTimeout(() => clipBtn.setText(""), 1200);
+      setIcon(clipBtn, "check");
+      setTimeout(() => setIcon(clipBtn, "clipboard"), 1200);
     };
 
     if (msg.meshMeta) {
       const saveBtn = actions.createEl("button", { cls: "s-action-btn" });
       setIcon(saveBtn, "save");
       saveBtn.title = "Guardar nota";
+      saveBtn.setAttribute("aria-label", "Guardar respuesta como nota");
       saveBtn.onclick = () => this.plugin.createNoteWithAI();
     }
   }

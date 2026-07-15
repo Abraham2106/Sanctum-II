@@ -39,10 +39,13 @@ export class ChatLeftPanel {
     if (!this.selectedAgent) this.selectedAgent = systemAgents[0];
 
     for (const agent of allAgents) {
-      const item = railSection.createDiv({ cls: "s-rail-item" });
+      const item = railSection.createDiv({
+        cls: "s-rail-item",
+        attr: { role: "button", tabindex: "0", "data-agent": agent.id, "aria-label": `Usar ${agent.name}` },
+      });
       if (agent.id === this.selectedAgent.id) item.addClass("is-active");
 
-      const avatarSpan = item.createSpan({ cls: "s-rail-avatar" });
+      const avatarSpan = item.createSpan({ cls: "s-rail-avatar", attr: { "data-agent": agent.id } });
       renderAvatar(avatarSpan, agent.avatar, agent.id, setIcon);
 
       const info = item.createDiv({ cls: "s-rail-info" });
@@ -56,18 +59,22 @@ export class ChatLeftPanel {
         this.selectedAgent = agent;
         this.renderConfig();
       };
+      item.onkeydown = (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        item.click();
+      };
     }
 
     this.el.createEl("hr", { attr: { style: "border:none;border-top:1px solid var(--border);margin:4px 10px;" } });
+    this.el.createDiv({ cls: "s-section-label s-config-label", text: "Configuración del agente" });
 
     const configScroll = this.el.createDiv({ cls: "s-config-scroll" });
     configScroll.id = "s-config-accordions";
     this.buildConfig(configScroll);
 
     const footer = this.el.createDiv({ cls: "s-left-footer" });
-    const dot = footer.createDiv({ cls: "s-footer-dot" + (this.plugin.vectorStore.count === 0 ? " is-empty" : "") });
-    const idxLabel = footer.createSpan();
-    idxLabel.setText(this.plugin.vectorStore.count > 0 ? `${this.plugin.vectorStore.count} chunks` : "Sin indexar");
+    footer.createSpan({ text: "Modelo activo" });
     const modelBadge = footer.createDiv({ cls: "s-footer-model" });
     modelBadge.setText(this.plugin.agent?.model || "deepseek");
   }

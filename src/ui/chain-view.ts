@@ -44,13 +44,12 @@ export class ChainView extends ItemView {
 
   async onOpen(): Promise<void> {
     const c = this.containerEl.children[1] as HTMLElement;
-    c.empty(); c.style.height = "100%"; c.style.display = "flex"; c.style.flexDirection = "column"; c.style.background = "var(--canvas)";
+    c.empty(); c.addClass("sanctum-root"); c.addClass("sanctum-chain-view"); c.style.height = "100%"; c.style.display = "flex"; c.style.flexDirection = "column"; c.style.background = "var(--canvas)";
 
     // ── Top bar with brand ──
     const tb = c.createDiv({ cls: "och-topbar" });
-    const brandTile = tb.createSpan({ attr: { style: "width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--brand),#6B55CC);display:flex;align-items:center;justify-content:center;flex-shrink:0" } });
+    const brandTile = tb.createSpan({ cls: "och-brand-tile" });
     setIcon(brandTile, "git-branch");
-    brandTile.style.color = "#fff";
     const nameWrap = tb.createDiv({ attr: { style: "flex:1;min-width:0" } });
     this.chainNameEl = nameWrap.createEl("input", { cls: "och-topbar-input" });
     this.chainNameEl.value = "Mesh sin nombre";
@@ -61,6 +60,9 @@ export class ChainView extends ItemView {
       const b = tb.createEl("button", { cls: extraCls ? `${cls} ${extraCls}` : cls });
       if (lucide) { const ic = b.createSpan({ attr: { style: "display:flex;font-size:14px" } }); setIcon(ic, lucide); }
       if (label) b.createSpan({ text: " " + label });
+      const accessibleLabel = label || (lucide === "trash-2" ? "Limpiar canvas" : lucide === "save" ? "Guardar mesh" : lucide);
+      b.title = accessibleLabel;
+      b.setAttribute("aria-label", accessibleLabel);
       b.onclick = fn;
     };
     mkBtn("folder-open", "Abrir", () => this.showChainMenu());
@@ -87,8 +89,9 @@ export class ChainView extends ItemView {
     }
 
     // ── Help section ──
-    side.createDiv({ cls: "och-palette-label", text: "CÓMO ENCADENAR", attr: { style: "margin-top:20px" } });
-    const helpBox = side.createDiv({ cls: "och-help-text" });
+    const help = side.createEl("details", { cls: "och-help" });
+    help.createEl("summary", { text: "Cómo encadenar" });
+    const helpBox = help.createDiv({ cls: "och-help-text" });
     const addHelpLine = (text: string) => { const d = helpBox.createDiv(); d.innerHTML = text; };
     addHelpLine('• Arrastra desde el punto <b>derecho</b> ● de una burbuja hacia otra para conectarlas.');
     addHelpLine('• Arrastra la burbuja para moverla.');
@@ -105,7 +108,7 @@ export class ChainView extends ItemView {
 
     this.svgEl = document.createElementNS("http://www.w3.org/2000/svg","svg"); this.svgEl.setAttribute("width","100%"); this.svgEl.setAttribute("height","100%");
     this.svgEl.style.position="absolute"; this.svgEl.style.inset="0"; this.svgEl.style.pointerEvents="none"; this.svgEl.style.zIndex="1";
-    this.svgEl.innerHTML=`<defs><linearGradient id="fg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7c6cf0"/><stop offset="1" stop-color="#5e9fe8"/></linearGradient><marker id="ar" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6Z" fill="#5e9fe8"/></marker></defs>`;
+    this.svgEl.innerHTML=`<defs><marker id="ar" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6Z" fill="#8b7cf6"/></marker></defs>`;
     this.vpEl.appendChild(this.svgEl);
     this.nodesLayer = this.canvasWrap.createDiv(); this.nodesLayer.style.position="absolute"; this.nodesLayer.style.inset="0"; this.nodesLayer.style.zIndex="2";
     this.vpEl.appendChild(this.nodesLayer);
@@ -152,21 +155,34 @@ export class ChainView extends ItemView {
     const a = getAgentById(agentId); if (!a) return "";
     const id = genId("n"); this.nodes.push({ id, agentId, x, y });
     const el = this.nodesLayer.createDiv({ attr: { "data-node-id": id } });
-    el.style.setProperty("--nodeColor", a.color); el.style.position="absolute"; el.style.left=x+"px"; el.style.top=y+"px"; el.style.transform="translate(-50%,-50%)"; el.style.zIndex="3"; el.style.width="150px";
+    el.addClass("och-node");
+    el.style.setProperty("--nodeColor", a.color); el.style.position="absolute"; el.style.left=x+"px"; el.style.top=y+"px"; el.style.transform="translate(-50%,-50%)"; el.style.zIndex="3"; el.style.width="200px";
     el.innerHTML=`<div class="och-badge" style="position:absolute;top:-10px;left:-10px;min-width:20px;height:20px;border-radius:10px;background:${a.color};color:#fff;display:none;align-items:center;justify-content:center;font-size:11px;font-weight:800">-</div>
       <div class="och-result" style="display:none;position:absolute;bottom:-6px;right:-6px;width:14px;height:14px;border-radius:50%;align-items:center;justify-content:center;font-size:8px;color:#fff"></div>
-      <div class="och-bubble" style="background:var(--surface);border:2px solid var(--nodeColor);border-radius:14px;padding:10px;box-shadow:0 1px 2px rgba(0,0,0,.4);cursor:grab"><div class="och-del" style="position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;border:2px solid var(--canvas);display:none;align-items:center;justify-content:center;cursor:pointer;font-size:11px">✕</div>
+      <div class="och-bubble"><div class="och-del" role="button" tabindex="0" aria-label="Eliminar agente">×</div>
         <div style="display:flex;align-items:center;gap:8px"><span class="och-node-icon" style="font-size:16px"></span><div><div style="font-size:12px;font-weight:700">${a.name}</div><div style="font-size:10px;color:var(--text-3)">@${a.id}</div></div></div>
         <div style="font-size:10px;color:var(--text-3);margin-top:4px">${a.desc}</div></div>
-      <div class="och-port-in" style="position:absolute;left:-8px;top:50%;width:14px;height:14px;border-radius:50%;background:var(--surface);border:2px solid var(--nodeColor);transform:translateY(-50%);z-index:4"></div>
-      <div class="och-port-out" style="position:absolute;right:-8px;top:50%;width:14px;height:14px;border-radius:50%;background:var(--nodeColor);border:2px solid var(--nodeColor);transform:translateY(-50%);cursor:crosshair;z-index:4"></div>`;
+      <div class="och-port-in" aria-hidden="true"></div>
+      <div class="och-port-out" role="button" tabindex="0" aria-label="Conectar agente ${a.name}"></div>`;
     this.nodeEls.set(id, el);
     const iconSpan = el.querySelector(".och-node-icon") as HTMLElement;
     if (iconSpan) setIcon(iconSpan, a.lucide);
     const del = el.querySelector(".och-del") as HTMLElement;
-    el.onmouseenter=()=>{del.style.display="flex"}; el.onmouseleave=()=>{del.style.display="none"};
     del.onclick=(ev)=>{ev.stopPropagation();this.removeNode(id)};
-    (el.querySelector(".och-port-out") as HTMLElement).onpointerdown=(ev)=>{ev.stopPropagation();ev.preventDefault();this.startLink(ev,id)};
+    del.onkeydown=(ev)=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();del.click()}};
+    const outputPort = el.querySelector(".och-port-out") as HTMLElement;
+    outputPort.onpointerdown=(ev)=>{ev.stopPropagation();ev.preventDefault();this.startLink(ev,id)};
+    outputPort.onkeydown=(ev)=>{
+      if(ev.key!=="Enter"&&ev.key!==" ")return;
+      ev.preventDefault(); ev.stopPropagation();
+      if(this.linking){
+        const from=this.linking.fromId; this.linking.path.remove(); this.linking=null;
+        if(from!==id&&!this.edges.some(edge=>edge.from===from&&edge.to===id)) this.addEdge(from,id);
+      } else {
+        this.startLink(ev,id);
+        new Notice("Seleccioná otro agente y presioná Enter para conectarlo");
+      }
+    };
     this.makeDraggable(el, id);
     this.updateEmpty(); this.autoSave();
     return id;
@@ -187,10 +203,10 @@ export class ChainView extends ItemView {
 
   // ── Edges ──
 
-  private portPos(id:string,which:"in"|"out") { const n=this.nodes.find(x=>x.id===id); if(!n) return null; const w=150; return which==="out"?{x:n.x+w/2,y:n.y}:{x:n.x-w/2,y:n.y}; }
+  private portPos(id:string,which:"in"|"out") { const n=this.nodes.find(x=>x.id===id); if(!n) return null; const w=200; return which==="out"?{x:n.x+w/2,y:n.y}:{x:n.x-w/2,y:n.y}; }
   private bezier(x1:number,y1:number,x2:number,y2:number) { const dx=Math.max(40,Math.abs(x2-x1)*0.5); return `M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}`; }
   private addEdge(from:string,to:string) { this.edges.push({id:genId("e"),from,to}); this.renderEdges(); this.autoSave(); }
-  private startLink(e:PointerEvent,fromId:string) { const p=document.createElementNS("http://www.w3.org/2000/svg","path"); p.setAttribute("stroke","var(--accent)"); p.setAttribute("stroke-width","2.5"); p.setAttribute("stroke-dasharray","5 6"); p.setAttribute("fill","none"); this.svgEl.appendChild(p); this.linking={fromId,path:p}; }
+  private startLink(_e:Event,fromId:string) { const p=document.createElementNS("http://www.w3.org/2000/svg","path"); p.setAttribute("stroke","var(--brand)"); p.setAttribute("stroke-width","2.5"); p.setAttribute("stroke-dasharray","5 6"); p.setAttribute("fill","none"); this.svgEl.appendChild(p); this.linking={fromId,path:p}; }
 
   private renderEdges(): void {
     this.svgEl.querySelectorAll(".och-edge-group").forEach(g=>g.remove());
@@ -199,7 +215,7 @@ export class ChainView extends ItemView {
       const d=this.bezier(a.x,a.y,b.x,b.y);
       const g=document.createElementNS("http://www.w3.org/2000/svg","g"); g.setAttribute("class","och-edge-group");
       const h=document.createElementNS("http://www.w3.org/2000/svg","path"); h.setAttribute("d",d); h.setAttribute("stroke","transparent"); h.setAttribute("stroke-width","16"); h.setAttribute("fill","none"); h.style.pointerEvents="stroke"; h.style.cursor="pointer"; h.onclick=()=>{this.edges=this.edges.filter(ed=>ed.id!==e.id);this.renderEdges();this.autoSave();};
-      const p=document.createElementNS("http://www.w3.org/2000/svg","path"); p.setAttribute("d",d); p.setAttribute("stroke","url(#fg)"); p.setAttribute("stroke-width","2.5"); p.setAttribute("stroke-dasharray","5 7"); p.setAttribute("fill","none"); p.setAttribute("marker-end","url(#ar)");
+      const p=document.createElementNS("http://www.w3.org/2000/svg","path"); p.setAttribute("d",d); p.setAttribute("class","och-edge-path"); p.setAttribute("stroke","var(--brand)"); p.setAttribute("stroke-width","2.5"); p.setAttribute("stroke-dasharray","5 7"); p.setAttribute("fill","none"); p.setAttribute("marker-end","url(#ar)");
       g.appendChild(p); g.appendChild(h); this.svgEl.appendChild(g);
     }
   }
@@ -212,7 +228,7 @@ export class ChainView extends ItemView {
     const modal=new InputModal(this.app,"Ejecutar cadena","Prompt de entrada","Investigá sobre QML");
     const input=await modal.ask(); if(!input)return;
     this.results.clear();
-    new Notice(`⛓️ Ejecutando ${order.length} paso(s)...`,0);
+    new Notice(`Ejecutando ${order.length} paso(s)…`,0);
 
     // Show order badges
     order.forEach((nid,i)=>{const e=this.nodeEls.get(nid);if(!e)return;const b=e.querySelector(".och-badge")as HTMLElement;if(b){b.textContent=String(i+1);b.style.display="flex"}});
@@ -318,10 +334,10 @@ export class ChainView extends ItemView {
         const json = JSON.parse(lastResult.output.substring(lastResult.output.indexOf('{'), lastResult.output.lastIndexOf('}') + 1));
         const ev = json.evaluation || json;
         const total = ev.total_score ?? "?";
-        const verdict = ev.verdict === "accept" ? "✅" : "⚠️";
+        const verdict = ev.verdict === "accept" ? "Aceptado" : "Revisión requerida";
         const feedback = ev.feedback_for_regeneration?.slice(0, 3) || [];
         const att = criticAttempts.get(lastId) || 1;
-        criticScore = `${verdict} Score del Critic: ${total}/100 (${ev.verdict || "?"}) — Intento ${att}/${MAX_ATTEMPTS}`;
+        criticScore = `${verdict} · Score del Critic: ${total}/100 (${ev.verdict || "?"}) — Intento ${att}/${MAX_ATTEMPTS}`;
         if (feedback.length) criticScore += "\nFeedback: " + feedback.join("; ");
       } catch {}
     }
@@ -329,9 +345,9 @@ export class ChainView extends ItemView {
     if (lastResult) {
       new ResultModal(this.app, displayOutput, order.length, hasError, criticScore).open();
     } else {
-      new Notice("❌ La cadena no produjo ningún resultado.", 5000);
+      new Notice("La cadena no produjo ningún resultado.", 5000);
     }
-    new Notice(`✅ Cadena completada (${order.length} pasos)${hasError ? " — con errores" : ""}`);
+    new Notice(`Cadena completada (${order.length} pasos)${hasError ? " — con errores" : ""}`);
   }
 
   /** Execute a single node and return its output. Handles loading, animation, and errors. */
@@ -341,18 +357,19 @@ export class ChainView extends ItemView {
   ): Promise<string | null> {
     const el = this.nodeEls.get(nid);
     let workAnim: Animation | null = null;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     if (el) {
       const b = el.querySelector(".och-bubble") as HTMLElement;
       b.style.borderColor = "var(--brand)"; b.style.borderWidth = "3px";
       b.style.boxShadow = "0 0 20px rgba(124,108,240,0.5)";
-      workAnim = b.animate([
+      if (!reduceMotion) workAnim = b.animate([
         { boxShadow: "0 0 10px rgba(124,108,240,0.4)", borderColor: "#8e7be6" },
         { boxShadow: "0 0 30px rgba(124,108,240,0.8)", borderColor: "#5e9fe8" },
         { boxShadow: "0 0 10px rgba(124,108,240,0.4)", borderColor: "#8e7be6" },
       ], { duration: 1200, iterations: Infinity, easing: "ease-in-out" });
       const dot = el.querySelector(".och-result") as HTMLElement;
-      if (dot) { dot.style.display = "flex"; dot.style.background = "var(--brand)"; dot.textContent = "⏳"; dot.animate([{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }], { duration: 800, iterations: Infinity }); }
+      if (dot) { dot.style.display = "flex"; dot.style.background = "var(--brand)"; dot.textContent = "…"; if (!reduceMotion) dot.animate([{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }], { duration: 800, iterations: Infinity }); }
     }
 
     try {
@@ -367,7 +384,7 @@ export class ChainView extends ItemView {
         const b = el.querySelector(".och-bubble") as HTMLElement;
         b.style.borderColor = "var(--green)"; b.style.borderWidth = "2px";
         b.style.boxShadow = "0 0 16px rgba(114,188,143,0.4)";
-        b.animate([{boxShadow:"0 0 0 0 rgba(114,188,143,0.6)"},{boxShadow:"0 0 12px 0 rgba(114,188,143,0)"}],{duration:700});
+        if (!reduceMotion) b.animate([{boxShadow:"0 0 0 0 rgba(114,188,143,0.6)"},{boxShadow:"0 0 12px 0 rgba(114,188,143,0)"}],{duration:700});
         const d = el.querySelector(".och-result") as HTMLElement;
         if (d) { d.style.display = "flex"; d.style.background = "var(--green)"; d.textContent = "✓"; d.getAnimations().forEach(a => a.cancel()); }
       }
@@ -378,7 +395,7 @@ export class ChainView extends ItemView {
         const b = el.querySelector(".och-bubble") as HTMLElement;
         b.style.borderColor = "var(--red)"; b.style.borderWidth = "2px";
         b.style.boxShadow = "0 0 16px rgba(233,115,102,0.4)";
-        b.animate([{boxShadow:"0 0 0 0 rgba(233,115,102,0.6)"},{boxShadow:"0 0 12px 0 rgba(233,115,102,0)"}],{duration:400});
+        if (!reduceMotion) b.animate([{boxShadow:"0 0 0 0 rgba(233,115,102,0.6)"},{boxShadow:"0 0 12px 0 rgba(233,115,102,0)"}],{duration:400});
         const d = el.querySelector(".och-result") as HTMLElement;
         if (d) { d.style.display = "flex"; d.style.background = "var(--red)"; d.textContent = "✗"; d.getAnimations().forEach(a => a.cancel()); }
       }
@@ -404,7 +421,7 @@ export class ChainView extends ItemView {
   private autoSave(): void {
     if(!this.currentChainId) return;
     const chain:Chain={id:this.currentChainId,name:this.chainNameEl.value,invocation:`@${this.currentChainId}`,description:`${this.nodes.length} agentes,${this.edges.length} conexiones`,projectId:"global",nodes:[...this.nodes],edges:[...this.edges],defaultForProject:false};
-    this.store.save(chain).catch(() => new Notice("⚠️ Error al guardar. ¿Existe sanctum-chains/?", 5000));
+    this.store.save(chain).catch(() => new Notice("Error al guardar. ¿Existe sanctum-chains/?", 5000));
   }
 
   private async saveChain(): Promise<void> {
@@ -421,7 +438,7 @@ export class ChainView extends ItemView {
     const menu=document.body.createDiv({cls:"s-thread-menu"}); menu.style.position="fixed"; menu.style.zIndex="10000";
     this.store.list().then(ids=>{
       if(ids.length===0) menu.createDiv({text:"No hay cadenas guardadas",attr:{style:"font-size:11px;color:var(--text-3);padding:6px 10px"}});
-      for(const id of ids){const row=menu.createDiv({cls:"s-thread-menu-item"}); this.store.load(id).then(c=>{if(!c)return; row.createSpan({text:`⛓️ ${c.name} (${c.nodes?.length||0} pasos)`,attr:{style:"flex:1"}}); row.onclick=()=>{this.loadChain(c!);menu.remove()};})}
+      for(const id of ids){const row=menu.createDiv({cls:"s-thread-menu-item"}); this.store.load(id).then(c=>{if(!c)return; row.createSpan({text:`${c.name} (${c.nodes?.length||0} pasos)`,attr:{style:"flex:1"}}); row.onclick=()=>{this.loadChain(c!);menu.remove()};})}
     });
     const{right:r,bottom:b}=this.chainNameEl.getBoundingClientRect(); menu.style.top=b+4+"px"; menu.style.right=window.innerWidth-r+"px";
     setTimeout(()=>document.addEventListener("click",()=>menu.remove(),{once:true}),0);
@@ -432,7 +449,7 @@ export class ChainView extends ItemView {
     const map=new Map<string,string>();
     for(const n of chain.nodes) map.set(n.id,this.addNode(n.agentId,n.x,n.y));
     setTimeout(()=>{for(const e of chain.edges){const f=map.get(e.from),t=map.get(e.to); if(f&&t) this.addEdge(f,t)}},50);
-    new Notice(`📂 Cadena "${chain.name}" cargada`);
+    new Notice(`Cadena "${chain.name}" cargada`);
   }
 
   // ── Zoom / UI ──
@@ -470,7 +487,7 @@ class ResultModal extends Modal {
     contentEl.style.maxHeight = "80vh";
     contentEl.style.overflowY = "auto";
 
-    contentEl.createDiv({ text: `📋 Resultado final (${this.steps} pasos)${this.hasError ? " — ⚠️ con errores" : ""}`, attr: { style: "font-weight:700;font-size:16px;color:var(--brand);margin-bottom:8px;padding-bottom:8px;border-bottom:2px solid var(--brand)" } });
+    contentEl.createDiv({ text: `Resultado final (${this.steps} pasos)${this.hasError ? " — con errores" : ""}`, attr: { style: "font-weight:700;font-size:16px;color:var(--brand);margin-bottom:8px;padding-bottom:8px;border-bottom:2px solid var(--brand)" } });
 
     // Critic score header
     if (this.criticScore) {

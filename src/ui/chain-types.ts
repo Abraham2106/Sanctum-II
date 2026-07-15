@@ -9,11 +9,11 @@ export interface ExecutionResult {
 }
 
 export const AGENT_TYPES = [
-  { id: "forager",    name: "Forager",     icon: "search",        lucide: "search",      color: "#5e9fe8", desc: "Recolecta y filtra fuentes del vault." },
-  { id: "researcher", name: "Researcher",  icon: "book-open",     lucide: "book-open",   color: "#72bc8f", desc: "Sintetiza e investiga en profundidad." },
-  { id: "critic",     name: "Critic",      icon: "scale",         lucide: "scale",       color: "#de9255", desc: "Revisa y cuestiona resultados." },
-  { id: "web-search", name: "Web Search",  icon: "globe",         lucide: "globe",       color: "#4fb9c9", desc: "Busca info actualizada en web." },
-  { id: "agente_base",name: "Agente Base", icon: "bot",           lucide: "bot",         color: "#bf8eda", desc: "Responde usando contexto RAG." },
+  { id: "forager",    name: "Forager",     icon: "search",        lucide: "search",      color: "#4caf7f", desc: "Recolecta y filtra fuentes del vault." },
+  { id: "researcher", name: "Researcher",  icon: "book-open",     lucide: "book-open",   color: "#5b9bd5", desc: "Sintetiza e investiga en profundidad." },
+  { id: "critic",     name: "Critic",      icon: "scale",         lucide: "scale",       color: "#e0a341", desc: "Revisa y cuestiona resultados." },
+  { id: "web-search", name: "Web Search",  icon: "globe",         lucide: "globe",       color: "#8b7cf6", desc: "Busca info actualizada en web." },
+  { id: "agente_base",name: "Agente Base", icon: "bot",           lucide: "bot",         color: "#9b9b9b", desc: "Responde usando contexto RAG." },
 ];
 
 let _counter = 1;

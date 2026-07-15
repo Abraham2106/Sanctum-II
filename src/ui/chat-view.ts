@@ -213,7 +213,7 @@ export class SanctumChatView extends ItemView {
     } catch (err: any) {
       this.messenger.messages.pop();
       thinkingEl?.remove();
-      this.messenger.addMsg("agent", `❌ Error: ${err.message}`, "bot Error");
+      this.messenger.addMsg("agent", `Error: ${err.message}`, "bot Error");
     }
     this.composer.inputEl.disabled = false;
     this.composer.sendBtn.disabled = false;
@@ -232,7 +232,7 @@ export class SanctumChatView extends ItemView {
     this.composer.inputEl.disabled = true;
     this.composer.sendBtn.disabled = true;
 
-    this.messenger.addMsg("agent", "⏳ Ejecutando pipeline Forager → Researcher → Critic…", "shuffle Mesh");
+    this.messenger.addMsg("agent", "Ejecutando pipeline Forager → Researcher → Critic…", "shuffle Mesh");
     this.composer.showPipeline(true, "forager");
 
     try {
@@ -261,10 +261,10 @@ export class SanctumChatView extends ItemView {
       }
       this.messenger.messages.push({ role: "agent", content: `[escalated] ${result.researcherOutput}`, label, timestamp: Date.now() });
     } else {
-      let acceptMsg = `${result.researcherOutput}\n\n---\n**⚖️ Evaluación del Critic:** Aceptado con ${result.criticScore}/100.`;
+      let acceptMsg = `${result.researcherOutput}\n\n---\n**Evaluación del Critic:** Aceptado con ${result.criticScore}/100.`;
       if (result.createdNotePath) {
         const noteName = result.createdNotePath.replace(/\.md$/i, "");
-        acceptMsg += `\n\n📁 Nota guardada en: [[${noteName}]]`;
+        acceptMsg += `\n\nNota guardada en: [[${noteName}]]`;
       }
       this.messenger.addMsg("agent", acceptMsg, label, { meshMeta: { attempts: result.attempts, score: result.criticScore, verdict: "accept" } });
       // Mini score bar
@@ -288,7 +288,7 @@ export class SanctumChatView extends ItemView {
       this.messenger.messages.pop();
       this.threadEl.lastElementChild?.remove();
       this.composer.showPipeline(false);
-      this.messenger.addMsg("agent", `❌ Error en el mesh: ${err.message}`, "shuffle Error");
+      this.messenger.addMsg("agent", `Error en el mesh: ${err.message}`, "shuffle Error");
     }
     this.composer.inputEl.disabled = false;
     this.composer.sendBtn.disabled = false;
