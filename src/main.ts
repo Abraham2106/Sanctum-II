@@ -3,7 +3,7 @@ import { getEnv } from "./core/env-loader";
 import { GeminiBalancer } from "./embeddings/gemini-balancer";
 import { OpenCodeClient } from "./llm/opencode-client";
 import { loadAgentFromVault } from "./agents/agent-loader";
-import { fallbackAgent, FALLBACK_SYSTEM_PROMPT } from "./agents/fallback";
+import { fallbackAgent } from "./agents/fallback";
 import type { AgentDefinition } from "./agents/types";
 import { VectorStore } from "./rag/vector-store";
 import { indexResearchFolder } from "./rag/indexer";
@@ -15,8 +15,7 @@ import { SanctumChatView, type ChatViewPlugin } from "./ui/chat-view";
 import { SanctumSettingTab, type SettingsTabPlugin } from "./ui/settings-tab";
 import { registerCommands } from "./core/commands";
 import { testEmbeddings as testEmbeddingsFn, testChat as testChatFn } from "./core/tests";
-import { executeWriteIntent, createNoteAction, canWriteToPath } from "./orchestrator/note-generator";
-import type { NoteGenDeps } from "./orchestrator/note-generator";
+import { createNoteAction } from "./orchestrator/note-generator";
 import { runMeshWithCritic } from "./orchestrator/mesh";
 import type { MeshResultFull } from "./orchestrator/mesh";
 import { KgEdgeStore } from "./kg/kg-store";
@@ -28,43 +27,41 @@ import { ProjectsView, VIEW_TYPE_PROJECTS } from "./ui/projects-view";
 import { ChainView, VIEW_TYPE_CHAINS } from "./ui/chain-view";
 import { ChainStore } from "./chains/store";
 import { ProjectStore } from "./projects/store";
-import type { Project, MemoryEntry } from "./projects/types";
+import type { Project } from "./projects/types";
 import { buildProjectContext } from "./projects/context";
-import type { ProjectContext } from "./projects/context";
 import { indexProject } from "./projects/indexer";
-import { classifyIntent, detectPendingAction } from "./orchestrator/conversation";
+
 import { executeTurn } from "./orchestrator/agent-turn";
 import { AppServices } from "./app/services";
 import { ChatOrchestrator } from "./app/chat-orchestrator";
+import { parseWriteIntent as parseWriteIntentFromUtils } from "./utils";
 
 
 export default class SanctumPlugin extends Plugin implements ChatViewPlugin, SettingsTabPlugin {
-  settings: SanctumSettings;
-  geminiBalancer: GeminiBalancer;
-  opencodeClient: OpenCodeClient;
-  vectorStore: VectorStore;
+  settings!: SanctumSettings;
+  geminiBalancer!: GeminiBalancer;
+  opencodeClient!: OpenCodeClient;
+  vectorStore!: VectorStore;
   agent: AgentDefinition | null = null;
   activeFolder: string | null = null;
-  noteWriter: NoteWriter;
-  tracer: Tracer;
-  kgEdgeStore: KgEdgeStore;
-  projectStore: ProjectStore;
-  chainStore: ChainStore;
+  noteWriter!: NoteWriter;
+  tracer!: Tracer;
+  kgEdgeStore!: KgEdgeStore;
+  projectStore!: ProjectStore;
+  chainStore!: ChainStore;
   services!: AppServices;
   chatOrch!: ChatOrchestrator;
 
+  get agentName(): string { return this.agent?.name || this.services?.agent?.name || "Sanctum"; }
+  get pathFilter(): string[] | undefined { return this.services?.pathFilter; }
+
   private vectorStores = new Map<string, VectorStore>();
-  private activeProject: Project | null = null;
-  private activeProjectContext: ProjectContext | null = null;
-  private activeThreadId: string = "";
-  private skillContext: Skill | null = null;
 
   async getSkills(): Promise<Skill[]> { return listSkills(this.app.vault.adapter); }
   async setSkillContext(skillId: string | null): Promise<void> {
-    this.skillContext = skillId ? await loadSkill(this.app.vault.adapter, skillId) : null;
-    if (skillId && this.skillContext) new Notice(`🧠 Skill activo: ${this.skillContext.name}`);
-    else this.skillContext = null;
-    this.services.skillContext = this.skillContext;
+    this.services.skillContext = skillId ? await loadSkill(this.app.vault.adapter, skillId) : null;
+    if (skillId && this.services.skillContext) new Notice(`🧠 Skill activo: ${this.services.skillContext.name}`);
+    else this.services.skillContext = null;
   }
 
   async onload(): Promise<void> {
@@ -75,7 +72,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     await this.loadAgent();
     this.noteWriter = new NoteWriter(this.app.vault.adapter);
     this.tracer = new Tracer(this.app.vault.adapter);
-    this.app.vault.adapter.write("sanctum-logs/traces/.gitkeep", "").catch(() => {});
+    this.app.vault.adapter.write("sanctum-logs/traces/.gitkeep", "").catch((err: any) => { if (err) console.warn("[Init] traces dir:", err.message); });
 
     this.kgEdgeStore = new KgEdgeStore();
     await this.kgEdgeStore.load(this.app.vault.adapter);
@@ -84,7 +81,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     this.projectStore = new ProjectStore(this.app.vault.adapter);
     this.chainStore = new ChainStore(this.app.vault.adapter);
     // Ensure chain directory exists
-    await this.app.vault.adapter.write("sanctum-chains/.gitkeep", "").catch(() => {});
+    await this.app.vault.adapter.write("sanctum-chains/.gitkeep", "").catch((err: any) => { if (err) console.warn("[Init] chains dir:", err.message); });
 
     // ── Init AppServices ──
     this.services = new AppServices();
@@ -102,10 +99,10 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
       settings: this.settings,
       agent: this.agent,
       activeFolder: this.activeFolder,
-      activeProject: this.activeProject,
-      activeProjectContext: this.activeProjectContext,
-      activeThreadId: this.activeThreadId,
-      skillContext: this.skillContext,
+      activeProject: null,
+      activeProjectContext: null,
+      activeThreadId: this.generateThreadId(),
+      skillContext: null,
       getSkills: () => this.getSkills(),
       setSkillContext: (id: string | null) => this.setSkillContext(id),
     });
@@ -118,18 +115,19 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     // ── Register views ──
     this.registerView(VIEW_TYPE_SANCTUM, (leaf) => {
       const view = new SanctumChatView(leaf, this);
-      view.setThreadId(this.activeThreadId);
+      view.setThreadId(this.services.activeThreadId);
       return view;
     });
     this.registerView(VIEW_TYPE_KG, (leaf) => new KgView(leaf, {
       edgeStore: this.kgEdgeStore,
       onSendToChat: (seed) => new Notice(`Enviando "${seed}" al chat…`),
     }));
-    this.registerView(VIEW_TYPE_PROJECTS, (leaf) => new ProjectsView(leaf, { projectStore: this.projectStore, geminiBalancer: this.geminiBalancer, getActiveProjectId: () => this.activeProject?.id || this.settings.activeProjectId, getVectorStore: (id) => this.getVectorStoreForProject(id), onSelectProject: (id) => this.setActiveProject(id), onOpenThread: async (message, threadId) => { if (threadId) this.activeThreadId = threadId; else this.activeThreadId = this.generateThreadId(); await this.initLeaf(); const chatViews = this.app.workspace.getLeavesOfType(VIEW_TYPE_SANCTUM); for (const leaf of chatViews) { const view = leaf.view as any; if (view) { view.setThreadId(this.activeThreadId); if (message) await view.postMessage(message); else if (view.reloadForProject) await view.reloadForProject(this.activeThreadId); break; } } this.refreshProjectViews(); }, loadMemory: (id) => this.projectStore.loadMemory(id), appendMemory: async (text, source) => { const pid = this.activeProject?.id || this.settings.activeProjectId; await this.projectStore.appendMemory(pid, { text, source: source || "manual", timestamp: Date.now() }); }, saveProject: (p) => this.projectStore.saveProject(p), getVectorCount: (id) => this.vectorStores.get(id)?.count || 0 }));
+    this.registerView(VIEW_TYPE_PROJECTS, (leaf) => new ProjectsView(leaf, { projectStore: this.projectStore, geminiBalancer: this.geminiBalancer, getActiveProjectId: () => this.services.activeProject?.id || this.settings.activeProjectId, getVectorStore: (id) => this.getVectorStoreForProject(id), onSelectProject: (id) => this.setActiveProject(id), onOpenThread: async (message, threadId) => { if (threadId) this.services.activeThreadId = threadId; else this.services.activeThreadId = this.generateThreadId(); await this.initLeaf(); const chatViews = this.app.workspace.getLeavesOfType(VIEW_TYPE_SANCTUM); for (const leaf of chatViews) { const view = leaf.view as any; if (view) { view.setThreadId(this.services.activeThreadId); if (message) await view.postMessage(message); else if (view.reloadForProject) await view.reloadForProject(this.services.activeThreadId); break; } } this.refreshProjectViews(); }, loadMemory: (id) => this.projectStore.loadMemory(id), appendMemory: async (text, source) => { const pid = this.services.activeProject?.id || this.settings.activeProjectId; await this.projectStore.appendMemory(pid, { text, source: source || "manual", timestamp: Date.now() }); }, saveProject: (p) => this.projectStore.saveProject(p), getVectorCount: (id) => this.vectorStores.get(id)?.count || 0 }));
     this.registerView(VIEW_TYPE_CHAINS, (leaf) => new ChainView(leaf, {
       chainStore: this.chainStore,
       vaultAdapter: this.app.vault.adapter,
       getTurnDeps: () => ({
+        agent: this.agent || fallbackAgent(),
         opencodeClient: this.opencodeClient,
         geminiBalancer: this.geminiBalancer,
         vectorStore: this.vectorStore,
@@ -137,8 +135,8 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
         tavilyApiKey: this.settings.tavilyApiKey,
         kgOptions: this.services.kgOptions,
         edgeStore: this.kgEdgeStore,
-        projectContext: this.activeProjectContext || undefined,
-        skillContext: this.skillContext || undefined,
+        projectContext: this.services.activeProjectContext || undefined,
+        skillContext: this.services.skillContext || undefined,
       }),
     }));
     this.addRibbonIcon("bot", "Sanctum II — Chat", () => this.initLeaf());
@@ -167,8 +165,14 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     if (this.services) this.services.settings = this.settings;
   }
 
-  loadAgent(): void {
-    loadAgentFromVault(this.app.vault.adapter).then(a => { this.agent = a; if (this.services) this.services.agent = a; }).catch(() => {});
+  async loadAgent(): Promise<void> {
+    try {
+      const a = await loadAgentFromVault(this.app.vault.adapter);
+      this.agent = a;
+      if (this.services) this.services.agent = a;
+    } catch (err: any) {
+      console.warn("[Agent] fallback active — default agent not found:", err.message);
+    }
   }
 
   rebuildClients(): void {
@@ -179,6 +183,19 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     );
     this.geminiBalancer = new GeminiBalancer(this.settings.geminiApiKeys || env.GEMINI_API_KEYS);
     if (!this.settings.tavilyApiKey) this.settings.tavilyApiKey = env.TAVILY_API_KEY;
+  }
+
+  async getLatestTrace(): Promise<string> {
+    try {
+      const listing = await this.app.vault.adapter.list("sanctum-logs/traces");
+      const traces = (listing.files || []).filter(f => f.endsWith(".json"));
+      if (traces.length === 0) return "No hay traces.";
+      traces.sort().reverse();
+      return await this.app.vault.adapter.read(traces[0]);
+    } catch (err: any) {
+      console.warn("[Trace] getLatestTrace:", err.message);
+      return "Error al leer traces.";
+    }
   }
 
   // ── Chat ──
@@ -231,8 +248,8 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
         tavilyApiKey: this.settings.tavilyApiKey,
         kgOptions: this.services.kgOptions,
         edgeStore: this.kgEdgeStore,
-        projectContext: this.activeProjectContext || undefined,
-        skillContext: this.skillContext || undefined,
+        projectContext: this.services.activeProjectContext || undefined,
+        skillContext: this.services.skillContext || undefined,
       });
       if (result.criticVerdict === "accept" && writeIntent) {
         if (!noteName) {
@@ -240,9 +257,16 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
           if (fileMatch) noteName = fileMatch[1].trim().replace(/[<>:"/\\|?*]/g, "").slice(0, 60) + ".md";
           else noteName = `${writeIntent.topic.replace(/\s+/g, "-").slice(0, 40)}.md`;
         }
-        const wr = await this.noteWriter.create(noteName, result.researcherOutput);
-        if (wr.success) result.createdNotePath = wr.path;
-        else new Notice(`⚠️ ${wr.message}`);
+        const outputPath = this.services.activeProject?.outputPath || "Research";
+        const noteFullPath = `${outputPath}/${noteName}`;
+        const { canWriteToPath } = await import("./orchestrator/note-generator");
+        if (!canWriteToPath(noteFullPath, this.services.activeProject?.write_paths || [])) {
+          new Notice(`⚠️ Permiso denegado: no se puede escribir en ${noteFullPath}`);
+        } else {
+          const wr = await this.noteWriter.create(noteName, result.researcherOutput);
+          if (wr.success) result.createdNotePath = wr.path;
+          else new Notice(`⚠️ ${wr.message}`);
+        }
       }
       notice.hide();
       return result;
@@ -256,7 +280,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
   private async initProjects(): Promise<void> {
     if (!this.settings.projectsEnabled) return;
-    const ensureDir = async (dir: string) => { await this.app.vault.adapter.write(`${dir}/.gitkeep`, "").catch(() => {}); };
+    const ensureDir = async (dir: string) => { await this.app.vault.adapter.write(`${dir}/.gitkeep`, "").catch((err: any) => { if (err) console.warn(`[Init] ensureDir ${dir}:`, err.message); }); };
     await ensureDir("sanctum-projects");
     const exists = await this.projectStore.projectExists(this.settings.activeProjectId).catch(() => false);
     if (!exists) {
@@ -285,7 +309,12 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     try {
       const project = await this.projectStore.loadProject(projectId);
       // Ensure Projects/{projectId}/ directory exists for generated notes
-      const ensureDir = async (dir: string) => { await this.app.vault.adapter.write(`${dir}/.gitkeep`, "").catch(() => {}); };
+      const ensureDir = async (dir: string) => {
+        const parts = dir.split("/");
+        for (let i = 1; i <= parts.length; i++) {
+          try { await this.app.vault.adapter.write(`${parts.slice(0, i).join("/")}/.gitkeep`, ""); } catch (err: any) { if (err) console.warn(`[Project] mkdir ${parts.slice(0, i).join("/")}:`, err.message); }
+        }
+      };
       await ensureDir(`Projects/${projectId}`);
       // Migrate old project files: add Projects/{id}/ to paths if missing
       const projPath = `/Projects/${projectId}/`;
@@ -297,22 +326,16 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
       const { store, load } = this.getVectorStoreForProject(projectId);
       await load();
       this.vectorStore = store;
-      this.activeProject = project;
+      this.services.activeProject = project;
       this.settings.activeProjectId = projectId;
-      this.activeProjectContext = await buildProjectContext(project, (id) => this.projectStore.loadMemory(id));
-      if (newThread) this.activeThreadId = this.generateThreadId();
+      this.services.activeProjectContext = await buildProjectContext(project, (id) => this.projectStore.loadMemory(id));
+      if (newThread) this.services.activeThreadId = this.generateThreadId();
+      this.services.vectorStore = this.vectorStore;
       await this.saveSettings();
       new Notice(`Proyecto activo: ${project.name}`);
       if (this.settings.projectReindexOnOpen) await indexProject(this.app.vault.adapter, this.geminiBalancer, project, this.vectorStore);
       this.rebuildKgEdges();
       this.refreshChatViews();
-      // Sync services
-      if (this.services) {
-        this.services.vectorStore = this.vectorStore;
-        this.services.activeProject = this.activeProject;
-        this.services.activeProjectContext = this.activeProjectContext;
-        this.services.activeThreadId = this.activeThreadId;
-      }
     } catch (err: any) { new Notice("Error al cambiar de proyecto: " + err.message); }
   }
 
@@ -339,45 +362,29 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
       enabled: this.settings.kgEnabled, minSimilarity: this.settings.kgMinSimilarity, hops: this.settings.kgHops, maxNeighborsPerHop: 3,
       useExplicit: this.settings.kgUseExplicit, reinforceBoost: this.settings.kgReinforceBoost,
     });
-    this.kgEdgeStore.save(this.app.vault.adapter).catch(() => {});
+    this.kgEdgeStore.save(this.app.vault.adapter).catch((err: any) => { if (err) console.warn("[KG] onNoteModified save:", err.message); });
   }
 
   // ── Threads ──
 
   private generateThreadId(): string { return `thread_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
 
-  getActiveThreadId(): string { return this.activeThreadId; }
-  getActiveProjectName(): string { return this.activeProject?.name || this.settings.activeProjectId || "default"; }
-  getActiveProjectIcon(): string { return this.activeProject?.icon || "◈"; }
+  getActiveThreadId(): string { return this.services.activeThreadId; }
+  getActiveProjectName(): string { return this.services.activeProject?.name || this.settings.activeProjectId || "default"; }
+  getActiveProjectIcon(): string { return this.services.activeProject?.icon || "◈"; }
 
   async loadThreadMessages(threadId: string): Promise<any[]> {
-    if (!this.activeProject || !threadId) return [];
-    const data = await this.projectStore.loadThreadData(this.activeProject.id, threadId);
+    if (!this.services.activeProject || !threadId) return [];
+    const data = await this.projectStore.loadThreadData(this.services.activeProject.id, threadId);
     return data?.messages || [];
   }
 
   async saveThreadMessages(threadId: string, messages: any[]): Promise<void> {
-    if (!this.activeProject || !threadId) return;
-    const existing = await this.projectStore.loadThreadData(this.activeProject.id, threadId);
-    const thread: any = existing?.thread || { thread_id: threadId, project_id: this.activeProject.id, title: "Nueva conversación", created_at: Date.now(), updated_at: Date.now(), starred: false };
-    thread.updated_at = Date.now();
-    thread.title = messages.find((m: any) => m.role === "user")?.content?.slice(0, 60) || thread.title;
-    await this.projectStore.saveThreadData(this.activeProject.id, thread, messages, existing || undefined);
+    if (!this.services.activeProject || !threadId) return;
+    await this.projectStore.updateThreadMessages(this.services.activeProject.id, threadId, messages);
   }
 
   // ── Other legacy methods ──
-
-  private get agentOrFallback(): AgentDefinition { return this.agent || fallbackAgent(); }
-
-  private get pathFilter(): string[] | undefined { return this.activeFolder ? [`${this.activeFolder}/**`] : undefined; }
-
-  private get systemPrompt(): string { return this.agent?.system_prompt || FALLBACK_SYSTEM_PROMPT; }
-
-  private get agentName(): string { return this.agent?.name || "Agente Base"; }
-
-  private get noteGenDeps(): NoteGenDeps {
-    return { adapter: this.app.vault.adapter, opencodeClient: this.opencodeClient, geminiBalancer: this.geminiBalancer, vectorStore: this.vectorStore, tracer: this.tracer, agent: this.agentOrFallback, noteWriter: this.noteWriter, pathFilter: this.pathFilter, activeFolder: this.activeFolder || undefined };
-  }
 
   async indexResearch(folder?: string): Promise<void> {
     if (!this.geminiBalancer.hasKeys) { new Notice("Necesitás GEMINI_API_KEYS para indexar"); return; }
@@ -388,7 +395,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
       const result = await indexResearchFolder(this.app.vault.adapter, this.geminiBalancer, this.vectorStore, folder);
       const storePath = this.vectorStore.getStorePath();
       const dir = storePath.substring(0, storePath.lastIndexOf("/"));
-      await this.app.vault.adapter.write(`${dir}/.gitkeep`, "").catch(() => {});
+      await this.app.vault.adapter.write(`${dir}/.gitkeep`, "").catch((_err: any) => {});
       await this.vectorStore.save(this.app.vault.adapter);
       notice.hide();
       if (result.errors.length > 0) {
@@ -399,11 +406,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   }
 
   parseWriteIntent(text: string): { name?: string; topic: string } | null {
-    const match = text.match(/cre[áa]\s*una\s+nota\s+llamada\s+["']?([^"'\n]+)["']?(?:\s+sobre\s+(.+))?/i);
-    if (match) return { name: match[1].trim(), topic: match[2]?.trim() || match[1].trim() };
-    const topicMatch = text.match(/cre[áa]\s*una\s+nota\s+(?:sobre\s+)?(.+)/i);
-    if (topicMatch) return { topic: topicMatch[1].trim() };
-    return null;
+    return parseWriteIntentFromUtils(text);
   }
 
   // ── Diagnostics and actions (required by ChatViewPlugin / SettingsTabPlugin) ──
@@ -435,7 +438,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
           vectorStore: this.vectorStore,
           tracer: this.tracer,
           tavilyApiKey: this.settings.tavilyApiKey,
-          projectContext: this.activeProjectContext || undefined,
+          projectContext: this.services.activeProjectContext || undefined,
         },
         prompt,
         false,
@@ -468,39 +471,23 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
   // ── View activation ──
 
-  async initLeaf(): Promise<void> {
+  private async activateView(viewType: string): Promise<void> {
     const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(VIEW_TYPE_SANCTUM)[0];
-    if (!leaf) { leaf = workspace.getRightLeaf(false); await leaf!.setViewState({ type: VIEW_TYPE_SANCTUM, active: true }); }
+    let leaf = workspace.getLeavesOfType(viewType)[0];
+    if (!leaf) { leaf = workspace.getRightLeaf(false)!; await leaf.setViewState({ type: viewType, active: true }); }
     workspace.revealLeaf(leaf);
   }
 
-  async activateKgView(): Promise<void> {
-    const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(VIEW_TYPE_KG)[0];
-    if (!leaf) { leaf = workspace.getRightLeaf(false); await leaf!.setViewState({ type: VIEW_TYPE_KG, active: true }); }
-    workspace.revealLeaf(leaf);
-  }
-
-  async activateProjectsView(): Promise<void> {
-    const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(VIEW_TYPE_PROJECTS)[0];
-    if (!leaf) { leaf = workspace.getRightLeaf(false); await leaf!.setViewState({ type: VIEW_TYPE_PROJECTS, active: true }); }
-    workspace.revealLeaf(leaf);
-  }
-
-  async activateChainsView(): Promise<void> {
-    const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(VIEW_TYPE_CHAINS)[0];
-    if (!leaf) { leaf = workspace.getRightLeaf(false); await leaf!.setViewState({ type: VIEW_TYPE_CHAINS, active: true }); }
-    workspace.revealLeaf(leaf);
-  }
+  async initLeaf(): Promise<void> { return this.activateView(VIEW_TYPE_SANCTUM); }
+  async activateKgView(): Promise<void> { return this.activateView(VIEW_TYPE_KG); }
+  async activateProjectsView(): Promise<void> { return this.activateView(VIEW_TYPE_PROJECTS); }
+  async activateChainsView(): Promise<void> { return this.activateView(VIEW_TYPE_CHAINS); }
 
   private refreshChatViews(): void {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_SANCTUM);
     for (const leaf of leaves) {
       const view = leaf.view as any;
-      if (view?.reloadForProject) view.reloadForProject(this.activeThreadId);
+      if (view?.reloadForProject) view.reloadForProject(this.services.activeThreadId);
     }
   }
 

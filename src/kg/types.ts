@@ -8,7 +8,7 @@ export interface KgEdge {
 
 export interface KgExpansionResult {
   edges_traversed: KgEdge[];
-  added_chunks: { note_path: string; chunk_text: string; score: number }[];
+  added_chunks: { note_path: string; chunk_text: string; score: number; relation?: string }[];
   seed_notes: string[];
   neighbor_notes: string[];
 }

@@ -15,11 +15,12 @@ import type { Skill } from "../skills/types";
 import { buildConversationPayload } from "./conversation";
 import type { ConversationMessage } from "./conversation";
 import { pathMatchesAny } from "../utils";
+import { RAG_DEFAULTS } from "../constants";
 
-const MIN_SIMILARITY = 0.65;
+const MIN_SIMILARITY = RAG_DEFAULTS.MIN_SIMILARITY;
 
 export interface TurnDeps {
-  agent: AgentDefinition;
+  agent?: AgentDefinition;
   opencodeClient: OpenCodeClient;
   geminiBalancer: GeminiBalancer;
   vectorStore: VectorStore;
@@ -54,8 +55,8 @@ export async function executeTurn(
   const project = deps.projectContext?.project;
   const topK = project?.rag?.top_k || 5;
   const minSim = project?.rag?.min_similarity || MIN_SIMILARITY;
-  const activePathFilter = pathFilter?.length ? pathFilter : project?.read_paths;
-  const agentPerms = deps.agent.permissions?.read_paths;
+  const activePathFilter = pathFilter !== undefined ? pathFilter : (project?.read_paths ?? []);
+  const agentPerms = deps.agent?.permissions?.read_paths;
 
   let ragContext = "";
   if (!skipRag && deps.geminiBalancer.hasKeys && deps.vectorStore.count > 0) {
@@ -93,24 +94,20 @@ export async function executeTurn(
           chunk: ac.chunk_text,
           similarity_score: ac.score,
           from_note: ac.note_path,
-          relation: ac.relation as any,
+          relation: (ac as any).relation,
         });
       }
     }
 
     const beforeFilterCount = results.length;
-    if (activePathFilter && activePathFilter.length > 0) {
-      results = deps.vectorStore.filterByPaths(results, activePathFilter);
-    }
-    if (agentPerms && agentPerms.length > 0) {
+    results = deps.vectorStore.filterByPaths(results, activePathFilter);
+    if (agentPerms !== undefined) {
       results = deps.vectorStore.filterByPaths(results, agentPerms);
     }
     if (beforeFilterCount > 0 && results.length === 0) {
       console.warn(`[Permissions] Filtro combinado vacío (${beforeFilterCount} chunks descartados). pathFilter=${JSON.stringify(activePathFilter || "none")}, agent.read_paths=${JSON.stringify(agentPerms || "none")}`);
     }
-    if (activePathFilter?.length || agentPerms?.length) {
-      console.log(`[RAG] post-filter (pathFilter=${JSON.stringify(activePathFilter || "none")} × agentPerms=${JSON.stringify(agentPerms || "none")}): ${results.length} chunks`);
-    }
+    console.log(`[RAG] post-filter (pathFilter=${JSON.stringify(activePathFilter || "none")} × agentPerms=${JSON.stringify(agentPerms || "none")}): ${results.length} chunks`);
     results = results.slice(0, topK);
     if (results.length === 0) {
       const samplePaths = deps.vectorStore.allChunks.slice(0, 3).map(c => c.note_path).join(", ");
@@ -134,7 +131,7 @@ export async function executeTurn(
   }
 
   let webContext = "";
-  if (hasWebSearchTool(deps.agent, deps.skillContext)) {
+  if (deps.agent && hasWebSearchTool(deps.agent, deps.skillContext)) {
     if (!deps.tavilyApiKey) {
       console.warn("Sanctum: Tavily API key no configurada — web search saltado");
     } else {
@@ -150,7 +147,7 @@ export async function executeTurn(
     }
   }
 
-  let renderedPrompt = renderSystemPrompt(deps.agent, ragContext, userInput);
+  let renderedPrompt = deps.agent ? renderSystemPrompt(deps.agent, ragContext, userInput) : userInput;
   renderedPrompt = renderedPrompt.replace(/\{\{web_context\}\}/g, webContext || "");
 
   if (deps.projectContext?.systemPrefix) {
@@ -159,10 +156,10 @@ export async function executeTurn(
 
   if (deps.skillContext?.instructions) {
     if (deps.skillContext.tools?.length) {
-      const agentTools = new Set(deps.agent.tools || []);
+      const agentTools = new Set(deps.agent?.tools || []);
       const extraTools = deps.skillContext.tools.filter(t => !agentTools.has(t));
       if (extraTools.length > 0) {
-        console.log(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent.id}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent.permissions?.read_paths || "none")}.`);
+        console.log(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent?.id || "unknown"}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent?.permissions?.read_paths || "none")}.`);
       }
     }
     renderedPrompt = `--- Skill: ${deps.skillContext.name} ---\n${deps.skillContext.instructions}\n\n---\n\n${renderedPrompt}`;

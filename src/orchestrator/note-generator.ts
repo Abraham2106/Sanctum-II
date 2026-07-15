@@ -39,7 +39,7 @@ async function generateNoteContent(deps: NoteGenDeps, instruction: string): Prom
   const basePath = deps.outputPath || RESEARCH_PATH;
   const path = `${basePath}/${slugify(title)}.md`;
 
-  if (deps.writePaths.length > 0 && !canWriteToPath(path, deps.writePaths)) {
+  if (!canWriteToPath(path, deps.writePaths)) {
     throw new Error(`Sin permisos de escritura para ${path}`);
   }
 
@@ -65,6 +65,11 @@ export async function executeWriteIntent(deps: NoteGenDeps, intent: { name: stri
   }
 }
 
+/**
+ * Intentionally inconsistent with executeWriteIntent: this function THROWs on error
+ * (caller shows Notice) while executeWriteIntent returns error as string (caller
+ * displays as chat content). Both patterns fit their respective callers.
+ */
 export async function createNoteAction(deps: NoteGenDeps): Promise<string> {
   const instruction = makeInstruction("un tema interesante de investigación");
   deps.tracer.start(deps.agent.id, deps.agent.system_prompt, instruction);

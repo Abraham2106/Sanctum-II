@@ -129,16 +129,16 @@ export class VectorStore {
             }
           }
         } catch (e) {
-          console.warn("Error parsing transaction line in vector store log:", e);
+          console.error("Error parsing transaction line in vector store log:", e);
         }
       }
       this.chunks = Array.from(this.chunksMap.values());
-      console.log(`[VectorStore] ✅ Loaded ${this.chunks.length} chunks from ${this.storePath}`);
+      console.error(`[VectorStore] ✅ Loaded ${this.chunks.length} chunks from ${this.storePath}`);
     } catch {
       this.chunksMap.clear();
       this.noteToChunksMap.clear();
       this.chunks = [];
-      console.log(`[VectorStore] 📄 No existing store at ${this.storePath} — starting empty`);
+      console.error(`[VectorStore] 📄 No existing store at ${this.storePath} — starting empty`);
     }
   }
 
@@ -160,12 +160,12 @@ export class VectorStore {
       await adapter.write(this.storePath, fileContent);
       this.shouldTruncate = false;
       this.pendingTxns = [];
-      console.log(`[VectorStore] 💾 Truncate-saved ${this.chunks.length} chunks to ${this.storePath} (${(fileContent.length / 1024).toFixed(1)}KB)`);
+      console.error(`[VectorStore] 💾 Truncate-saved ${this.chunks.length} chunks to ${this.storePath} (${(fileContent.length / 1024).toFixed(1)}KB)`);
     } else if (this.pendingTxns.length > 0) {
       const appendContent = this.pendingTxns.join("") ;
       await appendToFile(adapter, this.storePath, appendContent);
       this.pendingTxns = [];
-      console.log(`[VectorStore] 💾 Append-saved ${this.pendingTxns.length} txns to ${this.storePath}`);
+      console.error(`[VectorStore] 💾 Append-saved ${this.pendingTxns.length} txns to ${this.storePath}`);
     }
   }
 

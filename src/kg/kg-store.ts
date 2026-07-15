@@ -87,7 +87,7 @@ export class KgEdgeStore {
     }
   }
 
-  async save(adapter: { write: (p: string, content: string) => Promise<void> }): Promise<void> {
+  async save(adapter: { write: (p: string, content: string) => Promise<void>; read?: (p: string) => Promise<string>; append?: (p: string, content: string) => Promise<void> }): Promise<void> {
     if (this.shouldTruncate) {
       const txns: string[] = [];
       for (const edge of this.edgesMap.values()) {
@@ -106,7 +106,7 @@ export class KgEdgeStore {
         await adapter.append(STORE_PATH, appendContent);
       } else {
         let existing = "";
-        try { existing = await adapter.read(STORE_PATH); } catch {}
+        try { existing = (await adapter.read?.(STORE_PATH)) || ""; } catch {}
         await adapter.write(STORE_PATH, existing + appendContent);
       }
       this.pendingTxns = [];
