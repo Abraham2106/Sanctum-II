@@ -16,7 +16,7 @@ function parseSkillMd(content: string): Skill {
     const key = trimmed.slice(0, colonIdx).trim();
     let value: any = trimmed.slice(colonIdx + 1).trim();
     if (value.startsWith("[") && value.endsWith("]")) {
-      value = value.slice(1, -1).split(",").map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+      value = value.slice(1, -1).split(",").map((s: string) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
     } else if (value === "true" || value === "false") {
       value = value === "true";
     } else if (!isNaN(Number(value))) {

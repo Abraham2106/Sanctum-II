@@ -6,7 +6,8 @@ import type { NoteWriter } from "../core/note-writer";
 import type { KgEdgeStore } from "../kg/kg-store";
 import type { ProjectStore } from "../projects/store";
 import type { ChainStore } from "../chains/store";
-import type { Project, ProjectContext } from "../projects/types";
+import type { Project } from "../projects/types";
+import type { ProjectContext } from "../projects/context";
 import type { Skill } from "../skills/types";
 import type { SanctumSettings } from "../constants";
 import type { AgentDefinition } from "../agents/types";
@@ -23,6 +24,12 @@ export interface VaultAdapter {
  * Central dependency injection container.
  * Holds references to all application services and runtime state.
  * ItemViews and orchestrators receive this instead of individual deps.
+ *
+ * KNOWN DEBT: All fields use `!` (definite assignment assertion) with no runtime
+ * validation. A caller accessing an uninitialized field gets undefined at best, a
+ * crash at worst. Fix: replace with a factory function that returns a fully-
+ * initialized AppServices instance, or add getters that throw if accessed before
+ * initialization.
  */
 export class AppServices {
   // ── Infrastructure ──

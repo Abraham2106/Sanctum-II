@@ -1,16 +1,12 @@
 import type { MemoryEntry, Project, Thread, ThreadData, PendingAction, CreatedNote } from "./types";
 import { defaultProject } from "./types";
+import { PROJECTS_DIR, DEFAULT_MODEL } from "../constants";
+import { parseScalar } from "../shared/agents/frontmatter";
 
-const PROJECTS_DIR = "sanctum-projects";
-
-function parseScalar(value: string): any {
-  value = value.trim();
-  if (value.startsWith("[") && value.endsWith("]")) {
-    return value.slice(1, -1).split(",").map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-  }
-  if (value === "true" || value === "false") return value === "true";
-  if (!isNaN(Number(value)) && value !== "") return Number(value);
-  return value.replace(/^["']|["']$/g, "");
+/** Strip path separators and control chars from thread/project IDs to prevent path traversal */
+function sanitizeId(id: string): string {
+  if (!id) return id;
+  return id.replace(/[/\\:;!@#$%^&*()<>"'|?*~`]/g, "").slice(0, 120);
 }
 
 function parseProjectMd(content: string): Project {
@@ -80,7 +76,7 @@ function parseProjectMd(content: string): Project {
   const id = data.id || "project";
   let attachedFiles: any[] = [];
   if (data.attachedFiles) {
-    try { attachedFiles = typeof data.attachedFiles === "string" ? JSON.parse(data.attachedFiles) : data.attachedFiles; } catch {}
+    try { attachedFiles = typeof data.attachedFiles === "string" ? JSON.parse(data.attachedFiles) : data.attachedFiles; } catch (err: any) { console.warn("[Store] attachedFiles parse:", err.message); }
   }
   return {
     id,
@@ -91,7 +87,7 @@ function parseProjectMd(content: string): Project {
     read_paths: data.read_paths || [],
     write_paths: data.write_paths || [],
     outputPath: data.outputPath || `Projects/${id}`,
-    model: data.model || "deepseek-v4-flash",
+    model: data.model || DEFAULT_MODEL,
     rag: {
       embed_model: data.rag?.embed_model || "gemini-embedding-2",
       dims: data.rag?.dims || 768,
@@ -101,6 +97,7 @@ function parseProjectMd(content: string): Project {
     },
     files: data.files || [],
     attachedFiles,
+    starred: data.starred === true,
   };
 }
 
@@ -120,6 +117,7 @@ function serializeProject(p: Project): string {
   lines.push(`  chunk_words: ${p.rag.chunk_words}`);
   lines.push(`  top_k: ${p.rag.top_k}`);
   lines.push(`  min_similarity: ${p.rag.min_similarity}`);
+  if (p.starred) lines.push(`starred: true`);
   if (p.files?.length) lines.push(`files: [${p.files.map(x => `"${x}"`).join(", ")}]`);
   if (p.attachedFiles?.length) lines.push(`attachedFiles: ${JSON.stringify(p.attachedFiles)}`);
   lines.push("instructions: |");
@@ -146,12 +144,10 @@ export class ProjectStore {
   private threadsDir(id: string): string { return `sanctum-logs/threads/${id}`; }
 
   private async ensureDir(dir: string): Promise<void> {
-    // mkdir crea el directorio (y sus padres si es necesario) sin error si ya existe
     if (this.adapter.mkdir) {
-      try { await this.adapter.mkdir(dir); } catch {}
+      try { await this.adapter.mkdir(dir); } catch (err: any) { if (err) console.warn(`[Store] mkdir ${dir}:`, err.message); }
     }
-    // Fallback: escribir un marcador para forzar la creación del directorio
-    try { await this.adapter.write(`${dir}/.gitkeep`, ""); } catch {}
+    try { await this.adapter.write(`${dir}/.gitkeep`, ""); } catch (err: any) { if (err) console.warn(`[Store] .gitkeep ${dir}:`, err.message); }
   }
 
   async loadProject(id: string): Promise<Project> {
@@ -186,10 +182,11 @@ export class ProjectStore {
       const entries: MemoryEntry[] = [];
       for (const line of raw.split("\n")) {
         if (!line.trim()) continue;
-        try { entries.push(JSON.parse(line)); } catch {}
+        try { entries.push(JSON.parse(line)); } catch (err: any) { console.warn("[Store] memory JSONL parse:", err.message); }
       }
       return entries;
-    } catch {
+    } catch (err: any) {
+      if (err) console.warn("[Store] loadMemory:", err.message);
       return [];
     }
   }
@@ -198,7 +195,7 @@ export class ProjectStore {
     await this.ensureDir(this.memoryDir(id));
     const path = this.memoryPath(id);
     let existing = "";
-    try { existing = await this.adapter.read(path); } catch {}
+    try { existing = await this.adapter.read(path); } catch (err: any) { if (err) console.warn("[Store] appendMemory read:", err.message); }
     await this.adapter.write(path, existing + JSON.stringify(entry) + "\n");
   }
 
@@ -217,13 +214,15 @@ export class ProjectStore {
         const content = await this.adapter.read(f);
         const data = JSON.parse(content);
         if (data.thread) threads.push(data.thread);
-      } catch {}
+      } catch (err: any) { console.warn(`[Store] loadThread ${f}:`, err.message); }
     }
     return threads.sort((a, b) => b.updated_at - a.updated_at);
   }
 
   async loadThreadData(id: string, threadId: string): Promise<ThreadData | null> {
-    const path = `${this.threadsDir(id)}/${threadId}.json`;
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return null;
+    const path = `${this.threadsDir(id)}/${safeId}.json`;
     try {
       const content = await this.adapter.read(path);
       return JSON.parse(content);
@@ -236,26 +235,61 @@ export class ProjectStore {
     const dir = this.threadsDir(id);
     await this.ensureDir(dir);
     if (!thread.starred) thread.starred = false;
-    // Merge with existing disk data to preserve createdNotes, summary, pendingAction
-    // when the caller does not pass them explicitly (defensive fallback)
-    let disk: Partial<ThreadData> = {};
+    const safeTid = sanitizeId(thread.thread_id) || thread.thread_id;
+    let disk: Pick<ThreadData, "summary" | "pendingAction" | "createdNotes"> = {};
     try {
-      const raw = await this.adapter.read(`${dir}/${thread.thread_id}.json`);
+      const raw = await this.adapter.read(`${dir}/${safeTid}.json`);
       const parsed = JSON.parse(raw);
-      disk = { summary: parsed.summary, pendingAction: parsed.pendingAction, createdNotes: parsed.createdNotes };
-    } catch {}
-    // Order: thread+messages (params) + disk (fallback) + extra (explicit override)
-    const data: ThreadData = { thread, messages, ...disk, ...extra };
-    await this.adapter.write(`${dir}/${thread.thread_id}.json`, JSON.stringify(data, null, 2));
+      if (parsed.summary) disk.summary = parsed.summary;
+      if (parsed.pendingAction) disk.pendingAction = parsed.pendingAction;
+      if (parsed.createdNotes) disk.createdNotes = parsed.createdNotes;
+    } catch (err: any) { if (err) console.warn(`[Store] saveThreadData merge ${dir}/${safeTid}.json:`, err.message); }
+    const data: ThreadData = {
+      thread,
+      messages,
+      summary: extra?.summary ?? disk.summary,
+      pendingAction: extra?.pendingAction ?? disk.pendingAction,
+      createdNotes: extra?.createdNotes ?? disk.createdNotes,
+    };
+    await this.adapter.write(`${dir}/${safeTid}.json`, JSON.stringify(data, null, 2));
   }
 
   async deleteThread(id: string, threadId: string): Promise<void> {
-    const path = `${this.threadsDir(id)}/${threadId}.json`;
-    try { await this.adapter.write(path, ""); } catch {}
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return;
+    const path = `${this.threadsDir(id)}/${safeId}.json`;
+    try { await this.adapter.write(path, ""); } catch (_err: any) {}
+  }
+
+  /**
+   * Atomic read-modify-write for thread data.
+   */
+  async patchThreadData(id: string, threadId: string, updater: (data: ThreadData) => ThreadData): Promise<ThreadData | null> {
+    const data = await this.loadThreadData(id, threadId);
+    if (!data) return null;
+    const patched = updater(data);
+    await this.saveThreadData(id, patched.thread, patched.messages, patched);
+    return patched;
+  }
+
+  /** Convenience: loads existing thread data or creates skeleton, then saves new messages atomically. */
+  async updateThreadMessages(id: string, threadId: string, messages: any[]): Promise<void> {
+    const safeId = sanitizeId(threadId) || threadId;
+    const existing = await this.loadThreadData(id, safeId);
+    const thread: any = existing?.thread || {
+      thread_id: safeId, project_id: id,
+      title: "Nueva conversación", created_at: Date.now(), updated_at: Date.now(), starred: false,
+    };
+    thread.updated_at = Date.now();
+    const firstUserMsg = messages.find((m: any) => m.role === "user");
+    if (firstUserMsg?.content) thread.title = firstUserMsg.content.slice(0, 60);
+    await this.saveThreadData(id, thread, messages, existing || undefined);
   }
 
   async renameThread(id: string, threadId: string, newTitle: string): Promise<void> {
-    const data = await this.loadThreadData(id, threadId);
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return;
+    const data = await this.loadThreadData(id, safeId);
     if (!data) return;
     data.thread.title = newTitle;
     data.thread.updated_at = Date.now();
@@ -263,7 +297,9 @@ export class ProjectStore {
   }
 
   async toggleStarThread(id: string, threadId: string): Promise<Thread | null> {
-    const data = await this.loadThreadData(id, threadId);
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return null;
+    const data = await this.loadThreadData(id, safeId);
     if (!data) return null;
     data.thread.starred = !data.thread.starred;
     await this.saveThreadData(id, data.thread, data.messages, data);
@@ -271,19 +307,26 @@ export class ProjectStore {
   }
 
   async moveThread(id: string, threadId: string, targetProjectId: string): Promise<void> {
-    const data = await this.loadThreadData(id, threadId);
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return;
+    const data = await this.loadThreadData(id, safeId);
     if (!data) return;
     data.thread.project_id = targetProjectId;
     await this.saveThreadData(id, data.thread, data.messages, data);
-    // Copy to target project
     const targetDir = this.threadsDir(targetProjectId);
     await this.ensureDir(targetDir);
-    await this.adapter.write(`${targetDir}/${threadId}.json`, JSON.stringify({ thread: data.thread, messages: data.messages }, null, 2));
+    await this.adapter.write(`${targetDir}/${safeId}.json`, JSON.stringify({ thread: data.thread, messages: data.messages }, null, 2));
   }
 
   async createProject(id: string, name?: string): Promise<Project> {
     const p = defaultProject(id, name || id);
     await this.saveProject(p);
     return p;
+  }
+
+  /** Deletes a project's metadata file. Thread data and memory files remain orphaned. */
+  async deleteProject(id: string): Promise<void> {
+    const path = this.projectPath(id);
+    try { await this.adapter.write(path, ""); } catch (_err: any) {}
   }
 }
