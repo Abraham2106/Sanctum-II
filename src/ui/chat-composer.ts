@@ -36,12 +36,17 @@ export class ChatComposer {
     breadcrumb.createSpan({ text: icon + " " });
     breadcrumb.createSpan({ text: name + " / " });
     breadcrumb.createEl("strong", { text: "Chat" });
+    const vaultStatus = topbar.createDiv({ cls: "s-topbar-status" });
+    const statusDot = vaultStatus.createSpan({ cls: "s-footer-dot" + (this.plugin.vectorStore.count === 0 ? " is-empty" : "") });
+    statusDot.setAttribute("aria-hidden", "true");
+    vaultStatus.createSpan({ text: this.plugin.vectorStore.count > 0 ? `${this.plugin.vectorStore.count} chunks` : "Sin indexar" });
     const actions = topbar.createDiv({ cls: "s-topbar-actions" });
 
     const makeIconBtn = (iconId: string, title: string, handler: () => void) => {
       const btn = actions.createEl("button", { cls: "s-icon-btn" });
       setIcon(btn, iconId);
       btn.title = title;
+      btn.setAttribute("aria-label", title);
       btn.onclick = handler;
       return btn;
     };
@@ -70,11 +75,13 @@ export class ChatComposer {
     const toggle = modeRow.createDiv({ cls: "s-mode-toggle" });
 
     this.modeChatBtn = toggle.createEl("button", { cls: "s-mode-btn active-chat" });
+    this.modeChatBtn.setAttribute("aria-label", "Usar chat directo");
     const chatIcon = this.modeChatBtn.createSpan();
     setIcon(chatIcon, "message-square");
     this.modeChatBtn.createSpan({ text: " Chat" });
 
     this.modeMeshBtn = toggle.createEl("button", { cls: "s-mode-btn" });
+    this.modeMeshBtn.setAttribute("aria-label", "Usar mesh de agentes");
     const meshIcon = this.modeMeshBtn.createSpan();
     setIcon(meshIcon, "shuffle");
     this.modeMeshBtn.createSpan({ text: " Mesh" });
@@ -86,6 +93,7 @@ export class ChatComposer {
     const chainBtn = toggle.createEl("button", { cls: "s-mode-btn" });
     setIcon(chainBtn, "link");
     chainBtn.title = "Ejecutar cadena";
+    chainBtn.setAttribute("aria-label", "Ejecutar cadena guardada");
     chainBtn.onclick = (e) => {
       e.stopPropagation();
       this.showChainMenu(chainBtn);
@@ -107,13 +115,14 @@ export class ChatComposer {
     const bar = inner.createDiv({ cls: "s-composer-bar" });
 
     this.composerFolderSelect = bar.createEl("select", { cls: "s-composer-chip-select" });
-    this.composerFolderSelect.createEl("option", { text: "📂 Todo /Research/", value: "" });
+    this.composerFolderSelect.createEl("option", { text: "Todo /Research/", value: "" });
+    this.composerFolderSelect.setAttribute("aria-label", "Carpeta de contexto" );
     this.loadFolderList().then(() => {});
     this.composerFolderSelect.addEventListener("change", () => {
       this.plugin.setActiveFolder(this.composerFolderSelect.value || null);
     });
 
-    const reindexChip = bar.createDiv({ cls: "s-composer-chip" });
+    const reindexChip = bar.createEl("button", { cls: "s-composer-chip", attr: { type: "button" } });
     const reindexIcon = reindexChip.createSpan();
     setIcon(reindexIcon, "refresh-cw");
     reindexChip.createSpan({ text: " Reindexar" });
@@ -128,7 +137,7 @@ export class ChatComposer {
       }
     };
 
-    const ragChip = bar.createDiv({ cls: "s-composer-chip" });
+    const ragChip = bar.createEl("button", { cls: "s-composer-chip", attr: { type: "button" } });
     const ragIcon = ragChip.createSpan();
     setIcon(ragIcon, "eye");
     ragChip.createSpan({ text: " Ver RAG" });
@@ -145,7 +154,7 @@ export class ChatComposer {
       const listing = await this.app.vault.adapter.list("Research");
       for (const folder of listing.folders) {
         const label = folder.replace(/^Research[\\/]?/, "");
-        if (label) this.composerFolderSelect.createEl("option", { text: `📁 ${label}`, value: folder });
+        if (label) this.composerFolderSelect.createEl("option", { text: label, value: folder });
       }
       if (this.plugin.activeFolder) this.composerFolderSelect.value = this.plugin.activeFolder;
     } catch (err: any) {
