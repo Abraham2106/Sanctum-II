@@ -31,6 +31,7 @@ import type { Project } from "./projects/types";
 import { buildProjectContext } from "./projects/context";
 import { indexProject } from "./projects/indexer";
 import { ensureVaultDirectory } from "./core/vault-fs";
+import { AgentAuthoringError, AgentAuthoringService } from "./agents/authoring/service";
 
 import { executeTurn } from "./orchestrator/agent-turn";
 import { AppServices } from "./app/services";
@@ -147,6 +148,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     this.addCommand({ id: "open-kg", name: "Abrir Knowledge Graph", callback: () => this.activateKgView() });
     this.addCommand({ id: "open-projects", name: "Abrir Proyectos", callback: () => this.activateProjectsView() });
     this.addCommand({ id: "open-chains", name: "Abrir Orquestador de Cadenas", callback: () => this.activateChainsView() });
+    this.addCommand({ id: "create-agent", name: "Crear o validar agente", callback: () => { void this.openAgentGenerator(); } });
     registerCommands(this);
     this.addSettingTab(new SanctumSettingTab(this.app, this));
 
@@ -213,27 +215,34 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   // ── Chat ──
 
   async sendChatMessage(userMessage: string, convMessages?: ConversationMessage[], convSummary?: string): Promise<ChatResponse | string> {
-    // ── Agent generator (@agent-generator) ──
-    const genMatch = userMessage.trim().match(/^@agent-generator(?:\s+([\s\S]*))?$/i);
+    // ── Agent creator (@agent-creator / @agent-generator) ──
+    const genMatch = userMessage.trim().match(/^@(?:agent-creator|agent-generator)(?:\s+([\s\S]*))?$/i);
     if (genMatch) {
-      const { AgentGeneratorModal } = await import("./ui/agent-generator-modal");
-      const modal = new AgentGeneratorModal(this.app);
-      const result = await modal.ask();
-      if (result) {
-        const content = `---\nid: ${result.id}\nname: "${result.name}"\navatar: "${result.icon}"\ndescription: "${result.description}"\ntools: [${result.tools.join(", ")}]\npermissions:\n  read_paths: ["${result.read_paths.join("\", \"")}"]\n  write_paths: ${result.write_paths.length ? `["${result.write_paths.join("\", \"")}"]` : "[]"}\n---\n${result.instructions}\n\n{{rag_context}}\n\n{{user_prompt}}`;
-        try {
-          await this.app.vault.adapter.write(`sanctum-agents/${result.id}.md`, content);
-          new Notice(`✅ Agente "${result.name}" creado en sanctum-agents/${result.id}.md`);
-          return `✅ **Agente creado exitosamente:** @${result.id}\n\n**Nombre:** ${result.name}\n**Descripción:** ${result.description}\n**Icono:** ${result.icon}\n\nPodés mencionarlo con @${result.id} en el chat.`;
-        } catch (err: any) {
-          return `❌ Error al crear el agente: ${err.message}`;
-        }
-      }
-      return "❌ Creación de agente cancelada.";
+      return this.openAgentGenerator(genMatch[1]?.trim() || "");
     }
 
     const result = await this.chatOrch.handleMessage(userMessage, convMessages, convSummary);
     return result;
+  }
+
+  private async openAgentGenerator(initialDescription = ""): Promise<string> {
+    const { AgentGeneratorModal } = await import("./ui/agent-generator-modal");
+    const service = new AgentAuthoringService({ llm: this.opencodeClient, adapter: this.app.vault.adapter });
+    const modal = new AgentGeneratorModal(this.app, service, initialDescription);
+    const result = await modal.ask();
+    if (!result) return "Creación de agente cancelada.";
+    try {
+      const saved = await service.save(result);
+      new Notice(`Agente "${result.agent.name}" creado.`);
+      const skillLine = saved.skillPath ? `\nSkill complementaria: ${saved.skillPath}` : "";
+      return `**Agente creado:** @${result.agent.id}\n\nNombre: ${result.agent.name}\nArchivo: ${saved.agentPath}${skillLine}\n\nPodés mencionarlo con @${result.agent.id} en el chat.`;
+    } catch (error: any) {
+      const message = error instanceof AgentAuthoringError
+        ? error.issues.filter(issue => issue.severity === "error").map(issue => issue.message).join(" ")
+        : error?.message || "No se pudo guardar el agente.";
+      new Notice(message, 7000);
+      return `No se pudo crear el agente: ${message}`;
+    }
   }
 
   async runMesh(userPrompt: string): Promise<MeshResultFull> {
