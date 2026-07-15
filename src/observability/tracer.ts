@@ -1,6 +1,8 @@
 import type { TraceChunk, TraceRecord } from "../shared/observability/trace-types";
 export type { TraceChunk, TraceInput, TraceRecord } from "../shared/observability/trace-types";
 import { generateTraceId } from "../shared/observability/trace-types";
+import type { VaultAdapter } from "../core/vault-adapter";
+import { ensureVaultDirectory } from "../core/vault-fs";
 
 const TRACES_DIR = "sanctum-logs/traces";
 
@@ -12,13 +14,7 @@ interface ActiveTrace {
 export class Tracer {
   private traces = new Map<string, ActiveTrace>();
 
-  constructor(
-    private adapter: {
-      read: (p: string) => Promise<string>;
-      write: (p: string, content: string) => Promise<void>;
-      exists: (p: string) => Promise<boolean>;
-    }
-  ) {}
+  constructor(private adapter: VaultAdapter) {}
 
   start(agentId: string, systemPrompt: string, userPrompt: string): string {
     const traceId = generateTraceId();
@@ -59,14 +55,12 @@ export class Tracer {
     entry.trace.duration_ms = Date.now() - entry.startTime;
     entry.trace.loop_state = loop_state;
 
-    const recordId = entry.trace.trace_id!;
+    const recordId = entry.trace.trace_id;
+    if (!recordId) return;
     const filePath = `${TRACES_DIR}/${recordId}.json`;
 
     try {
-      const dirExists = await this.adapter.exists(TRACES_DIR).catch(() => false);
-      if (!dirExists) {
-        await this.adapter.write(`${TRACES_DIR}/.gitkeep`, "");
-      }
+      await ensureVaultDirectory(this.adapter, TRACES_DIR);
       await this.adapter.write(filePath, JSON.stringify(entry.trace, null, 2));
     } catch (err: any) {
       console.warn("Sanctum tracer: no se pudo escribir trace:", err.message);

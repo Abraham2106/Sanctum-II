@@ -1,4 +1,12 @@
 import { pathMatchesAny } from "../utils";
+import { isNotFoundError } from "../core/vault-fs";
+
+interface VectorStoreAdapter {
+  read: (path: string) => Promise<string>;
+  write: (path: string, content: string) => Promise<void>;
+  append?: (path: string, content: string) => Promise<void>;
+  exists?: (path: string) => Promise<boolean>;
+}
 
 export interface Chunk {
   id: string;
@@ -40,7 +48,7 @@ function base64ToFloat32Array(b64: string): Float32Array {
 }
 
 async function appendToFile(
-  adapter: any,
+  adapter: VectorStoreAdapter,
   path: string,
   content: string
 ): Promise<void> {
@@ -80,7 +88,7 @@ export class VectorStore {
 
   getStorePath(): string { return this.storePath; }
 
-  async load(adapter: { read: (p: string) => Promise<string> }): Promise<void> {
+  async load(adapter: Pick<VectorStoreAdapter, "read">): Promise<void> {
     try {
       const raw = await adapter.read(this.storePath);
       const lines = raw.split("\n");
@@ -134,15 +142,19 @@ export class VectorStore {
       }
       this.chunks = Array.from(this.chunksMap.values());
       console.error(`[VectorStore] ✅ Loaded ${this.chunks.length} chunks from ${this.storePath}`);
-    } catch {
+    } catch (error) {
       this.chunksMap.clear();
       this.noteToChunksMap.clear();
       this.chunks = [];
+      if (!isNotFoundError(error)) {
+        console.error(`[VectorStore] failed to load ${this.storePath}:`, error);
+        throw error;
+      }
       console.error(`[VectorStore] 📄 No existing store at ${this.storePath} — starting empty`);
     }
   }
 
-  async save(adapter: { write: (p: string, content: string) => Promise<void> }): Promise<void> {
+  async save(adapter: VectorStoreAdapter): Promise<void> {
     if (this.shouldTruncate) {
       // Compaction / Truncation: rewrite the active state cleanly
       const txns: string[] = [];
@@ -162,10 +174,11 @@ export class VectorStore {
       this.pendingTxns = [];
       console.error(`[VectorStore] 💾 Truncate-saved ${this.chunks.length} chunks to ${this.storePath} (${(fileContent.length / 1024).toFixed(1)}KB)`);
     } else if (this.pendingTxns.length > 0) {
-      const appendContent = this.pendingTxns.join("") ;
+      const txnCount = this.pendingTxns.length;
+      const appendContent = this.pendingTxns.join("");
       await appendToFile(adapter, this.storePath, appendContent);
       this.pendingTxns = [];
-      console.error(`[VectorStore] 💾 Append-saved ${this.pendingTxns.length} txns to ${this.storePath}`);
+      console.info(`[VectorStore] 💾 Append-saved ${txnCount} txns to ${this.storePath}`);
     }
   }
 
@@ -236,4 +249,3 @@ export class VectorStore {
     return results.filter((r) => pathMatchesAny(r.chunk.note_path, allowedPaths));
   }
 }
-

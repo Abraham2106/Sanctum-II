@@ -2,6 +2,8 @@ import type { MemoryEntry, Project, Thread, ThreadData, PendingAction, CreatedNo
 import { defaultProject } from "./types";
 import { PROJECTS_DIR, DEFAULT_MODEL } from "../constants";
 import { parseScalar } from "../shared/agents/frontmatter";
+import type { VaultAdapter } from "../core/vault-adapter";
+import { ensureVaultDirectory, isNotFoundError } from "../core/vault-fs";
 
 /** Strip path separators and control chars from thread/project IDs to prevent path traversal */
 function sanitizeId(id: string): string {
@@ -130,22 +132,12 @@ function serializeProject(p: Project): string {
 export class ProjectStore {
   private threadLocks = new Map<string, Promise<void>>();
 
-  constructor(
-    private adapter: {
-      read: (p: string) => Promise<string>;
-      write: (p: string, c: string) => Promise<void>;
-      list: (p: string) => Promise<{ files: string[]; folders: string[] }>;
-      exists: (p: string) => Promise<boolean>;
-      mkdir?: (p: string) => Promise<void>;
-      rename?: (oldPath: string, newPath: string) => Promise<void>;
-      remove?: (p: string) => Promise<void>;
-    }
-  ) {}
+  constructor(private adapter: VaultAdapter) {}
 
   private async withThreadLock<T>(id: string, threadId: string, work: () => Promise<T>): Promise<T> {
     const key = `${id}/${sanitizeId(threadId) || threadId}`;
     const previous = this.threadLocks.get(key) || Promise.resolve();
-    let release!: () => void;
+    let release = () => {};
     const current = new Promise<void>(resolve => { release = resolve; });
     this.threadLocks.set(key, current);
     await previous;
@@ -163,25 +155,12 @@ export class ProjectStore {
   private threadsDir(id: string): string { return `sanctum-logs/threads/${id}`; }
 
   private async ensureDir(dir: string): Promise<void> {
-    if (this.adapter.mkdir) {
-      try { await this.adapter.mkdir(dir); } catch (err: any) { if (err) console.warn(`[Store] mkdir ${dir}:`, err.message); }
-    }
-    try { await this.adapter.write(`${dir}/.gitkeep`, ""); } catch (err: any) { if (err) console.warn(`[Store] .gitkeep ${dir}:`, err.message); }
+    await ensureVaultDirectory(this.adapter, dir);
   }
 
-  private async writeAtomic(path: string, content: string): Promise<void> {
-    if (!this.adapter.rename) {
-      await this.adapter.write(path, content);
-      return;
-    }
-    const tempPath = `${path}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    try {
-      await this.adapter.write(tempPath, content);
-      await this.adapter.rename(tempPath, path);
-    } catch (err) {
-      await this.adapter.remove?.(tempPath).catch(() => {});
-      throw err;
-    }
+  /** Obsidian rename() refuses to replace an existing file; writes are serialized by their caller. */
+  private async writeSerialized(path: string, content: string): Promise<void> {
+    await this.adapter.write(path, content);
   }
 
   async loadProject(id: string): Promise<Project> {
@@ -196,7 +175,7 @@ export class ProjectStore {
 
   async saveProject(p: Project): Promise<void> {
     await this.ensureDir(PROJECTS_DIR);
-    await this.writeAtomic(this.projectPath(p.id), serializeProject(p));
+    await this.writeSerialized(this.projectPath(p.id), serializeProject(p));
   }
 
   async projectExists(id: string): Promise<boolean> {
@@ -220,7 +199,7 @@ export class ProjectStore {
       }
       return entries;
     } catch (err: any) {
-      if (err) console.warn("[Store] loadMemory:", err.message);
+      if (!isNotFoundError(err)) console.warn("[Store] loadMemory:", err?.message || err);
       return [];
     }
   }
@@ -229,7 +208,7 @@ export class ProjectStore {
     await this.ensureDir(this.memoryDir(id));
     const path = this.memoryPath(id);
     let existing = "";
-    try { existing = await this.adapter.read(path); } catch (err: any) { if (err) console.warn("[Store] appendMemory read:", err.message); }
+    try { existing = await this.adapter.read(path); } catch (err: any) { if (!isNotFoundError(err)) console.warn("[Store] appendMemory read:", err?.message || err); }
     await this.adapter.write(path, existing + JSON.stringify(entry) + "\n");
   }
 
@@ -242,7 +221,7 @@ export class ProjectStore {
       return [];
     }
     const threads: Thread[] = [];
-    const files = (listing.files || []).filter(f => f.endsWith(".json") && !f.endsWith(".gitkeep"));
+    const files = (listing.files || []).filter(f => f.endsWith(".json"));
     for (const f of files) {
       try {
         const content = await this.adapter.read(f);
@@ -281,7 +260,9 @@ export class ProjectStore {
       if (parsed.summary) disk.summary = parsed.summary;
       if (parsed.pendingAction) disk.pendingAction = parsed.pendingAction;
       if (parsed.createdNotes) disk.createdNotes = parsed.createdNotes;
-    } catch (err: any) { if (err) console.warn(`[Store] saveThreadData merge ${dir}/${safeTid}.json:`, err.message); }
+    } catch (err: any) {
+      if (!isNotFoundError(err)) console.warn(`[Store] saveThreadData merge ${dir}/${safeTid}.json:`, err?.message || err);
+    }
     const hasExtra = (key: "summary" | "pendingAction" | "createdNotes") =>
       extra !== undefined && Object.prototype.hasOwnProperty.call(extra, key);
     const data: ThreadData = {
@@ -291,7 +272,7 @@ export class ProjectStore {
       pendingAction: hasExtra("pendingAction") ? extra?.pendingAction : disk.pendingAction,
       createdNotes: hasExtra("createdNotes") ? extra?.createdNotes : disk.createdNotes,
     };
-    await this.writeAtomic(`${dir}/${safeTid}.json`, JSON.stringify(data, null, 2));
+    await this.writeSerialized(`${dir}/${safeTid}.json`, JSON.stringify(data, null, 2));
   }
 
   async deleteThread(id: string, threadId: string): Promise<void> {

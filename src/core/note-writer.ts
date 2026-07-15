@@ -1,3 +1,6 @@
+import type { VaultAdapter } from "./vault-adapter";
+import { ensureVaultDirectory } from "./vault-fs";
+
 export interface WriteResult {
   success: boolean;
   path: string;
@@ -6,22 +9,11 @@ export interface WriteResult {
 }
 
 export class NoteWriter {
-  constructor(
-    private adapter: {
-      read: (p: string) => Promise<string>;
-      write: (p: string, content: string) => Promise<void>;
-      exists: (p: string) => Promise<boolean>;
-    }
-  ) {}
+  constructor(private adapter: VaultAdapter) {}
 
   private async ensureDir(filePath: string): Promise<void> {
-    const parts = filePath.split("/");
-    for (let i = 1; i < parts.length; i++) {
-      const partial = parts.slice(0, i).join("/");
-      try {
-        await this.adapter.write(`${partial}/.gitkeep`, "");
-      } catch {}
-    }
+    const parts = filePath.replace(/\\/g, "/").split("/");
+    await ensureVaultDirectory(this.adapter, parts.slice(0, -1).join("/"));
   }
 
   async create(path: string, content: string): Promise<WriteResult> {

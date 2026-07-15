@@ -2,6 +2,7 @@ import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import { VectorStore, type Chunk } from "../rag/vector-store";
 import type { Project } from "./types";
 import { isInternalPath } from "../utils";
+import { ensureVaultDirectory } from "../core/vault-fs";
 
 const CHUNK_MAX_WORDS = 400;
 
@@ -32,6 +33,27 @@ export interface IndexResult {
   errors: string[];
 }
 
+export interface IndexOptions {
+  /** Reindex only these paths while preserving manifest entries outside them. */
+  paths?: string[];
+}
+
+const activeIndexJobs = new Map<string, Promise<IndexResult>>();
+
+function cleanPath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+}
+
+function isWithinPath(filePath: string, directory: string): boolean {
+  const file = cleanPath(filePath);
+  const dir = cleanPath(directory);
+  return file === dir || file.startsWith(`${dir}/`);
+}
+
+function isAllowedPath(candidate: string, allowed: string[]): boolean {
+  return allowed.some(root => isWithinPath(candidate, root) || isWithinPath(root, candidate));
+}
+
 async function loadManifest(adapter: { read: (p: string) => Promise<string>; exists: (p: string) => Promise<boolean> }, projectId: string): Promise<Record<string, string>> {
   try {
     const path = `sanctum-logs/index/${projectId}/manifest.json`;
@@ -44,16 +66,18 @@ async function saveManifest(adapter: { write: (p: string, c: string) => Promise<
   await adapter.write(`sanctum-logs/index/${projectId}/manifest.json`, JSON.stringify(manifest, null, 2));
 }
 
-export async function indexProject(
+async function indexProjectInternal(
   adapter: {
     read: (p: string) => Promise<string>;
     list: (p: string) => Promise<{ files: string[]; folders: string[] }>;
     exists: (p: string) => Promise<boolean>;
     write: (p: string, c: string) => Promise<void>;
+    mkdir: (p: string) => Promise<void>;
   },
   gemini: GeminiBalancer,
   project: Project,
   vectorStore: VectorStore,
+  options: IndexOptions = {},
 ): Promise<IndexResult> {
   const errors: string[] = [];
   let totalNotes = 0;
@@ -61,10 +85,16 @@ export async function indexProject(
   let indexed = 0;
   let skipped = 0;
 
+  await ensureVaultDirectory(adapter, `sanctum-logs/index/${project.id}`);
+
   console.log(`[KG] 📦 Indexando proyecto "${project.id}" → store: ${vectorStore.getStorePath()}`);
   console.log(`[KG] 📁 read_paths: ${JSON.stringify(project.read_paths)}`);
 
-  const targetPaths = project.read_paths.length ? project.read_paths : ["/Research/"];
+  const configuredPaths = (project.read_paths.length ? project.read_paths : ["Research"]).map(cleanPath);
+  const targetPaths = (options.paths?.length ? options.paths : configuredPaths).map(cleanPath);
+  if (options.paths?.length && !targetPaths.every(path => isAllowedPath(path, configuredPaths))) {
+    return { totalNotes: 0, totalChunks: 0, indexed: 0, skipped: 0, errors: ["La carpeta solicitada está fuera de los read_paths del proyecto"] };
+  }
   const allFiles: string[] = [];
 
   for (const targetPath of targetPaths) {
@@ -84,8 +114,11 @@ export async function indexProject(
   console.log(`[KG] 📄 ${allFiles.length} archivos totales a procesar`);
 
   const manifest = await loadManifest(adapter, project.id);
-  const newManifest: Record<string, string> = {};
-  const filesToPrune = new Set(Object.keys(manifest));
+  const partial = Boolean(options.paths?.length);
+  const newManifest: Record<string, string> = partial ? { ...manifest } : {};
+  const filesToPrune = new Set(
+    Object.keys(manifest).filter(note => !partial || targetPaths.some(path => isWithinPath(note, path))),
+  );
 
   for (const filePath of allFiles) {
     const noteName = filePath.replace(/\\/g, "/");
@@ -142,4 +175,21 @@ export async function indexProject(
   console.log(`[KG] ✅ Indexado: ${indexed} notas (${totalChunks} chunks), ${skipped} saltados, ${errors.length} errores → store count: ${vectorStore.count}`);
   if (errors.length) console.log(`[KG] ❌ Errores:`, errors);
   return { totalNotes, totalChunks, indexed, skipped, errors };
+}
+
+/** Runs one index operation per project, even when several UI surfaces trigger it. */
+export function indexProject(
+  adapter: Parameters<typeof indexProjectInternal>[0],
+  gemini: GeminiBalancer,
+  project: Project,
+  vectorStore: VectorStore,
+  options: IndexOptions = {},
+): Promise<IndexResult> {
+  const existing = activeIndexJobs.get(project.id);
+  if (existing) return existing;
+  const job = indexProjectInternal(adapter, gemini, project, vectorStore, options);
+  activeIndexJobs.set(project.id, job);
+  return job.finally(() => {
+    if (activeIndexJobs.get(project.id) === job) activeIndexJobs.delete(project.id);
+  });
 }
