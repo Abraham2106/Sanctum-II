@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { globMatch, pathMatchesAny, isInternalPath, slugify, extractTitle } from "./utils";
 import { VectorStore, type Chunk } from "./rag/vector-store";
+import { DEFAULT_MODEL } from "./constants";
 
 vi.mock("obsidian", () => ({
   Notice: class Notice { constructor(msg: string) { console.log("[Notice]", msg); } },
@@ -420,7 +421,7 @@ describe("renderSystemPrompt", () => {
   it("replaces {{rag_context}} and {{user_prompt}}", async () => {
     const { renderSystemPrompt } = await import("./agents/agent-loader");
     const agent = {
-      id: "test", name: "Test", avatar: "🤖", model: "deepseek-v4-flash",
+      id: "test", name: "Test", avatar: "🤖", model: DEFAULT_MODEL,
       description: "", triggers: [], tools: [],
       permissions: { read_paths: [], write_paths: [] },
       system_prompt: "Contexto:\n{{rag_context}}\n\nPregunta:\n{{user_prompt}}",
@@ -432,7 +433,7 @@ describe("renderSystemPrompt", () => {
   it("leaves unmatched placeholders intact", async () => {
     const { renderSystemPrompt } = await import("./agents/agent-loader");
     const agent = {
-      id: "test", name: "Test", avatar: "🤖", model: "deepseek-v4-flash",
+      id: "test", name: "Test", avatar: "🤖", model: DEFAULT_MODEL,
       description: "", triggers: [], tools: [],
       permissions: { read_paths: [], write_paths: [] },
       system_prompt: "Hola {{rag_context}} y {{web_context}}",
@@ -492,9 +493,10 @@ describe("parseCriticJSON", () => {
   it("falls back to defaults on unparseable input", async () => {
     const { parseCriticJSON } = await import("./orchestrator/mesh");
     const ev = parseCriticJSON("esto no es JSON");
-    expect(ev.total_score).toBe(80);
-    expect(ev.verdict).toBe("accept");
+    expect(ev.total_score).toBe(0);
+    expect(ev.verdict).toBe("reject");
     expect(ev.criteria).toHaveLength(0);
+    expect(ev.feedback_for_regeneration.length).toBeGreaterThanOrEqual(1);
   });
 
   it("accepts evaluation without wrapper object", async () => {

@@ -1,6 +1,7 @@
 import { setIcon } from "obsidian";
 import type { ChatViewPlugin, RailAgent } from "./chat-types";
 import { renderAvatar } from "./chat-types";
+import { DEFAULT_MODEL } from "../constants";
 
 export class ChatLeftPanel {
   private el!: HTMLElement;
@@ -28,9 +29,9 @@ export class ChatLeftPanel {
     railSection.createDiv({ cls: "s-section-label", text: "Agentes" });
 
     const systemAgents: RailAgent[] = [
-      { id: "forager", name: "Forager", avatar: "search", model: "deepseek-v4-flash" },
-      { id: "researcher", name: "Researcher", avatar: "book-open", model: "deepseek-v4-flash" },
-      { id: "critic", name: "Critic", avatar: "scale", model: "deepseek-v4-flash", internal: true },
+      { id: "forager", name: "Forager", avatar: "search", model: DEFAULT_MODEL },
+      { id: "researcher", name: "Researcher", avatar: "book-open", model: DEFAULT_MODEL },
+      { id: "critic", name: "Critic", avatar: "scale", model: DEFAULT_MODEL, internal: true },
     ];
     const customAgents = availableAgents.filter(a => !systemAgents.find(s => s.id === a.id));
     const allAgents = [...systemAgents, ...customAgents];
@@ -85,8 +86,8 @@ export class ChatLeftPanel {
     this.makeAccordion(container, "user", "Identidad", (body) => {
       this.makeField(body, "Nombre", agent.name);
       this.makeField(body, "Avatar", agent.avatar);
-      const sel = this.makeSelectField(body, "Modelo", ["deepseek-v4-flash", "claude-sonnet-4-5", "claude-opus-4-5", "gemini-2.5-pro"]);
-      sel.value = agent.model || "deepseek-v4-flash";
+      const sel = this.makeSelectField(body, "Modelo", [DEFAULT_MODEL, "claude-sonnet-4-5", "claude-opus-4-5", "gemini-2.5-pro"]);
+      sel.value = agent.model || DEFAULT_MODEL;
     });
 
     this.makeAccordion(container, "brain", "System Prompt", (body) => {
@@ -146,7 +147,7 @@ export class ChatLeftPanel {
     setIcon(chevSpan, "chevron-right");
     const body = details.createDiv({ cls: "s-config-body" });
     const result = build(body);
-    if (result instanceof Promise) result.catch(() => {});
+    if (result instanceof Promise) result.catch((err: any) => { if (err) console.warn("[LeftPanel] build:", err.message); });
     return details;
   }
 

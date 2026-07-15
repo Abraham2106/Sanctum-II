@@ -1,6 +1,7 @@
 import { requestUrl } from "obsidian";
+import { DEFAULT_MODEL } from "../constants";
 
-const MODEL = "deepseek-v4-flash";
+const MODEL = DEFAULT_MODEL;
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";

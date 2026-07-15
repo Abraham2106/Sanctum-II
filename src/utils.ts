@@ -40,3 +40,12 @@ export function extractTitle(content: string): string | null {
   const m = content.match(/^#\s+(.+)/m);
   return m ? m[1].trim() : null;
 }
+
+/** Detect "crea una nota llamada X sobre Y" patterns. Shared by main.ts and chat-orchestrator.ts */
+export function parseWriteIntent(text: string): { name?: string; topic: string } | null {
+  const nameMatch = text.match(/cre[áa]\s*una\s+nota\s+llamada\s+["']?([^"'\n]+)["']?(?:\s+sobre\s+(.+))?/i);
+  if (nameMatch) return { name: nameMatch[1].trim(), topic: nameMatch[2]?.trim() || nameMatch[1].trim() };
+  const topicMatch = text.match(/cre[áa]\s*una\s+nota\s+(?:sobre\s+)?(.+)/i);
+  if (topicMatch) return { topic: topicMatch[1].trim() };
+  return null;
+}

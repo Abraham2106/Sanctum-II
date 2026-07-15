@@ -1,3 +1,5 @@
+import { DEFAULT_MODEL } from "../constants";
+
 export interface ProjectRag {
   embed_model: string;
   dims: number;
@@ -27,6 +29,7 @@ export interface Project {
   rag: ProjectRag;
   files: string[];
   attachedFiles: ProjectFile[];
+  starred?: boolean;
 }
 
 export interface MemoryEntry {
@@ -83,9 +86,10 @@ export function defaultProject(id: string, name?: string): Project {
     read_paths: [`/Research/`, `/Projects/${id}/`],
     write_paths: [`/Projects/${id}/`, `/sanctum-memory/${id}/`],
     outputPath: `Projects/${id}`,
-    model: "deepseek-v4-flash",
+    model: DEFAULT_MODEL,
     rag: { ...DEFAULT_PROJECT_RAG },
     files: [],
     attachedFiles: [],
+    starred: false,
   };
 }

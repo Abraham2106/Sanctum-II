@@ -36,7 +36,7 @@ async function loadManifest(adapter: { read: (p: string) => Promise<string>; exi
   try {
     const path = `sanctum-logs/index/${projectId}/manifest.json`;
     if (await adapter.exists(path)) return JSON.parse(await adapter.read(path));
-  } catch {}
+  } catch (err: any) { if (err) console.warn(`[Indexer] loadManifest ${projectId}:`, err.message); }
   return {};
 }
 

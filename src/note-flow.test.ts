@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ChatOrchestrator } from "./app/chat-orchestrator";
+import { DEFAULT_MODEL } from "./constants";
 
 vi.mock("obsidian", () => ({
   Notice: class Notice { constructor(msg: string) { console.log("[Notice]", msg); } },
@@ -44,7 +45,11 @@ vi.mock("./orchestrator/agent-turn", () => ({
 }));
 
 const mockNoteWriter = { create: vi.fn(), update: vi.fn() };
-const mockProjectStore = { loadThreadData: vi.fn(), saveThreadData: vi.fn() };
+const mockProjectStore = { loadThreadData: vi.fn(), saveThreadData: vi.fn(), patchThreadData: vi.fn().mockImplementation(async (id, tid, fn) => {
+  const data = await mockProjectStore.loadThreadData(id, tid);
+  if (data) { fn(data); await mockProjectStore.saveThreadData(id, data.thread, data.messages, data); return data; }
+  return null;
+}), updateThreadMessages: vi.fn().mockResolvedValue(undefined) };
 const mockAdapter = { read: vi.fn(), write: vi.fn(), exists: vi.fn(), list: vi.fn(), append: vi.fn() };
 const mockVectorStore = { count: 0, search: vi.fn(), allChunks: [], filterByPaths: vi.fn(), getStorePath: vi.fn() };
 const mockGemini = { hasKeys: false, embed: vi.fn(), keyCount: 0 };
@@ -62,14 +67,14 @@ const project = {
   read_paths: ["/Research/**", "/Projects/test-proj/**"],
   write_paths: ["/Projects/test-proj/**", "/sanctum-memory/test-proj/**"],
   outputPath: "Projects/test-proj",
-  model: "deepseek-v4-flash",
+  model: DEFAULT_MODEL,
   rag: { embed_model: "gemini-embedding-2", dims: 768, chunk_words: 400, top_k: 5, min_similarity: 0.65 },
   files: [],
   attachedFiles: [],
 };
 
 const agent = {
-  id: "agente_base", name: "Agente Base", avatar: "🤖", model: "deepseek-v4-flash",
+  id: "agente_base", name: "Agente Base", avatar: "🤖", model: DEFAULT_MODEL,
   description: "", triggers: [], tools: [],
   permissions: { read_paths: ["/**"], write_paths: ["/**"] }, // Agent has unlimited write
   system_prompt: "Eres un asistente.",

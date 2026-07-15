@@ -15,10 +15,13 @@ export class NoteWriter {
   ) {}
 
   private async ensureDir(filePath: string): Promise<void> {
-    const dir = filePath.substring(0, filePath.lastIndexOf("/"));
-    try {
-      await this.adapter.write(`${dir}/.gitkeep`, "");
-    } catch {}
+    const parts = filePath.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const partial = parts.slice(0, i).join("/");
+      try {
+        await this.adapter.write(`${partial}/.gitkeep`, "");
+      } catch {}
+    }
   }
 
   async create(path: string, content: string): Promise<WriteResult> {
