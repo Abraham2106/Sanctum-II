@@ -32,6 +32,8 @@ interface ViewState {
   dragOrigY: number;
 }
 
+type EdgeVisibilityKey = "showExplicit" | "showReinforced" | "showSemantic";
+
 export class KgView extends ItemView {
   private state: ViewState;
   private svgEl!: SVGSVGElement;
@@ -263,9 +265,9 @@ export class KgView extends ItemView {
     this.computeLayout();
   }
 
-  private toggleEdgeType(type: string, btn: HTMLElement): void {
-    const key = type === "explicit" ? "showExplicit" : type === "reinforced" ? "showReinforced" : "showSemantic";
-    (this.state as any)[key] = !(this.state as any)[key];
+  private toggleEdgeType(type: "explicit" | "reinforced" | "semantic", btn: HTMLElement): void {
+    const key: EdgeVisibilityKey = type === "explicit" ? "showExplicit" : type === "reinforced" ? "showReinforced" : "showSemantic";
+    this.state[key] = !this.state[key];
     btn.classList.toggle("is-active");
     this.render();
   }

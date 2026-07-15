@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import type { App } from "obsidian";
 import type { ChatViewPlugin, RailAgent } from "./chat-types";
 import { renderAvatar } from "./chat-types";
 import { isInternalPath } from "../utils";
@@ -21,12 +22,12 @@ export class ChatAutocomplete {
   private skillsCache: { id: string; name: string; description: string; tools: string[] }[] = [];
   private chainsCache: { id: string; name: string }[] = [];
   private plugin: ChatViewPlugin;
-  private getApp: () => any;
+  private getApp: () => App;
   private onSkillSelect: ((id: string) => void) | null = null;
   private closeCallback: (() => void) | null = null;
   private onSelectCallback: (() => void) | null = null;
 
-  constructor(plugin: ChatViewPlugin, getApp: () => any) {
+  constructor(plugin: ChatViewPlugin, getApp: () => App) {
     this.plugin = plugin;
     this.getApp = getApp;
   }
@@ -43,6 +44,7 @@ export class ChatAutocomplete {
   }
 
   setAgents(agents: RailAgent[]): void { this.availableAgents = agents; }
+  getAgents(): RailAgent[] { return [...this.availableAgents]; }
   setSkills(skills: { id: string; name: string; description: string; tools: string[] }[]): void { this.skillsCache = skills; }
   setChains(chains: { id: string; name: string }[]): void { this.chainsCache = chains; }
 

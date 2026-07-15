@@ -62,7 +62,7 @@ export class ChatRightPanel {
 
       for (const a of ls.attempts) {
         const row = prog.createDiv({ cls: "s-trace-prog-row" });
-        const isBest = a.total_score === Math.max(...ls.attempts.map((x: any) => x.total_score));
+        const isBest = a.total_score === Math.max(...ls.attempts.map(x => x.total_score));
         const label = row.createDiv({ cls: "s-trace-prog-label" });
         label.setText(`#${a.attempt}`);
         if (isBest) label.addClass("is-best");

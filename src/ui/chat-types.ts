@@ -1,5 +1,7 @@
 import type { MeshResultFull } from "../orchestrator/mesh";
 import type { AgentDefinition } from "../agents/types";
+import type { App } from "obsidian";
+import type { ConversationMessage } from "../orchestrator/conversation";
 
 export interface ChatMessage {
   role: "user" | "agent";
@@ -8,6 +10,12 @@ export interface ChatMessage {
   timestamp?: number;
   sources?: { note_path: string; score: number }[];
   meshMeta?: { attempts: number; score?: number; verdict?: string };
+}
+
+export interface ChatViewHandle {
+  setThreadId(id: string): void;
+  postMessage(text: string): Promise<void>;
+  reloadForProject?(threadId: string): Promise<void>;
 }
 
 export interface RailAgent {
@@ -19,11 +27,12 @@ export interface RailAgent {
 }
 
 export interface ChatViewPlugin {
+  app: App;
   agent: AgentDefinition | null;
   agentName: string;
   vectorStore: { count: number };
   activeFolder: string | null;
-  sendChatMessage(msg: string, convMessages?: any[], convSummary?: string): Promise<string>;
+  sendChatMessage(msg: string, convMessages?: ConversationMessage[], convSummary?: string): Promise<{ content: string; conversationSummary?: string } | string>;
   indexResearch(folder?: string): Promise<void>;
   setActiveFolder(folder: string | null): void;
   runOrchestrate(prompt: string): Promise<void>;
@@ -37,10 +46,12 @@ export interface ChatViewPlugin {
   loadThreadMessages(threadId: string): Promise<ChatMessage[]>;
   saveThreadMessages(threadId: string, messages: ChatMessage[]): Promise<void>;
   loadThreadMessagesForProject(projectId: string, threadId: string): Promise<ChatMessage[]>;
+  loadConversationSummaryForProject?(projectId: string, threadId: string): Promise<string | undefined>;
   saveThreadMessagesForProject(projectId: string, threadId: string, messages: ChatMessage[]): Promise<void>;
   getActiveProjectName(): string;
   getActiveProjectIcon(): string;
   setSkillContext?: (skillId: string | null) => void;
+  clearChatHistory?: () => void;
 }
 
 export function getAgentIcon(agentId: string): string {

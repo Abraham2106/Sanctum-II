@@ -2,7 +2,10 @@ import { ItemView, WorkspaceLeaf, Notice, setIcon } from "obsidian";
 import type { Project, Thread, MemoryEntry, ProjectFile } from "../projects/types";
 import { ProjectStore } from "../projects/store";
 import { indexProject } from "../projects/indexer";
+import { ensureVaultDirectory } from "../core/vault-fs";
 import type { GeminiBalancer } from "../embeddings/gemini-balancer";
+import type { VectorStore } from "../rag/vector-store";
+import type { VaultAdapter } from "../core/vault-adapter";
 import { InputModal } from "./input-modal";
 import { FolderSelectModal } from "./folder-select-modal";
 import { DEFAULT_MODEL } from "../constants";
@@ -21,7 +24,8 @@ export interface ProjectsViewDeps {
   projectStore: ProjectStore;
   geminiBalancer: GeminiBalancer;
   getActiveProjectId: () => string;
-  getVectorStore: (projectId: string) => { store: any; load: () => Promise<void>; save: () => Promise<void> };
+  getVectorStore: (projectId: string) => { store: VectorStore; load: () => Promise<void>; save: () => Promise<void> };
+  vaultAdapter: VaultAdapter;
   onSelectProject: (id: string) => Promise<void>;
   onOpenThread: (message: string, threadId?: string) => Promise<void>;
   loadMemory: (id: string) => Promise<MemoryEntry[]>;
@@ -320,7 +324,10 @@ export class ProjectsView extends ItemView {
     ragCard.createDiv({ cls: "s-trace-meta", text: `Embeddings: ${p.rag.embed_model} (${p.rag.dims}d)` });
     ragCard.createDiv({ cls: "s-trace-meta", text: `Recuperación: top-${p.rag.top_k} / sim ≥ ${p.rag.min_similarity}` });
     const reindexBtn = ragCard.createEl("button", { cls: "s-proj-btn", text: "↻ Reindexar proyecto" });
-    reindexBtn.onclick = () => this.reindex();
+    reindexBtn.onclick = async () => {
+      reindexBtn.setAttribute("disabled", "true");
+      try { await this.reindex(); } finally { reindexBtn.removeAttribute("disabled"); }
+    };
 
     // Memory
     const memCard = this.rightEl.createDiv({ cls: "s-proj-card" });
@@ -629,7 +636,7 @@ export class ProjectsView extends ItemView {
     if (!this.activeProject) return;
     try {
       const { store } = this.deps.getVectorStore(this.activeProject.id);
-      await indexProject(this.app.vault.adapter as any, this.deps.geminiBalancer, this.activeProject, store as any);
+      await indexProject(this.deps.vaultAdapter, this.deps.geminiBalancer, this.activeProject, store);
       new Notice(`Proyecto "${this.activeProject.name}" reindexado`);
       await this.refresh();
     } catch (err: any) {
@@ -651,7 +658,7 @@ export class ProjectsView extends ItemView {
     const vaultPath = `${this.filesDir()}/${file.name}`;
 
     const dir = this.filesDir();
-    await this.app.vault.adapter.write(`${dir}/.gitkeep`, "").catch(() => {});
+    await ensureVaultDirectory(this.app.vault.adapter, dir);
     await this.app.vault.adapter.write(vaultPath, text);
 
     const attached = this.activeProject.attachedFiles || [];

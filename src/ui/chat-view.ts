@@ -27,6 +27,7 @@ export class SanctumChatView extends ItemView {
   meshMode = false;
   threadId = "";
   selectedRailAgent: RailAgent | null = null;
+  private conversationSummary: string | undefined;
 
   // DOM references
   private threadEl!: HTMLElement;
@@ -44,6 +45,7 @@ export class SanctumChatView extends ItemView {
   getIcon(): string { return "bot"; }
 
   setThreadId(id: string): void {
+    if (this.threadId !== id) this.conversationSummary = undefined;
     this.threadId = id;
     if (this.messenger) this.messenger.setThreadId(id);
   }
@@ -52,6 +54,7 @@ export class SanctumChatView extends ItemView {
     this.messenger.messages = [];
     if (this.threadEl) this.threadEl.empty();
     const loaded = await this.messenger.loadThreadMessages();
+    await this.loadConversationSummary();
     if (!loaded) {
       this.messenger.addMsg("agent",
         `Bienvenido a **Sanctum-II** · Proyecto: **${this.plugin.getActiveProjectName()}** ${this.plugin.getActiveProjectIcon()}.`,
@@ -68,10 +71,12 @@ export class SanctumChatView extends ItemView {
     if (!this.messenger) return;
     this.messenger.setProjectContext(this.plugin.getActiveProjectId());
     this.messenger.setThreadId(threadId);
+    this.conversationSummary = undefined;
     this.messenger.messages = [];
     if (this.threadEl) {
       this.threadEl.empty();
       const loaded = await this.messenger.loadThreadMessages();
+      await this.loadConversationSummary();
       if (!loaded) {
         this.messenger.addMsg("agent",
           `Bienvenido a **Sanctum-II** · Proyecto: **${this.plugin.getActiveProjectName()}** ${this.plugin.getActiveProjectIcon()}.`,
@@ -129,9 +134,6 @@ export class SanctumChatView extends ItemView {
     this.messenger.init(this.threadEl, this.threadId, () => { /* auto-save on add */ }, this.plugin.getActiveProjectId());
     this.messenger.setThreadId(this.threadId);
 
-    // Build right panel
-    this.right.build(rightEl);
-
     // Initialize autocomplete
     this.autocomplete.init(this.composer.inputEl, this.composer.dropdownEl, (skillId, skillName) => {
       if (this.plugin.setSkillContext) this.plugin.setSkillContext(skillId);
@@ -140,19 +142,30 @@ export class SanctumChatView extends ItemView {
 
     // Load autocomplete data
     this.autocomplete.loadData().then(() => {
-      this.availableAgents = (this.autocomplete as any).availableAgents || [];
+      this.availableAgents = this.autocomplete.getAgents();
       // Rebuild left with agents
       this.left.build(leftEl, this.availableAgents);
     });
 
     // Load welcome message
-    this.messenger.loadThreadMessages().then(loaded => {
+    this.messenger.loadThreadMessages().then(async loaded => {
+      await this.loadConversationSummary();
       if (!loaded) {
         this.messenger.addMsg("agent",
           `Bienvenido a **Sanctum-II** · Proyecto: **${this.plugin.getActiveProjectName()}**. Indexá tu carpeta de investigación y haceme preguntas usando \`@\` para mencionar agentes.`,
           `bot ${this.plugin.agentName}`);
       }
     });
+  }
+
+  private async loadConversationSummary(): Promise<void> {
+    const projectId = this.plugin.getActiveProjectId();
+    if (!projectId || !this.threadId || !this.plugin.loadConversationSummaryForProject) return;
+    try {
+      this.conversationSummary = await this.plugin.loadConversationSummaryForProject(projectId, this.threadId);
+    } catch (err: any) {
+      console.warn("[Chat] load conversation summary:", err?.message || err);
+    }
   }
 
   // ── Send / Mesh handlers ──
@@ -184,15 +197,19 @@ export class SanctumChatView extends ItemView {
     }
 
     this.composer.inputEl.value = "";
+    // The current turn is passed separately; exclude it from history to avoid
+    // duplicating the user message in the LLM payload.
+    const history = this.messenger.messages.map(m => ({ role: m.role === "user" ? "user" as const : "assistant" as const, content: m.content }));
     this.messenger.addMsg("user", text);
     this.messenger.addMsg("agent", "Pensando...", agentLabel);
     const thinkingEl = this.threadEl.lastElementChild;
-    const history = this.messenger.messages.slice(0, -1).map(m => ({ role: m.role === "user" ? "user" as const : "assistant" as const, content: m.content }));
     try {
-      const response = await this.plugin.sendChatMessage(text, history);
+      const response = await this.plugin.sendChatMessage(text, history, this.conversationSummary);
+      const responseContent = typeof response === "string" ? response : response.content;
+      if (typeof response !== "string" && response.conversationSummary !== undefined) this.conversationSummary = response.conversationSummary;
       this.messenger.messages.pop();
       thinkingEl?.remove();
-      this.messenger.addMsg("agent", response, agentLabel);
+      this.messenger.addMsg("agent", responseContent, agentLabel);
     } catch (err: any) {
       this.messenger.messages.pop();
       thinkingEl?.remove();
@@ -237,7 +254,7 @@ export class SanctumChatView extends ItemView {
 
       const band = wrap.createDiv({ cls: "s-escalation" });
       band.createDiv({ text: `El Critic rechazó los ${result.loopState.max_attempts} intentos del Researcher.`, attr: { style: "font-weight:600;margin-bottom:6px" } });
-      const feedback = result.loopState.history.filter((h: any) => h.agent === "critic").pop()?.feedback || [];
+      const feedback = result.loopState.history.filter(h => h.agent === "critic").pop()?.feedback || [];
       if (feedback.length) {
         const ul = band.createEl("ul", { attr: { style: "margin:6px 0 0;padding-left:16px;font-size:12.5px" } });
         feedback.forEach((f: string) => ul.createEl("li", { text: f }));
@@ -245,8 +262,8 @@ export class SanctumChatView extends ItemView {
       this.messenger.messages.push({ role: "agent", content: `[escalated] ${result.researcherOutput}`, label, timestamp: Date.now() });
     } else {
       let acceptMsg = `${result.researcherOutput}\n\n---\n**⚖️ Evaluación del Critic:** Aceptado con ${result.criticScore}/100.`;
-      if ((result as any).createdNotePath) {
-        const noteName = (result as any).createdNotePath.replace(/\.md$/i, "");
+      if (result.createdNotePath) {
+        const noteName = result.createdNotePath.replace(/\.md$/i, "");
         acceptMsg += `\n\n📁 Nota guardada en: [[${noteName}]]`;
       }
       this.messenger.addMsg("agent", acceptMsg, label, { meshMeta: { attempts: result.attempts, score: result.criticScore, verdict: "accept" } });

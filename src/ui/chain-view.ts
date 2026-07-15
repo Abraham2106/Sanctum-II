@@ -5,6 +5,7 @@ import { ChainStore } from "../chains/store";
 import { topologicalOrder } from "../chains/executor";
 import { loadAgentFromVault } from "../agents/agent-loader";
 import type { TurnDeps } from "../orchestrator/agent-turn";
+import type { VaultAdapter } from "../core/vault-adapter";
 import { AGENT_TYPES, genId, getAgentById } from "./chain-types";
 import type { ExecutionResult } from "./chain-types";
 
@@ -30,10 +31,10 @@ export class ChainView extends ItemView {
   private emptyEl!: HTMLElement; private chainNameEl!: HTMLInputElement;
 
   private store: ChainStore;
-  private vaultAdapter: any;
+  private vaultAdapter: VaultAdapter;
   private getTurnDeps: () => TurnDeps;
 
-  constructor(leaf: WorkspaceLeaf, deps: { chainStore: ChainStore; vaultAdapter: any; getTurnDeps: () => TurnDeps }) {
+  constructor(leaf: WorkspaceLeaf, deps: { chainStore: ChainStore; vaultAdapter: VaultAdapter; getTurnDeps: () => TurnDeps }) {
     super(leaf);
     this.store = deps.chainStore; this.vaultAdapter = deps.vaultAdapter; this.getTurnDeps = deps.getTurnDeps;
   }

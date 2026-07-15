@@ -28,9 +28,13 @@ export class SanctumSettingTab extends PluginSettingTab {
     const actionRow = containerEl.createDiv();
     actionRow.style.cssText = "display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap";
 
-    const makeBtn = (text: string, onClick: () => void) => {
+    const makeBtn = (text: string, onClick: () => void | Promise<void>) => {
       const btn = actionRow.createEl("button", { text });
-      btn.onclick = onClick;
+      btn.onclick = async () => {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try { await onClick(); } finally { btn.disabled = false; }
+      };
     };
     makeBtn("🧪 Embeddings", () => this.plugin.testEmbeddings());
     makeBtn("💬 Chat test", () => this.plugin.testChat());

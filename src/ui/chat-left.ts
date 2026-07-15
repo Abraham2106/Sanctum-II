@@ -129,10 +129,13 @@ export class ChatLeftPanel {
       reindexBtn.onclick = async () => {
         reindexBtn.textContent = "⏳ Indexando...";
         reindexBtn.setAttribute("disabled", "true");
-        await this.plugin.indexResearch();
-        reindexBtn.textContent = "📚 Reindexar /Research/";
-        reindexBtn.removeAttribute("disabled");
-        this.renderConfig();
+        try {
+          await this.plugin.indexResearch();
+        } finally {
+          reindexBtn.textContent = "📚 Reindexar /Research/";
+          reindexBtn.removeAttribute("disabled");
+          this.renderConfig();
+        }
       };
     });
   }

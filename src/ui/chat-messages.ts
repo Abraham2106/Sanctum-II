@@ -10,6 +10,8 @@ export class ChatMessages {
   private threadId = "";
   private projectId: string | null = null;
   private onSave: (() => void) | null = null;
+  private saveTail: Promise<void> = Promise.resolve();
+  private saveRevision = 0;
 
   constructor(plugin: ChatViewPlugin) {
     this.plugin = plugin;
@@ -98,24 +100,25 @@ export class ChatMessages {
   clear(): void {
     this.messages = [];
     this.threadEl.empty();
-    if (this.threadId) {
-      this.saveMessages([]).catch((err: any) => { if (err) console.warn("[Messages] clear save:", err.message); });
-    }
+    this.save();
   }
 
-  private async save(): Promise<void> {
-    if (!this.threadId) return;
-    try {
-      await this.saveMessages(this.messages);
-    } catch (err: any) {
-      console.warn("[Messages] save:", err.message);
-      new Notice("⚠ Error al guardar mensajes — se perderán al recargar", 5000);
-    }
-  }
-
-  private async saveMessages(messages: ChatMessage[]): Promise<void> {
-    if (!this.threadId || !this.projectId) return;
-    await this.plugin.saveThreadMessagesForProject(this.projectId, this.threadId, messages);
+  private save(): void {
+    const threadId = this.threadId;
+    const projectId = this.projectId;
+    if (!threadId || !projectId) return;
+    const snapshot = this.messages.map(message => ({ ...message }));
+    const revision = ++this.saveRevision;
+    this.saveTail = this.saveTail
+      .catch(() => {})
+      .then(async () => {
+        try {
+          await this.plugin.saveThreadMessagesForProject(projectId, threadId, snapshot);
+        } catch (err: any) {
+          console.warn(`[Messages] save revision ${revision}:`, err?.message || err);
+          new Notice("Error al guardar mensajes — se perderán al recargar", 5000);
+        }
+      });
   }
 
   async loadThreadMessages(): Promise<boolean> {

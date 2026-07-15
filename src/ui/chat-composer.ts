@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import type { App } from "obsidian";
 import type { ChatViewPlugin, RailAgent } from "./chat-types";
 import { getAgentIcon, renderAvatar } from "./chat-types";
 
@@ -18,7 +19,7 @@ export class ChatComposer {
 
   constructor(private plugin: ChatViewPlugin) {}
 
-  private get app(): any { return (this.plugin as any).app; }
+  private get app(): App { return this.plugin.app; }
 
   build(parent: HTMLElement, opts: {
     onSend: () => Promise<void>;
@@ -46,8 +47,7 @@ export class ChatComposer {
     };
     makeIconBtn("history", "Último trace", () => this.handleShowTrace());
     makeIconBtn("trash-2", "Limpiar chat", () => {
-      const plugin = this.plugin as any;
-      if (typeof plugin.clearChatHistory === "function") plugin.clearChatHistory();
+      this.plugin.clearChatHistory?.();
     });
 
     // Pipeline
@@ -117,7 +117,16 @@ export class ChatComposer {
     const reindexIcon = reindexChip.createSpan();
     setIcon(reindexIcon, "refresh-cw");
     reindexChip.createSpan({ text: " Reindexar" });
-    reindexChip.onclick = () => this.plugin.indexResearch(this.plugin.activeFolder || undefined);
+    reindexChip.onclick = async () => {
+      if (reindexChip.getAttribute("aria-disabled") === "true") return;
+      reindexChip.setAttribute("aria-disabled", "true");
+      reindexChip.addClass("is-disabled");
+      try { await this.plugin.indexResearch(this.plugin.activeFolder || undefined); }
+      finally {
+        reindexChip.removeAttribute("aria-disabled");
+        reindexChip.removeClass("is-disabled");
+      }
+    };
 
     const ragChip = bar.createDiv({ cls: "s-composer-chip" });
     const ragIcon = ragChip.createSpan();
