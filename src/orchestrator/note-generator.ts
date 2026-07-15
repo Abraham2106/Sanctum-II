@@ -26,58 +26,129 @@ export interface NoteGenDeps {
   outputPath?: string;
 }
 
+/** Result of generation and persistence, including the path actually written. */
 export interface GenerateResult {
   content: string;
   path: string;
+  title: string;
   writeResult: WriteResult;
 }
 
-async function generateNoteContent(deps: NoteGenDeps, instruction: string): Promise<GenerateResult> {
-  const rendered = renderSystemPrompt(deps.agent, "", instruction);
-  const result = await deps.opencodeClient.chat(rendered, instruction);
-  const title = extractTitle(result.content) || slugify(instruction.slice(0, 40));
-  const basePath = deps.outputPath || RESEARCH_PATH;
-  const path = `${basePath}/${slugify(title)}.md`;
-
+export async function writeNoteAtPath(
+  deps: Pick<NoteGenDeps, "noteWriter" | "vaultAdapter" | "writePaths">,
+  path: string,
+  content: string,
+): Promise<WriteResult> {
   if (!canWriteToPath(path, deps.writePaths)) {
     throw new Error(`Sin permisos de escritura para ${path}`);
   }
-
-  const exists = await deps.vaultAdapter.exists(path).catch(() => false);
-  const writeResult = exists
-    ? await deps.noteWriter.update(path, result.content)
-    : await deps.noteWriter.create(path, result.content);
-
-  return { content: result.content, path, writeResult };
+  // `exists` is a normal negative result for a missing note. Do not convert
+  // permission, corruption, or storage failures into a false negative: those
+  // errors must reach the caller instead of silently attempting a create.
+  const exists = await deps.vaultAdapter.exists(path);
+  return exists
+    ? deps.noteWriter.update(path, content)
+    : deps.noteWriter.create(path, content);
 }
 
-export async function executeWriteIntent(deps: NoteGenDeps, intent: { name: string; topic: string }): Promise<string> {
+async function generateNoteContent(
+  deps: NoteGenDeps,
+  instruction: string,
+  fallbackTitle?: string,
+): Promise<GenerateResult> {
+  const rendered = renderSystemPrompt(deps.agent, "", instruction);
+  const result = await deps.opencodeClient.chat(rendered, instruction);
+  const title = extractTitle(result.content) || fallbackTitle || slugify(instruction.slice(0, 40));
+  const basePath = deps.outputPath || RESEARCH_PATH;
+  const path = `${basePath}/${slugify(title)}.md`;
+  const writeResult = await writeNoteAtPath(deps, path, result.content);
+  if (!writeResult.success) {
+    throw new Error(writeResult.message);
+  }
+  return { content: result.content, path, title, writeResult };
+}
+
+/** Generate and persist a note for an explicit standalone topic. */
+export async function executeWriteIntent(
+  deps: NoteGenDeps,
+  intent: { name: string; topic: string },
+): Promise<GenerateResult> {
   const instruction = makeInstruction(intent.topic);
   const traceId = deps.tracer.start(deps.agent.id, deps.agent.system_prompt, instruction);
 
   try {
-    const { content, path, writeResult } = await generateNoteContent(deps, instruction);
-    await deps.tracer.finish(traceId, content, { action: "create_note", path, topic: intent.topic });
-    return `✏️ **${writeResult.message}**\n\n${content}`;
+    const result = await generateNoteContent(deps, instruction, intent.name);
+    await deps.tracer.finish(traceId, result.content, {
+      action: "create_note",
+      path: result.path,
+      topic: intent.topic,
+    });
+    return result;
   } catch (err: any) {
     deps.tracer.abort(traceId, err.message);
-    return `Error: ${err.message}`;
+    throw err;
   }
 }
 
+export interface SourceNoteOptions {
+  /** Optional title supplied by the orchestrator or a pending action. */
+  title?: string;
+}
+
 /**
- * Intentionally inconsistent with executeWriteIntent: this function THROWs on error
- * (caller shows Notice) while executeWriteIntent returns error as string (caller
- * displays as chat content). Both patterns fit their respective callers.
+ * Reformat a previous assistant response into a durable Markdown note.
+ * The source is authoritative: this operation does not perform a second
+ * research/web/RAG pass or introduce unrelated generic content.
  */
+export async function generateNoteFromSource(
+  deps: NoteGenDeps,
+  sourceContent: string,
+  options: SourceNoteOptions = {},
+): Promise<GenerateResult> {
+  const source = sourceContent.trim();
+  if (!source) throw new Error("No hay contenido fuente para generar la nota");
+
+  const titleHint = options.title?.trim();
+  const titleLine = titleHint
+    ? `Usa este titulo sugerido si no existe uno mejor en la fuente: ${titleHint}.`
+    : "Conserva el titulo de la fuente o genera uno tecnico y especifico.";
+  const instruction = [
+    "Convierte la investigacion siguiente en una nota Markdown autonoma.",
+    "Reformula y estructura el contenido, pero conserva todos los detalles tecnicos, formulas, resultados, advertencias y referencias presentes.",
+    "Elimina solamente saludos, preguntas al usuario, ofertas de crear notas y metacomentarios conversacionales.",
+    "No inventes informacion, no agregues una guia generica y no hagas una nueva investigacion web o RAG.",
+    "Empieza con un encabezado Markdown de nivel 1 y responde SOLO con el contenido Markdown completo.",
+    titleLine,
+    "",
+    "--- INVESTIGACION FUENTE ---",
+    source,
+    "--- FIN DE LA INVESTIGACION FUENTE ---",
+  ].join("\n");
+  const traceId = deps.tracer.start(deps.agent.id, deps.agent.system_prompt, instruction);
+
+  try {
+    const result = await generateNoteContent(deps, instruction, titleHint);
+    await deps.tracer.finish(traceId, result.content, {
+      action: "create_note",
+      path: result.path,
+      source: "conversation",
+    });
+    return result;
+  } catch (err: any) {
+    deps.tracer.abort(traceId, err.message);
+    throw err;
+  }
+}
+
+/** Generate the standalone note action used by the UI command. */
 export async function createNoteAction(deps: NoteGenDeps): Promise<string> {
   const instruction = makeInstruction("un tema interesante de investigación");
   const traceId = deps.tracer.start(deps.agent.id, deps.agent.system_prompt, instruction);
 
   try {
-    const { content, path, writeResult } = await generateNoteContent(deps, instruction);
-    await deps.tracer.finish(traceId, content, { action: "create_note", path });
-    return path;
+    const result = await generateNoteContent(deps, instruction);
+    await deps.tracer.finish(traceId, result.content, { action: "create_note", path: result.path });
+    return result.path;
   } catch (err: any) {
     deps.tracer.abort(traceId, err.message);
     throw err;

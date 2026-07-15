@@ -65,14 +65,14 @@ export async function executeTurn(
     // Search wide — pathFilter may narrow later
     const searchK = (activePathFilter?.length) ? Math.max(50, deps.vectorStore.count) : topK;
     let results = deps.vectorStore.search(queryEmbedding, searchK).filter((r) => r.score >= minSim);
-    console.log(`[RAG] search K=${searchK} → pre-filter: ${results.length} chunks (≥${minSim}), top scores: ${results.slice(0, 5).map(r => `${r.chunk.note_path.split("/").pop()}:${r.score.toFixed(3)}`).join(" | ")}`);
+    console.info(`[RAG] search K=${searchK} → pre-filter: ${results.length} chunks (≥${minSim}), top scores: ${results.slice(0, 5).map(r => `${r.chunk.note_path.split("/").pop()}:${r.score.toFixed(3)}`).join(" | ")}`);
 
     // If sim threshold filtered everything out, retry without it
     if (results.length === 0) {
       const allResults = deps.vectorStore.search(queryEmbedding, searchK);
       if (allResults.length > 0) {
         results = allResults;
-        console.log(`[RAG] ⚠ Threshold ${minSim} too strict — usando todos los chunks (best score: ${allResults[0].score.toFixed(3)})`);
+        console.error(`[RAG] ⚠ Threshold ${minSim} too strict — usando todos los chunks (best score: ${allResults[0].score.toFixed(3)})`);
         new Notice(`⚠ Similitud máxima: ${allResults[0].score.toFixed(2)} (umbral era ${minSim}). Usando todos los chunks.`, 5000);
       }
     }
@@ -95,7 +95,7 @@ export async function executeTurn(
           chunk: ac.chunk_text,
           similarity_score: ac.score,
           from_note: ac.note_path,
-          relation: (ac as any).relation,
+          relation: ac.relation,
         });
       }
     }
@@ -108,7 +108,7 @@ export async function executeTurn(
     if (beforeFilterCount > 0 && results.length === 0) {
       console.warn(`[Permissions] Filtro combinado vacío (${beforeFilterCount} chunks descartados). pathFilter=${JSON.stringify(activePathFilter || "none")}, agent.read_paths=${JSON.stringify(agentPerms || "none")}`);
     }
-    console.log(`[RAG] post-filter (pathFilter=${JSON.stringify(activePathFilter || "none")} × agentPerms=${JSON.stringify(agentPerms || "none")}): ${results.length} chunks`);
+    console.info(`[RAG] post-filter (pathFilter=${JSON.stringify(activePathFilter || "none")} × agentPerms=${JSON.stringify(agentPerms || "none")}): ${results.length} chunks`);
     results = results.slice(0, topK);
     if (results.length === 0) {
       const samplePaths = deps.vectorStore.allChunks.slice(0, 3).map(c => c.note_path).join(", ");
@@ -141,7 +141,7 @@ export async function executeTurn(
         const searchQuery = deps.tavilyQuery || userInput.slice(0, 400);
         const tavilyResponse = await searchTavily(deps.tavilyApiKey, searchQuery);
         webContext = formatWebContext(tavilyResponse.results, tavilyResponse.answer);
-        if (webContext) console.log(`[Web] ${tavilyResponse.results.length} resultados de Tavily`);
+        if (webContext) console.error(`[Web] ${tavilyResponse.results.length} resultados de Tavily`);
       } catch (err: any) {
         console.warn("Sanctum: Tavily search failed:", err.message);
       }
@@ -160,7 +160,7 @@ export async function executeTurn(
       const agentTools = new Set(deps.agent?.tools || []);
       const extraTools = deps.skillContext.tools.filter(t => !agentTools.has(t));
       if (extraTools.length > 0) {
-        console.log(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent?.id || "unknown"}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent?.permissions?.read_paths || "none")}.`);
+      console.info(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent?.id || "unknown"}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent?.permissions?.read_paths || "none")}.`);
       }
     }
     renderedPrompt = `--- Skill: ${deps.skillContext.name} ---\n${deps.skillContext.instructions}\n\n---\n\n${renderedPrompt}`;
