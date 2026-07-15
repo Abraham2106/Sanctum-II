@@ -34,6 +34,26 @@
 > [!IMPORTANT]
 > Sanctum II está en desarrollo activo (`v0.1.0`) y funciona únicamente en Obsidian Desktop. Antes de usarlo con información sensible, revisa la sección de [seguridad y privacidad](#seguridad-y-privacidad).
 
+<details>
+  <summary><strong>Tabla de contenidos</strong></summary>
+
+- [Visión general](#visión-general)
+- [Capacidades principales](#capacidades-principales)
+- [Experiencia del producto](#experiencia-del-producto)
+- [Cómo funciona](#cómo-funciona)
+- [Inicio rápido](#inicio-rápido)
+- [Primer uso](#primer-uso)
+- [Flujos de trabajo](#flujos-de-trabajo)
+- [Proyectos y almacenamiento](#proyectos-y-almacenamiento)
+- [Recuperación y Knowledge Graph](#recuperación-y-knowledge-graph)
+- [Agentes y skills](#agentes-y-skills)
+- [Servidor MCP](#servidor-mcp)
+- [Seguridad y privacidad](#seguridad-y-privacidad)
+- [Desarrollo y calidad](#desarrollo-y-calidad)
+- [Estado y roadmap](#estado-y-roadmap)
+
+</details>
+
 ## Visión general
 
 Sanctum II integra chat, recuperación semántica, agentes especializados, proyectos aislados y escritura controlada de notas dentro de Obsidian. El contenido y el estado operativo permanecen en el vault: proyectos, threads, memoria, índices, trazas, agentes, skills y cadenas se almacenan como Markdown o JSONL inspeccionable.
@@ -42,6 +62,16 @@ La plataforma ofrece dos superficies sobre el mismo conocimiento:
 
 - **Plugin de Obsidian:** experiencia visual para conversar, investigar, administrar proyectos, explorar el Knowledge Graph y diseñar cadenas de agentes.
 - **Servidor MCP standalone:** proceso Node sobre `stdio` que permite consultar el vault e invocar agentes desde VS Code, OpenCode y otros clientes compatibles, incluso sin Obsidian abierto.
+
+### Por qué existe Sanctum II
+
+Un chat genérico puede responder preguntas, pero normalmente desconoce cómo está organizado un vault, qué carpetas puede leer, dónde debe escribir y qué conversación pertenece a cada proyecto. Sanctum II añade esa capa operativa:
+
+- **El contexto tiene límites:** cada proyecto y agente declara las rutas que puede consultar o modificar.
+- **La investigación deja un artefacto:** una respuesta puede transformarse en una nota Markdown autónoma, con fórmulas, citas y referencias conservadas.
+- **Los flujos son inspeccionables:** prompts, agentes, skills, proyectos, índices y trazas se guardan en formatos abiertos.
+- **La interfaz no encierra el conocimiento:** el mismo vault puede utilizarse desde Obsidian o desde clientes externos mediante MCP.
+- **La crítica forma parte del proceso:** el mesh no se limita a encadenar respuestas; evalúa el resultado y puede pedir una regeneración antes de entregarlo.
 
 ## Capacidades principales
 
@@ -58,19 +88,47 @@ La plataforma ofrece dos superficies sobre el mismo conocimiento:
 | **MCP** | Cinco tools para listar agentes, leer notas, consultar RAG, invocar agentes y ejecutar el mesh. |
 | **Observabilidad** | Trazas JSON con origen, agente, duración, uso y estado de la ejecución. |
 
-## Capturas
+## Experiencia del producto
 
-### Chat y agentes
+Sanctum II se divide en vistas especializadas. Cada una expone una parte del runtime sin obligar al usuario a editar archivos internos para las tareas habituales.
+
+### Chat: conversación, contexto y observabilidad
 
 ![Vista de chat de Sanctum II](docs/MVP-Chat.png)
 
-### Mesh de investigación
+La vista principal está organizada en tres áreas:
 
-![Mesh Forager, Researcher y Critic](docs/MVP-Mesh.png)
+1. **Rail de agentes:** permite cambiar entre Forager, Researcher, Agente Base y agentes personalizados. También expone identidad, system prompt, contexto RAG, permisos e índice activo.
+2. **Conversación:** contiene el thread del proyecto, el selector Chat/Mesh, menciones con `@`, selección de skills y controles de indexación.
+3. **Trace y fuentes:** muestra la ejecución más reciente y las notas que aportaron contexto, haciendo visible qué ocurrió detrás de una respuesta.
 
-### Proyectos, memoria y threads
+El chat no es stateless. Cada conversación mantiene mensajes, resumen progresivo, notas creadas y acciones pendientes. Esto permite que una instrucción como _“crea una nota con esta investigación”_ reutilice la respuesta completa del turno anterior aunque el agente explícito ya no aparezca en el mensaje.
+
+### Orquestador visual: agentes como un flujo ejecutable
+
+![Orquestador visual Forager, Researcher y Critic](docs/MVP-Mesh.png)
+
+El canvas permite construir cadenas conectando nodos de agentes. En la captura, Forager prepara las fuentes, Researcher desarrolla el análisis y Critic revisa el resultado.
+
+- Los nodos se arrastran desde el catálogo lateral.
+- Los puertos conectan la salida de un agente con la entrada del siguiente.
+- Las cadenas pueden abrirse, guardarse, reorganizarse y ejecutarse.
+- El orden se valida topológicamente antes de iniciar el flujo.
+- Una cadena guardada puede invocarse desde el chat mediante `@nombre-de-cadena`.
+
+Además de estas cadenas configurables, Sanctum incluye un mesh de investigación predefinido con ciclo de crítica: si el resultado no alcanza el umbral de aceptación, Researcher recibe feedback y regenera la respuesta hasta el límite de intentos.
+
+### Proyectos: aislamiento de conocimiento y trabajo
 
 ![Vista de proyectos de Sanctum II](docs/MVP-Proyectos.png)
+
+La vista de proyectos concentra el estado que antes quedaba disperso entre carpetas y conversaciones:
+
+- **Panel izquierdo:** selector de proyectos y creación de nuevos espacios.
+- **Área central:** conversaciones persistentes y acceso directo al chat dentro del contexto elegido.
+- **Panel derecho:** instrucciones, carpetas autorizadas, configuración RAG, memoria persistente y archivos adjuntos.
+
+Cambiar de proyecto cambia también el índice vectorial, las rutas permitidas, la memoria, los threads y la carpeta de salida. El índice global histórico no se mezcla con los índices aislados cuando el modo de proyectos está habilitado.
 
 ## Cómo funciona
 
@@ -187,6 +245,68 @@ Crea una nota en el vault con el contenido de la investigación
 
 Cuando un agente ofrece guardar una investigación, Sanctum conserva el contenido fuente como una acción pendiente. Una confirmación posterior puede reformatearlo como nota autónoma sin perder fórmulas, referencias ni contexto.
 
+### Vistas y comandos disponibles
+
+| Acción | Acceso | Resultado |
+|---|---|---|
+| Abrir chat | Ribbon o paleta de comandos | Abre la conversación del proyecto activo. |
+| Abrir Knowledge Graph | Ribbon o paleta | Explora relaciones explícitas y semánticas. |
+| Abrir Proyectos | Ribbon o paleta | Administra proyectos, threads, memoria, rutas e índice. |
+| Abrir Orquestador | Ribbon o paleta | Diseña y ejecuta cadenas visuales de agentes. |
+| Indexar Research | Paleta, Settings o proyecto | Actualiza el índice RAG permitido. |
+| Probar embeddings | Settings o paleta | Verifica la conexión y configuración de Gemini. |
+| Probar chat | Settings o paleta | Verifica OpenCode y el modelo configurado. |
+| Generar nota con IA | Paleta | Crea una nota aplicando permisos y carpeta de salida. |
+| Ejecutar mesh | Chat o paleta | Inicia el flujo Forager → Researcher ↔ Critic. |
+
+## Flujos de trabajo
+
+### Consulta directa con RAG
+
+Usa el Agente Base para preguntas centradas en el material indexado. Sanctum genera el embedding de la consulta, recupera los chunks relevantes, aplica los filtros del proyecto y del agente, y entrega ese contexto al modelo.
+
+```text
+¿Qué limitaciones de hardware aparecen en las notas sobre quantum annealing?
+```
+
+Las respuestas pueden citar las notas mediante `[[wikilinks]]`, mientras el panel de fuentes permite inspeccionar qué documentos participaron.
+
+### Investigación profunda
+
+Selecciona Researcher y activa la skill `deep-research` cuando necesites contrastar el vault con información web:
+
+```text
+@researcher Compara QAOA y quantum annealing para optimización energética /deep-research
+```
+
+Forager prepara el contexto, Researcher construye el análisis y, en modo Mesh, Critic evalúa coherencia, uso de fuentes, completitud, actualidad y claridad. El umbral predeterminado de aceptación es `80/100`, con un máximo de tres intentos.
+
+### Convertir una investigación en nota
+
+Después de una respuesta extensa, puedes utilizar una confirmación corta o referencial:
+
+```text
+Genera la nota
+Crea una nota en el vault con el contenido de la investigación
+Guarda el contenido anterior
+```
+
+Sanctum utiliza el snapshot completo de la investigación como fuente, elimina el lenguaje conversacional y escribe un documento Markdown autónomo. Esta segunda operación no repite la investigación web ni sustituye el contenido por una explicación genérica.
+
+### Modificar una nota creada
+
+Las notas generadas se registran en el thread con su título y ruta real. Esto permite resolver instrucciones posteriores sin depender únicamente del nombre escrito por el usuario:
+
+```text
+En la nota que acabas de crear, amplía la sección de limitaciones.
+```
+
+Antes de escribir, Sanctum resuelve la referencia y vuelve a validar los `write_paths` del proyecto.
+
+### Ejecutar desde un cliente MCP
+
+Un cliente externo puede consultar el mismo vault sin abrir Obsidian. Por ejemplo, `sanctum_query_vault` recupera contexto semántico y `sanctum_run_mesh` ejecuta el pipeline de investigación desde VS Code u OpenCode. Las llamadas siguen utilizando el agente indicado y sus permisos de lectura.
+
 ## Proyectos y almacenamiento
 
 Cada proyecto mantiene su propio perímetro de contexto y persistencia:
@@ -209,20 +329,45 @@ La indexación por proyecto:
 - elimina del índice archivos borrados durante un reindexado completo;
 - inicia vacío, sin tratar la ausencia del primer índice como error.
 
+## Recuperación y Knowledge Graph
+
+### RAG vectorial
+
+El indexador recorre únicamente las carpetas autorizadas del proyecto, divide las notas en chunks, genera embeddings con Gemini y persiste transacciones compactas en JSONL. La configuración predeterminada utiliza embeddings de `768` dimensiones, chunks de hasta `400` palabras, `top_k = 5` y similitud mínima de `0.65`; cada proyecto puede ajustar estos valores.
+
+Durante una consulta, el sistema busca candidatos en el índice activo y aplica dos filtros antes de entregar contexto al modelo:
+
+1. Las rutas de lectura del proyecto o filtro seleccionado.
+2. Los `read_paths` declarados por el agente.
+
+Esto evita que cambiar de agente amplíe implícitamente su acceso al contenido.
+
+### Grafo de conocimiento
+
+El Knowledge Graph combina tres señales:
+
+- **Explícita:** enlaces `[[wikilink]]` ya presentes en las notas.
+- **Semántica:** similitud entre embeddings de notas o chunks relacionados.
+- **Reforzada:** conexiones que reciben mayor peso cuando diferentes señales coinciden.
+
+La vista permite activar y desactivar tipos de arista, ajustar el umbral semántico y explorar vecinos relacionados. Los eventos de modificación y eliminación del vault actualizan las relaciones asociadas para reducir referencias obsoletas.
+
 ## Agentes y skills
 
 Los agentes viven en `sanctum-agents/*.md` y las skills en `sanctum-skills/*.md`. Ambos usan frontmatter declarativo.
 
 ### Agentes incluidos
 
-| ID | Rol |
-|---|---|
-| `agente_base` | Chat general, RAG y acciones sobre notas. |
-| `forager` | Recolección y reformulación de contexto. |
-| `researcher` | Investigación extensa con fuentes internas y web. |
-| `critic` | Evaluación estructurada y feedback del mesh. |
-| `web-search` | Consulta web y síntesis contextual. |
-| `orchestrator` | Clasificación de intención para mensajes implícitos. |
+| ID | Rol | Tools declaradas | Visibilidad |
+|---|---|---|---|
+| `agente_base` | Chat general, RAG y acciones sobre notas. | `rag_query`, `create_note`, `append_to_note` | Usuario |
+| `forager` | Recolección y reformulación de contexto. | `rag_query` | Usuario |
+| `researcher` | Investigación extensa con fuentes internas y web. | `rag_query`, `web_search` | Usuario |
+| `critic` | Evaluación estructurada y feedback del mesh. | Ninguna | Interno |
+| `web-search` | Consulta web y síntesis contextual. | `web_search`, `rag_query` | Usuario |
+| `orchestrator` | Clasificación de intención para mensajes implícitos. | Ninguna | Interno |
+
+Las tools describen capacidades, pero no sustituyen los permisos. El acceso efectivo es la intersección entre las rutas del agente, las rutas del proyecto y el filtro activo de la conversación.
 
 ### Skill incluida
 
