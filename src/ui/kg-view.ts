@@ -260,7 +260,7 @@ export class KgView extends ItemView {
 
   private toggleEdgeType(type: string, btn: HTMLElement): void {
     const key = type === "explicit" ? "showExplicit" : type === "reinforced" ? "showReinforced" : "showSemantic";
-    this.state[key as keyof ViewState] = !this.state[key as keyof ViewState] as boolean;
+    (this.state as any)[key] = !(this.state as any)[key];
     btn.classList.toggle("is-active");
     this.render();
   }

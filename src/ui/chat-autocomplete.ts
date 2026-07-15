@@ -36,7 +36,7 @@ export class ChatAutocomplete {
   init(inputEl: HTMLInputElement, dropdownEl: HTMLElement, onSkillSelect?: (id: string, name: string) => void): void {
     this.inputEl = inputEl;
     this.dropdownEl = dropdownEl;
-    this.onSkillSelect = onSkillSelect;
+    this.onSkillSelect = onSkillSelect ? ((id: string) => onSkillSelect(id, "")) : null;
 
     inputEl.addEventListener("input", () => this.handleInput());
     inputEl.addEventListener("keyup", (e) => { if (e.key === "@") this.handleInput(); });
@@ -228,7 +228,7 @@ export class ChatAutocomplete {
       this.inputEl.value = val.slice(0, this.activeQuery.startIdx) + val.slice(this.activeQuery.endIdx);
       this.inputEl.focus();
       this.close();
-      if (this.onSkillSelect) this.onSkillSelect(opt.value, opt.label);
+      if (this.onSkillSelect) this.onSkillSelect(opt.value);
       return;
     }
 

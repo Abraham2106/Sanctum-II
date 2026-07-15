@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
-import type { SanctumSettings } from "../constants";
+import { DEFAULT_MODEL, type SanctumSettings } from "../constants";
 
 export interface SettingsTabPlugin {
   settings: SanctumSettings;
@@ -16,7 +16,7 @@ export class SanctumSettingTab extends PluginSettingTab {
   plugin: SettingsTabPlugin;
 
   constructor(app: App, plugin: SettingsTabPlugin) {
-    super(app, plugin);
+    super(app, plugin as any);
     this.plugin = plugin;
   }
 
@@ -46,7 +46,7 @@ export class SanctumSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("OpenCode Go — API Key")
-      .setDesc("API key de OpenCode para deepseek-v4-flash")
+      .setDesc(`API key de OpenCode para ${DEFAULT_MODEL}`)
       .addText((text) =>
         text
           .setPlaceholder("sk-...")

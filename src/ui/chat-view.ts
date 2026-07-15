@@ -66,6 +66,7 @@ export class SanctumChatView extends ItemView {
   async reloadForProject(threadId: string): Promise<void> {
     this.threadId = threadId;
     if (!this.messenger) return;
+    this.messenger.setThreadId(threadId);
     this.messenger.messages = [];
     if (this.threadEl) {
       this.threadEl.empty();

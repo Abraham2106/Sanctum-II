@@ -5,6 +5,7 @@ import { indexProject } from "../projects/indexer";
 import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import { InputModal } from "./input-modal";
 import { FolderSelectModal } from "./folder-select-modal";
+import { DEFAULT_MODEL } from "../constants";
 
 export const VIEW_TYPE_PROJECTS = "sanctum-projects";
 
@@ -110,13 +111,30 @@ export class ProjectsView extends ItemView {
     header.createSpan({ text: "◈ Proyectos", attr: { style: "font-weight:700;font-size:14px" } });
 
     const list = this.leftEl.createDiv({ cls: "s-proj-list" });
-    for (const p of this.projects) {
+
+    // Sort: starred first, then alphabetically
+    const sorted = [...this.projects].sort((a, b) => {
+      if (a.starred && !b.starred) return -1;
+      if (!a.starred && b.starred) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    for (const p of sorted) {
       const row = list.createDiv({
         cls: "s-proj-row" + (p.id === this.deps.getActiveProjectId() ? " is-active" : ""),
       });
-      row.createSpan({ text: p.icon + " " });
+      row.createSpan({ text: (p.starred ? "⭐ " : p.icon + " ") });
       row.createSpan({ text: p.name, attr: { style: "font-weight:600" } });
       const badge = row.createSpan({ cls: "s-proj-badge", text: p.read_paths?.[0]?.replace("/", "") || "sin ruta" });
+
+      // Three-dot menu button
+      const menuBtn = row.createEl("button", { cls: "s-proj-thread-menu-btn", attr: { title: "Acciones del proyecto" } });
+      menuBtn.setText("⋮");
+      menuBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.showProjectMenu(menuBtn, p);
+      };
+
       row.onclick = async () => {
         await this.deps.onSelectProject(p.id);
         await this.refresh();
@@ -171,7 +189,7 @@ export class ProjectsView extends ItemView {
     });
     const sendBtn = compRow.createEl("button", { cls: "s-proj-btn primary", text: "Enviar" });
     sendBtn.onclick = () => this.handleComposer();
-    const modelBadge = comp.createDiv({ cls: "s-proj-model-badge", text: p.model || "deepseek-v4-flash", attr: { style: "margin-top:8px" } });
+    const modelBadge = comp.createDiv({ cls: "s-proj-model-badge",     text: p.model || DEFAULT_MODEL, attr: { style: "margin-top:8px" } });
 
     // Threads list
     this.centerEl.createDiv({ cls: "s-proj-section-title", text: "Conversaciones" });
@@ -497,6 +515,80 @@ export class ProjectsView extends ItemView {
     this.renderCenter();
   }
 
+  // ── Project menu ──
+
+  private showProjectMenu(anchor: HTMLElement, project: Project): void {
+    this.closeMenu();
+    const menu = document.body.createDiv({ cls: "s-thread-menu" });
+    this.activeMenu = menu;
+
+    const items: { label: string; cls?: string; action: () => void }[] = [
+      {
+        label: project.starred ? "⭐ Quitar estrella" : "☆ Marcar como favorito",
+        action: () => this.toggleProjectStar(project),
+      },
+      {
+        label: "✏️ Renombrar",
+        action: () => this.renameProject(project),
+      },
+      {
+        label: "🗑 Eliminar proyecto", cls: "destructive",
+        action: () => this.deleteProject(project),
+      },
+    ];
+
+    for (const item of items) {
+      const row = menu.createDiv({ cls: `s-thread-menu-item${item.cls ? " " + item.cls : ""}` });
+      row.createSpan({ text: item.label });
+      row.onclick = (e) => { e.stopPropagation(); item.action(); this.closeMenu(); };
+    }
+
+    const rect = anchor.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.right = `${window.innerWidth - rect.right}px`;
+    menu.style.zIndex = "10000";
+
+    const close = () => { this.closeMenu(); document.removeEventListener("click", close, true); document.removeEventListener("keydown", escHandler); };
+    const escHandler = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    setTimeout(() => document.addEventListener("click", close, true), 0);
+    document.addEventListener("keydown", escHandler);
+  }
+
+  private async toggleProjectStar(project: Project): Promise<void> {
+    project.starred = !project.starred;
+    await this.deps.saveProject(project);
+    new Notice(project.starred ? "⭐ Proyecto favorito" : "☆ Favorito quitado");
+    this.renderLeft();
+  }
+
+  private async renameProject(project: Project): Promise<void> {
+    const modal = new InputModal(this.app, "Renombrar proyecto", "Nuevo nombre", project.name);
+    const newName = await modal.ask();
+    if (!newName || !newName.trim()) return;
+    project.name = newName.trim();
+    await this.deps.saveProject(project);
+    new Notice(`Proyecto renombrado a "${newName.trim()}"`);
+    this.renderLeft();
+  }
+
+  private async deleteProject(project: Project): Promise<void> {
+    const confirmed = confirm(`¿Eliminar el proyecto "${project.name}" y todos sus datos? Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+    try {
+      await this.deps.projectStore.deleteProject(project.id);
+      new Notice(`Proyecto "${project.name}" eliminado`);
+      if (this.deps.getActiveProjectId() === project.id) {
+        this.activeProject = null;
+        this.threads = [];
+        this.memory = [];
+      }
+      await this.refresh();
+    } catch (err: any) {
+      new Notice("Error al eliminar: " + err.message);
+    }
+  }
+
   // ── Actions ──
 
   private async createProject(): Promise<void> {
@@ -504,7 +596,7 @@ export class ProjectsView extends ItemView {
     const parts = await modal.ask();
     if (!parts) return;
     const id = parts.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
-    if (!id) return new Notice("ID inválido");
+    if (!id) { new Notice("ID inválido"); return; }
     const nameModal = new InputModal(this.app, "Nombre visible", "Nombre", id);
     const name = await nameModal.ask();
     await this.deps.projectStore.createProject(id, name || id);
@@ -589,7 +681,7 @@ export class ProjectsView extends ItemView {
     input.multiple = true;
     input.onchange = async () => {
       if (!this.activeProject) return;
-      for (const file of input.files || []) {
+      for (const file of Array.from(input.files || [])) {
         try {
           await this.ingestFile(file);
         } catch (err: any) {

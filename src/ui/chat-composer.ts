@@ -32,7 +32,9 @@ export class ChatComposer {
     const breadcrumb = topbar.createDiv({ cls: "s-topbar-breadcrumb" });
     const icon = this.plugin.getActiveProjectIcon?.() || "◈";
     const name = this.plugin.getActiveProjectName?.() || "default";
-    breadcrumb.innerHTML = `${icon} ${name} / <strong>Chat</strong>`;
+    breadcrumb.createSpan({ text: icon + " " });
+    breadcrumb.createSpan({ text: name + " / " });
+    breadcrumb.createEl("strong", { text: "Chat" });
     const actions = topbar.createDiv({ cls: "s-topbar-actions" });
 
     const makeIconBtn = (iconId: string, title: string, handler: () => void) => {
@@ -43,7 +45,10 @@ export class ChatComposer {
       return btn;
     };
     makeIconBtn("history", "Último trace", () => this.handleShowTrace());
-    makeIconBtn("trash-2", "Limpiar chat", () => this.plugin["clearChatHistory"]?.());
+    makeIconBtn("trash-2", "Limpiar chat", () => {
+      const plugin = this.plugin as any;
+      if (typeof plugin.clearChatHistory === "function") plugin.clearChatHistory();
+    });
 
     // Pipeline
     this.pipelineEl = parent.createDiv({ cls: "s-pipeline" });
@@ -134,7 +139,9 @@ export class ChatComposer {
         if (label) this.composerFolderSelect.createEl("option", { text: `📁 ${label}`, value: folder });
       }
       if (this.plugin.activeFolder) this.composerFolderSelect.value = this.plugin.activeFolder;
-    } catch {}
+    } catch (err: any) {
+      console.warn("[Composer] loadFolderList:", err.message);
+    }
   }
 
   set updateBreadcrumb(fn: () => string) {
@@ -152,7 +159,9 @@ export class ChatComposer {
     try {
       const trace = await this.plugin.getLatestTrace();
       // Show trace via the host's messenger
-    } catch {}
+    } catch (err: any) {
+      console.warn("[Composer] handleShowTrace:", err.message);
+    }
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
@@ -174,12 +183,14 @@ export class ChatComposer {
       for (const f of files) {
         const id = f.replace(/^.*[\\/]/, "").replace(".json", "");
         let name = id;
-        try { const raw = await this.app.vault.adapter.read(f); const c = JSON.parse(raw); name = c.name || id; } catch {}
+        try { const raw = await this.app.vault.adapter.read(f); const c = JSON.parse(raw); name = c.name || id; } catch (err: any) { console.warn("[Composer] chain parse:", err.message); }
         const row = menu.createDiv({ cls: "s-thread-menu-item" });
         row.createSpan({ text: `⛓️ ${name}`, attr: { style: "flex:1" } });
         row.onclick = () => { this.inputEl.value = `@${id} ${this.inputEl.value}`; this.inputEl.focus(); menu.remove(); };
       }
-    } catch {}
+    } catch (err: any) {
+      console.warn("[Composer] showChainMenu:", err.message);
+    }
     const rect = anchor.getBoundingClientRect();
     menu.style.top = `${rect.bottom + 4}px`;
     menu.style.left = `${rect.left}px`;

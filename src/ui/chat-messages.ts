@@ -1,8 +1,7 @@
-import { MarkdownRenderer } from "obsidian";
+import { MarkdownRenderer, Notice, setIcon } from "obsidian";
 import type { ChatMessage } from "./chat-types";
 import type { ChatViewPlugin } from "./chat-types";
 import { renderAvatar } from "./chat-types";
-import { setIcon } from "obsidian";
 
 export class ChatMessages {
   messages: ChatMessage[] = [];
@@ -62,7 +61,7 @@ export class ChatMessages {
 
     const body = wrap.createDiv({ cls: "s-msg-body" });
     const mdEl = body.createDiv();
-    MarkdownRenderer.renderMarkdown(msg.content, mdEl, "", this.plugin);
+    MarkdownRenderer.renderMarkdown(msg.content, mdEl, "", this.plugin as any);
 
     if (msg.sources?.length) {
       const chips = body.createDiv({ cls: "s-source-chips" });
@@ -97,7 +96,7 @@ export class ChatMessages {
     this.messages = [];
     this.threadEl.empty();
     if (this.threadId) {
-      this.plugin.saveThreadMessages(this.threadId, []).catch(() => {});
+      this.plugin.saveThreadMessages(this.threadId, []).catch((err: any) => { if (err) console.warn("[Messages] clear save:", err.message); });
     }
   }
 
@@ -105,7 +104,10 @@ export class ChatMessages {
     if (!this.threadId) return;
     try {
       await this.plugin.saveThreadMessages(this.threadId, this.messages);
-    } catch {}
+    } catch (err: any) {
+      console.warn("[Messages] save:", err.message);
+      new Notice("⚠ Error al guardar mensajes — se perderán al recargar", 5000);
+    }
   }
 
   async loadThreadMessages(): Promise<boolean> {
@@ -117,7 +119,9 @@ export class ChatMessages {
         this.renderAll();
         return true;
       }
-    } catch {}
+    } catch (err: any) {
+      console.warn("[Messages] loadThreadMessages:", err.message);
+    }
     return false;
   }
 }

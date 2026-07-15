@@ -140,7 +140,7 @@ export class ChainView extends ItemView {
 
     // Edge drawing
     this.canvasWrap.addEventListener("pointermove", (e) => { if(!this.linking) return; const r=this.canvasWrap.getBoundingClientRect(); const s=this.portPos(this.linking.fromId,"out"); if(!s) return; this.linking.path.setAttribute("d",this.bezier(s.x,s.y,(e.clientX-r.left-this.tx)/this.scale,(e.clientY-r.top-this.ty)/this.scale)); });
-    this.canvasWrap.addEventListener("pointerup", (e) => { if(!this.linking) return; const t=document.elementFromPoint(e.clientX,e.clientY)?.closest("[data-node-id]") as HTMLElement|null; if(t&&t.dataset.nodeId!==this.linking.fromId&&!this.edges.some(ed=>ed.from===this.linking.fromId&&ed.to===t.dataset.nodeId)) this.addEdge(this.linking.fromId,t.dataset.nodeId); this.linking.path.remove(); this.linking=null; });
+    this.canvasWrap.addEventListener("pointerup", (e) => { if(!this.linking) return; const t=document.elementFromPoint(e.clientX,e.clientY)?.closest("[data-node-id]") as HTMLElement|null; const toId = t?.dataset?.nodeId; if(t&&toId&&this.linking&&toId!==this.linking.fromId&&!this.edges.some(ed=>ed.from===this.linking!.fromId&&ed.to===toId)) this.addEdge(this.linking!.fromId,toId); this.linking!.path.remove(); this.linking=null; });
 
     this.loadChainList();
   }

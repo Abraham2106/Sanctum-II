@@ -8,7 +8,9 @@
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
     "test": "vitest run",
-    "deploy": "npm run build && powershell -File deploy.ps1"
+    "typecheck": "tsc --noEmit",
+    "deploy": "npm run build && powershell -File deploy.ps1",
+    "verify": "npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
