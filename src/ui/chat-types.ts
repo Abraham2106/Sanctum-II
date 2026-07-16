@@ -2,6 +2,7 @@ import type { MeshResultFull } from "../orchestrator/mesh";
 import type { AgentDefinition } from "../agents/types";
 import type { App } from "obsidian";
 import type { ConversationMessage } from "../orchestrator/conversation";
+import type { SkillAuthoringProgress } from "../skills/authoring/types";
 
 export interface ChatMessage {
   role: "user" | "agent";
@@ -16,6 +17,7 @@ export interface ChatViewHandle {
   setThreadId(id: string): void;
   postMessage(text: string): Promise<void>;
   reloadForProject?(threadId: string): Promise<void>;
+  refreshAgentAutocomplete?(): Promise<void>;
 }
 
 export interface RailAgent {
@@ -32,7 +34,7 @@ export interface ChatViewPlugin {
   agentName: string;
   vectorStore: { count: number };
   activeFolder: string | null;
-  sendChatMessage(msg: string, convMessages?: ConversationMessage[], convSummary?: string): Promise<{ content: string; conversationSummary?: string } | string>;
+  sendChatMessage(msg: string, convMessages?: ConversationMessage[], convSummary?: string, onSkillProgress?: (progress: SkillAuthoringProgress) => void): Promise<{ content: string; conversationSummary?: string } | string>;
   indexResearch(folder?: string): Promise<void>;
   setActiveFolder(folder: string | null): void;
   runOrchestrate(prompt: string): Promise<void>;
@@ -66,7 +68,7 @@ export function renderAvatar(parent: HTMLElement, avatar: string, agentId: strin
   const icon = getAgentIcon(agentId);
   if (icon !== "bot") {
     setIcon(parent, icon);
-  } else if (avatar && !/[\u{1F300}-\u{1F9FF}]/u.test(avatar) && avatar.length < 25) {
+  } else if (avatar && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(avatar)) {
     setIcon(parent, avatar);
   } else {
     setIcon(parent, "bot");

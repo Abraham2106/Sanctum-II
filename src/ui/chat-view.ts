@@ -8,6 +8,7 @@ import { ChatRightPanel } from "./chat-right";
 import { ChatMessages } from "./chat-messages";
 import { ChatAutocomplete } from "./chat-autocomplete";
 import type { ChatViewPlugin, ChatMessage, RailAgent } from "./chat-types";
+import type { SkillAuthoringProgress } from "../skills/authoring/types";
 
 export { ChatViewPlugin, ChatMessage };
 
@@ -31,6 +32,7 @@ export class SanctumChatView extends ItemView {
 
   // DOM references
   private threadEl!: HTMLElement;
+  private leftEl!: HTMLElement;
 
   // Agent autocomplete data
   private availableAgents: RailAgent[] = [];
@@ -92,7 +94,7 @@ export class SanctumChatView extends ItemView {
     container.empty();
     container.addClass("sanctum-root");
 
-    const leftEl = container.createDiv({ cls: "s-left" });
+    const leftEl = this.leftEl = container.createDiv({ cls: "s-left" });
     const centerEl = container.createDiv({ cls: "s-center" });
     const rightEl = container.createDiv({ cls: "s-right" });
 
@@ -158,6 +160,14 @@ export class SanctumChatView extends ItemView {
     });
   }
 
+  /** Reloads agent/skill suggestions after a definition is created or edited. */
+  async refreshAgentAutocomplete(): Promise<void> {
+    if (!this.autocomplete) return;
+    await this.autocomplete.loadData();
+    this.availableAgents = this.autocomplete.getAgents();
+    if (this.leftEl && this.left) this.left.build(this.leftEl, this.availableAgents);
+  }
+
   private async loadConversationSummary(): Promise<void> {
     const projectId = this.plugin.getActiveProjectId();
     if (!projectId || !this.threadId || !this.plugin.loadConversationSummaryForProject) return;
@@ -184,6 +194,7 @@ export class SanctumChatView extends ItemView {
 
     // Detect @agent mention
     const mentionMatch = text.trim().match(/^@([\w\-]+)(?:\s+([\s\S]*))?$/);
+    const isSkillCreator = /^\/skill-creator(?:\s|$)/i.test(text);
     let agentLabel = `bot ${this.plugin.agentName}`;
     let iconId = "bot";
 
@@ -191,9 +202,12 @@ export class SanctumChatView extends ItemView {
       const targetAgentId = mentionMatch[1];
       const found = this.availableAgents.find(a => a.id === targetAgentId);
       if (found) {
-        iconId = "bot";
+        iconId = found.avatar || "bot";
         agentLabel = `${iconId} ${found.name}`;
       }
+    } else if (isSkillCreator) {
+      iconId = "wand-sparkles";
+      agentLabel = `${iconId} Skill Creator`;
     }
 
     this.composer.inputEl.value = "";
@@ -201,10 +215,14 @@ export class SanctumChatView extends ItemView {
     // duplicating the user message in the LLM payload.
     const history = this.messenger.messages.map(m => ({ role: m.role === "user" ? "user" as const : "assistant" as const, content: m.content }));
     this.messenger.addMsg("user", text);
-    this.messenger.addMsg("agent", "Pensando...", agentLabel);
+    this.messenger.addMsg("agent", isSkillCreator ? "Iniciando mesh contextual de autoría…" : "Pensando...", agentLabel);
     const thinkingEl = this.threadEl.lastElementChild;
     try {
-      const response = await this.plugin.sendChatMessage(text, history, this.conversationSummary);
+      const onSkillProgress = isSkillCreator
+        ? (progress: SkillAuthoringProgress) => this.composer.showSkillAuthoringPipeline(progress)
+        : undefined;
+      if (isSkillCreator) this.composer.showSkillAuthoringPipeline({ stage: "rag", message: "Preparando contexto…" });
+      const response = await this.plugin.sendChatMessage(text, history, this.conversationSummary, onSkillProgress);
       const responseContent = typeof response === "string" ? response : response.content;
       if (typeof response !== "string" && response.conversationSummary !== undefined) this.conversationSummary = response.conversationSummary;
       this.messenger.messages.pop();
