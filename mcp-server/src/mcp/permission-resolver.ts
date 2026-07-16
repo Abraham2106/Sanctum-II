@@ -1,6 +1,7 @@
 import type { VaultAdapter } from "../../../src/core/vault-adapter.js"
 import { pathMatchesAny } from "../../../src/utils.js"
 import { log } from "./logger.js"
+import { splitFrontmatter } from "../../../src/shared/agents/frontmatter.js"
 
 export class AgentNotFoundError extends Error {
   constructor(agentId: string) {
@@ -13,67 +14,6 @@ export interface ResolvedPermissions {
   agentId: string
   readPaths: string[]
   writePaths: string[]
-}
-
-function parseFrontmatterFromMd(content: string): Record<string, unknown> {
-  const match = content.match(/^---\s*\n([\s\S]*?)\n---/)
-  if (!match) return {}
-  const yaml = match[1]
-  const result: Record<string, unknown> = {}
-  let currentParent: string | null = null
-  let currentNested: Record<string, unknown> | null = null
-
-  for (const line of yaml.split("\n")) {
-    // Top-level key:value
-    const topKv = line.match(/^(\w+)\s*:\s*(.*)$/)
-    if (topKv) {
-      // Flush any pending nested object
-      if (currentParent && currentNested !== null) {
-        result[currentParent] = currentNested
-        currentParent = null
-        currentNested = null
-      }
-      const key = topKv[1]
-      let value: unknown = topKv[2].trim()
-      if (value === "" || value === null) {
-        // Starts a nested block
-        currentParent = key
-        currentNested = {}
-        continue
-      }
-      if (value === "true") value = true
-      else if (value === "false") value = false
-      else if (/^\d+$/.test(String(value))) value = Number(value)
-      else if (typeof value === "string" && value.startsWith('"') && value.endsWith('"')) {
-        value = value.slice(1, -1)
-      }
-      if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {
-        value = value.slice(1, -1).split(",").map(s => s.trim().replace(/^"|"$/g, "")).filter(Boolean)
-      }
-      result[key] = value
-      continue
-    }
-    // Indented line — belongs to current nested parent
-    const nestedKv = line.match(/^\s+(\w+)\s*:\s*(.+)$/)
-    if (nestedKv && currentParent && currentNested !== null) {
-      let value: unknown = nestedKv[2].trim()
-      if (value === "true") value = true
-      else if (value === "false") value = false
-      else if (/^\d+$/.test(String(value))) value = Number(value)
-      else if (typeof value === "string" && value.startsWith('"') && value.endsWith('"')) {
-        value = value.slice(1, -1)
-      }
-      if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {
-        value = value.slice(1, -1).split(",").map(s => s.trim().replace(/^"|"$/g, "")).filter(Boolean)
-      }
-      currentNested[nestedKv[1]] = value
-    }
-  }
-  // Flush last nested object
-  if (currentParent && currentNested !== null) {
-    result[currentParent] = currentNested
-  }
-  return result
 }
 
 function extractPermissions(fm: Record<string, unknown>): ResolvedPermissions {
@@ -96,7 +36,8 @@ export async function resolvePermissions(
   } catch {
     throw new AgentNotFoundError(agentId)
   }
-  const fm = parseFrontmatterFromMd(content)
+  let fm: Record<string, unknown>
+  try { fm = splitFrontmatter(content).frontmatter } catch { fm = {} }
   const perms = extractPermissions(fm)
   log.debug("permisos resueltos", { agentId, readPaths: perms.readPaths })
   return perms

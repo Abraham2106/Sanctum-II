@@ -1,31 +1,10 @@
 import type { Skill } from "./types";
+import { splitFrontmatter } from "../shared/agents/frontmatter";
 
 const SKILLS_DIR = "sanctum-skills";
 
-function parseSkillMd(content: string): Skill {
-  const parts = content.split("---");
-  if (parts.length < 3) throw new Error("Skill debe tener frontmatter --- separado");
-  const fmLines = parts[1].trim().split("\n");
-  const bodyRaw = parts.slice(2).join("---").trim();
-  const data: Record<string, any> = {};
-
-  for (const line of fmLines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed === "---" || !trimmed.includes(":")) continue;
-    const colonIdx = trimmed.indexOf(":");
-    const key = trimmed.slice(0, colonIdx).trim();
-    let value: any = trimmed.slice(colonIdx + 1).trim();
-    if (value.startsWith("[") && value.endsWith("]")) {
-      value = value.slice(1, -1).split(",").map((s: string) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-    } else if (value === "true" || value === "false") {
-      value = value === "true";
-    } else if (!isNaN(Number(value))) {
-      value = Number(value);
-    } else {
-      value = value.replace(/^["']|["']$/g, "");
-    }
-    data[key] = value;
-  }
+export function parseSkillMarkdown(content: string): Skill {
+  const { frontmatter: data, body: bodyRaw } = splitFrontmatter(content);
 
   return {
     id: data.id || "unknown",
@@ -35,6 +14,13 @@ function parseSkillMd(content: string): Skill {
     model: data.model,
     instructions: bodyRaw,
   };
+}
+
+export function renderSkillPrompt(skill: Skill, ragContext: string, webContext: string, userPrompt: string): string {
+  return skill.instructions
+    .replace(/\{\{rag_context\}\}/g, ragContext)
+    .replace(/\{\{web_context\}\}/g, webContext)
+    .replace(/\{\{user_prompt\}\}/g, userPrompt);
 }
 
 export async function listSkills(
@@ -48,7 +34,7 @@ export async function listSkills(
   for (const path of mdFiles) {
     try {
       const content = await adapter.read(path);
-      skills.push(parseSkillMd(content));
+      skills.push(parseSkillMarkdown(content));
     } catch {}
   }
   return skills;
@@ -60,7 +46,7 @@ export async function loadSkill(
 ): Promise<Skill | null> {
   try {
     const content = await adapter.read(`${SKILLS_DIR}/${id}.md`);
-    return parseSkillMd(content);
+    return parseSkillMarkdown(content);
   } catch {
     return null;
   }

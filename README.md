@@ -12,6 +12,10 @@
   </p>
 
   <p>
+    <a href="https://github.com/Abraham2106/Sanctum-II/graphs/contributors"><img alt="Contribuidores" src="https://img.shields.io/github/contributors/Abraham2106/Sanctum-II?style=flat-square"></a>
+    <a href="https://github.com/Abraham2106/Sanctum-II/network/members"><img alt="Forks" src="https://img.shields.io/github/forks/Abraham2106/Sanctum-II?style=flat-square"></a>
+    <a href="https://github.com/Abraham2106/Sanctum-II/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Abraham2106/Sanctum-II?style=flat-square"></a>
+    <a href="https://github.com/Abraham2106/Sanctum-II/issues"><img alt="Issues" src="https://img.shields.io/github/issues/Abraham2106/Sanctum-II?style=flat-square"></a>
     <a href="https://github.com/Abraham2106/Sanctum-II/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Abraham2106/Sanctum-II/ci.yml?branch=main&style=flat-square&label=CI"></a>
     <a href="https://github.com/Abraham2106/Sanctum-II/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Abraham2106/Sanctum-II?style=flat-square"></a>
     <a href="LICENSE"><img alt="Licencia MIT" src="https://img.shields.io/github/license/Abraham2106/Sanctum-II?style=flat-square"></a>
@@ -23,11 +27,13 @@
   <p>
     <a href="#inicio-rápido"><strong>Inicio rápido</strong></a>
     ·
-    <a href="docs/registro-arquitectura.md"><strong>Arquitectura</strong></a>
+    <a href="docs/registro-arquitectura.md"><strong>Documentación</strong></a>
     ·
     <a href="mcp-server/README.md"><strong>Servidor MCP</strong></a>
     ·
-    <a href="https://github.com/Abraham2106/Sanctum-II/issues"><strong>Issues</strong></a>
+    <a href="https://github.com/Abraham2106/Sanctum-II/issues/new?labels=bug&amp;title=%5BBug%5D%3A%20"><strong>Reportar un error</strong></a>
+    ·
+    <a href="https://github.com/Abraham2106/Sanctum-II/issues/new?labels=enhancement&amp;title=%5BFeature%5D%3A%20"><strong>Solicitar una función</strong></a>
   </p>
 </div>
 
@@ -38,6 +44,7 @@
   <summary><strong>Tabla de contenidos</strong></summary>
 
 - [Visión general](#visión-general)
+  - [Construido con](#construido-con)
 - [Capacidades principales](#capacidades-principales)
 - [Experiencia del producto](#experiencia-del-producto)
 - [Cómo funciona](#cómo-funciona)
@@ -47,10 +54,16 @@
 - [Proyectos y almacenamiento](#proyectos-y-almacenamiento)
 - [Recuperación y Knowledge Graph](#recuperación-y-knowledge-graph)
 - [Agentes y skills](#agentes-y-skills)
+- [Creación asistida de agentes y skills](#creación-asistida-de-agentes-y-skills)
 - [Servidor MCP](#servidor-mcp)
 - [Seguridad y privacidad](#seguridad-y-privacidad)
 - [Desarrollo y calidad](#desarrollo-y-calidad)
+- [Estructura del repositorio](#estructura-del-repositorio)
 - [Estado y roadmap](#estado-y-roadmap)
+- [Contribuir](#contribuir)
+- [Soporte y feedback](#soporte-y-feedback)
+- [Licencia](#licencia)
+- [Agradecimientos](#agradecimientos)
 
 </details>
 
@@ -73,6 +86,19 @@ Un chat genérico puede responder preguntas, pero normalmente desconoce cómo es
 - **La interfaz no encierra el conocimiento:** el mismo vault puede utilizarse desde Obsidian o desde clientes externos mediante MCP.
 - **La crítica forma parte del proceso:** el mesh no se limita a encadenar respuestas; evalúa el resultado y puede pedir una regeneración antes de entregarlo.
 
+### Construido con
+
+| Tecnología | Papel en Sanctum II |
+|---|---|
+| [Obsidian](https://obsidian.md) | Superficie de escritorio y API del plugin. |
+| [TypeScript](https://www.typescriptlang.org) | Código fuente del plugin y del servidor MCP. |
+| [Node.js](https://nodejs.org) | Runtime de desarrollo y del servidor MCP standalone. |
+| [esbuild](https://esbuild.github.io) | Bundles de producción y modo watch. |
+| [Vitest](https://vitest.dev) | Pruebas automatizadas. |
+| [Google Gemini](https://ai.google.dev) | Embeddings para RAG y búsqueda semántica. |
+| [OpenCode](https://opencode.ai) | Proveedor configurable para las respuestas LLM. |
+| [Tavily](https://tavily.com) | Búsqueda web opcional para investigación profunda. |
+
 ## Capacidades principales
 
 | Área | Capacidad |
@@ -83,7 +109,9 @@ Un chat genérico puede responder preguntas, pero normalmente desconoce cómo es
 | **Proyectos** | Threads, memoria, archivos adjuntos, instrucciones, rutas de lectura/escritura y carpeta de salida propias. |
 | **Knowledge Graph** | Relaciones por wikilinks, similitud semántica y refuerzo de conexiones. |
 | **Notas accionables** | Creación y actualización de Markdown con permisos fail-closed y registro de la ruta realmente escrita. |
-| **Agentes y skills** | Definiciones declarativas en Markdown con frontmatter, herramientas y permisos explícitos. |
+| **Extensibilidad declarativa** | Agentes y skills en Markdown con frontmatter YAML, tools, placeholders y permisos explícitos. |
+| **Agent Creator** | Modal guiado para generar, revisar, validar y guardar agentes con iconos Lucide y una skill complementaria opcional. |
+| **Skill Creator** | Mesh contextual RAG → web → autor → crítico, con quality gate, regeneración y actualización con historial. |
 | **Cadenas visuales** | Composición y ejecución de flujos dirigidos de agentes desde Obsidian. |
 | **MCP** | Cinco tools para listar agentes, leer notas, consultar RAG, invocar agentes y ejecutar el mesh. |
 | **Observabilidad** | Trazas JSON con origen, agente, duración, uso y estado de la ejecución. |
@@ -189,7 +217,7 @@ GEMINI_API_KEYS=AIza-key-1,AIza-key-2
 TAVILY_API_KEY=tvly-tu-api-key
 ```
 
-`TAVILY_API_KEY` es opcional. Sin ella, las funciones de búsqueda web se omiten y el resto del flujo continúa disponible.
+`TAVILY_API_KEY` es opcional para los flujos que no usan la web. El comando `/skill-creator` sí la requiere porque contrasta el contexto local con fuentes públicas antes de redactar y evaluar una skill.
 
 > [!CAUTION]
 > No publiques `.env`, keys reales ni configuraciones MCP con secretos embebidos. Prefiere variables del entorno del sistema.
@@ -241,6 +269,10 @@ Ejemplos:
 Crea una nota en el vault con el contenido de la investigación
 
 @mi-cadena Analiza estas fuentes y prepara una revisión crítica
+
+@agent-creator Crea un revisor de contratos que solo lea /Legal/**
+
+/skill-creator crea una skill para revisar implementaciones QUBO
 ```
 
 Cuando un agente ofrece guardar una investigación, Sanctum conserva el contenido fuente como una acción pendiente. Una confirmación posterior puede reformatearlo como nota autónoma sin perder fórmulas, referencias ni contexto.
@@ -258,6 +290,9 @@ Cuando un agente ofrece guardar una investigación, Sanctum conserva el contenid
 | Probar chat | Settings o paleta | Verifica OpenCode y el modelo configurado. |
 | Generar nota con IA | Paleta | Crea una nota aplicando permisos y carpeta de salida. |
 | Ejecutar mesh | Chat o paleta | Inicia el flujo Forager → Researcher ↔ Critic. |
+| Crear agente | `@agent-creator <brief>` en el chat | Abre el modal de autoría, valida la definición y guarda el agente. |
+| Crear skill | `/skill-creator <brief>` en el chat | Ejecuta el mesh de autoría y guarda únicamente una skill aprobada. |
+| Actualizar skill | `/skill-creator --update <id> <cambios>` | Mejora una skill existente y archiva la versión anterior. |
 
 ## Flujos de trabajo
 
@@ -366,14 +401,21 @@ Los agentes viven en `sanctum-agents/*.md` y las skills en `sanctum-skills/*.md`
 | `critic` | Evaluación estructurada y feedback del mesh. | Ninguna | Interno |
 | `web-search` | Consulta web y síntesis contextual. | `web_search`, `rag_query` | Usuario |
 | `orchestrator` | Clasificación de intención para mensajes implícitos. | Ninguna | Interno |
+| `agent-creator` | Punto de entrada para crear y validar agentes desde el chat. | Ninguna | Usuario |
+| `boilerplate-agent` | Definición de referencia para agentes basados en RAG. | `rag_query` | Interno |
+| `skill-context-analyst` | Extrae convenciones y vacíos desde el RAG del proyecto. | `rag_query` | Interno |
+| `skill-web-researcher` | Sintetiza fuentes públicas para fundamentar una skill. | `web_search` | Interno |
+| `skill-author` | Redacta el borrador usando el brief y la evidencia reunida. | Ninguna | Interno |
+| `skill-critic` | Evalúa el borrador y produce feedback accionable. | Ninguna | Interno |
 
 Las tools describen capacidades, pero no sustituyen los permisos. El acceso efectivo es la intersección entre las rutas del agente, las rutas del proyecto y el filtro activo de la conversación.
 
-### Skill incluida
+### Skills incluidas
 
 | ID | Herramientas | Propósito |
 |---|---|---|
 | `deep-research` | `rag_query`, `web_search`, `create_note` | Investigación profunda, contrastada y con referencias. |
+| `skill-creator` | Ninguna de ejecución | Guía de autoría que define el contrato y los criterios usados por el mesh creador de skills. |
 
 Ejemplo mínimo de agente:
 
@@ -392,6 +434,61 @@ Revisa críticamente el material recuperado.
 {{rag_context}}
 {{user_prompt}}
 ```
+
+El runtime usa un parser YAML compartido para agentes y skills, por lo que admite mapas y secuencias anidadas en el frontmatter. Al cargar una definición, reemplaza `{{user_prompt}}`, `{{rag_context}}` y `{{web_context}}` según las tools declaradas. Los agentes `internal: true` quedan fuera del autocompletado y los agentes visibles pueden usar cualquier icono disponible de Lucide.
+
+## Creación asistida de agentes y skills
+
+Sanctum puede convertir un brief en artefactos Markdown auditables sin ocultar el resultado detrás de una configuración propietaria. Ambos creadores validan el contrato antes de escribir y actualizan el autocompletado del chat al terminar.
+
+### Agent Creator
+
+Envía uno de estos mensajes completos en el chat:
+
+```text
+@agent-creator Revisa contratos, identifica cláusulas de riesgo y cita la fuente.
+@agent-generator Crea un agente de solo lectura para comparar notas técnicas.
+```
+
+Los dos alias abren el mismo modal. Allí puedes definir:
+
+- brief, nombre, ID e icono Lucide;
+- rutas de lectura y escritura;
+- exposición mediante `@mención` o uso interno del mesh;
+- tools `rag_query`, `web_search`, `create_note` y `append_to_note`;
+- una skill complementaria opcional.
+
+El generador transforma el brief en un prompt operativo y presenta una revisión antes de guardar. La revisión muestra diagnósticos, ajustes automáticos, el prompt resultante y la definición Markdown completa. Los errores bloquean la confirmación; una definición válida se guarda en `sanctum-agents/{id}.md` y la skill opcional en `sanctum-skills/{skill-id}.md`.
+
+Las reglas de seguridad se aplican también durante la autoría:
+
+- el modelo no puede ampliar las rutas elegidas por el usuario;
+- `rag_query` exige al menos una entrada en `read_paths` y las tools de escritura exigen una entrada en `write_paths`;
+- un agente interno no puede exponerse mediante mención;
+- los avatares deben ser iconos Lucide, no URLs ni archivos de imagen;
+- un ID existente no se sobrescribe silenciosamente.
+
+### Skill Creator
+
+El creador de skills tiene dos modos:
+
+```text
+/skill-creator crea una skill para auditar modelos QUBO y explicar cada penalización
+/skill-creator --update qubo-reviewer añade validación de unidades y casos límite
+```
+
+Para ejecutarlo necesitas un proyecto seleccionado e indexado, claves de Gemini, acceso al LLM de OpenCode y `TAVILY_API_KEY`. El pipeline aparece en el compositor del chat y conserva sus fuentes y resultado en la traza:
+
+```text
+Contexto RAG → Investigación web → Autor → Crítico
+```
+
+1. **Contexto RAG:** `skill-context-analyst` recupera únicamente notas permitidas por el proyecto y el filtro activo, identifica convenciones locales y formula vacíos sin exponer contenido privado a la web.
+2. **Investigación web:** `skill-web-researcher` prioriza documentación oficial, papers, estándares y fuentes actuales mediante Tavily.
+3. **Autoría:** `skill-author` combina el brief, la guía `skill-creator`, el contexto local, las fuentes públicas y el feedback acumulado.
+4. **Quality gate:** `skill-critic` puntúa fundamento contextual, exactitud, actualidad, contrato Sanctum, casos límite y claridad.
+
+El borrador debe obtener al menos `85/100`; además, contexto, exactitud de dominio, actualidad web y contrato deben alcanzar `14/20` cada uno. Si falla, el autor regenera con feedback hasta un máximo de tres intentos. Sanctum no guarda un borrador rechazado. En modo `--update`, conserva la versión previa en `sanctum-skills/.history/` antes de escribir la versión aprobada.
 
 ## Servidor MCP
 
@@ -463,13 +560,14 @@ La integración continua vive en `.github/workflows/ci.yml` y ejecuta `npm run v
 Sanctum-II/
 ├── src/
 │   ├── app/             # Servicios y orquestación del chat
-│   ├── agents/          # Carga y tipos de agentes
+│   ├── agents/          # Carga, tipos, validación y autoría de agentes
 │   ├── orchestrator/    # Turnos, conversación, mesh y notas
 │   ├── projects/        # Proyectos, threads, memoria e indexación
 │   ├── rag/             # VectorStore persistente
 │   ├── kg/              # Knowledge Graph
 │   ├── chains/          # Persistencia y ejecución de cadenas
-│   ├── skills/          # Skills declarativas
+│   ├── skills/          # Skills declarativas y mesh de autoría
+│   ├── shared/          # Contratos compartidos y frontmatter YAML
 │   ├── core/            # Filesystem, escritura, comandos y entorno
 │   └── ui/              # Vistas y componentes de Obsidian
 ├── mcp-server/          # Servidor MCP standalone y smoke tests
@@ -489,6 +587,9 @@ Implementado:
 - [x] Knowledge Graph explícito y semántico.
 - [x] Creación y actualización controlada de notas.
 - [x] Skills, agentes personalizados y cadenas visuales.
+- [x] Agent Creator con modal, revisión, permisos fail-closed e iconos Lucide.
+- [x] Skill Creator contextual con RAG, investigación web, quality gate e historial.
+- [x] Frontmatter YAML compartido y autocompletado dinámico de agentes y skills.
 - [x] Servidor MCP standalone con cinco tools.
 - [x] Suite automatizada, smoke tests y CI.
 
@@ -508,11 +609,25 @@ Próximos pasos:
 
 Para cambios arquitectónicos, incluye la motivación, los límites de compatibilidad y las pruebas que protegen el nuevo comportamiento.
 
+### Colaboradores
+
+<a href="https://github.com/Abraham2106/Sanctum-II/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Abraham2106/Sanctum-II" alt="Colaboradores de Sanctum II">
+</a>
+
+## Soporte y feedback
+
+- [Reporta un error](https://github.com/Abraham2106/Sanctum-II/issues/new?labels=bug&title=%5BBug%5D%3A%20) con pasos de reproducción, resultado esperado y versión de Obsidian.
+- [Propón una mejora](https://github.com/Abraham2106/Sanctum-II/issues/new?labels=enhancement&title=%5BFeature%5D%3A%20) explicando el caso de uso y el beneficio esperado.
+- Consulta los [issues abiertos](https://github.com/Abraham2106/Sanctum-II/issues) antes de crear uno nuevo.
+
+Enlace del proyecto: [github.com/Abraham2106/Sanctum-II](https://github.com/Abraham2106/Sanctum-II)
+
 ## Licencia
 
 Distribuido bajo la licencia MIT. Consulta [LICENSE](LICENSE).
 
-## Créditos
+## Agradecimientos
 
 Sanctum II se construye sobre [Obsidian](https://obsidian.md), [TypeScript](https://www.typescriptlang.org), [esbuild](https://esbuild.github.io), [Google Gemini](https://ai.google.dev), [OpenCode](https://opencode.ai) y [Tavily](https://tavily.com).
 

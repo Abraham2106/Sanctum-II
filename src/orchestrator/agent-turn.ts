@@ -12,6 +12,7 @@ import type { KgEdgeStore } from "../kg/kg-store";
 import { injectProjectPrefix } from "../projects/context";
 import type { ProjectContext } from "../projects/context";
 import type { Skill } from "../skills/types";
+import { renderSkillPrompt } from "../skills/loader";
 import { buildConversationPayload } from "./conversation";
 import type { ConversationMessage } from "./conversation";
 import { pathMatchesAny } from "../utils";
@@ -163,7 +164,8 @@ export async function executeTurn(
       console.info(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent?.id || "unknown"}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent?.permissions?.read_paths || "none")}.`);
       }
     }
-    renderedPrompt = `--- Skill: ${deps.skillContext.name} ---\n${deps.skillContext.instructions}\n\n---\n\n${renderedPrompt}`;
+    const renderedSkill = renderSkillPrompt(deps.skillContext, ragContext, webContext, userInput);
+    renderedPrompt = `--- Skill: ${deps.skillContext.name} ---\n${renderedSkill}\n\n---\n\n${renderedPrompt}`;
   }
 
   let result;

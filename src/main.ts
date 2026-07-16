@@ -31,6 +31,10 @@ import type { Project } from "./projects/types";
 import { buildProjectContext } from "./projects/context";
 import { indexProject } from "./projects/indexer";
 import { ensureVaultDirectory } from "./core/vault-fs";
+import { AgentAuthoringError, AgentAuthoringService } from "./agents/authoring/service";
+import { SkillAuthoringMesh } from "./skills/authoring/mesh";
+import { parseSkillCreatorCommand } from "./skills/authoring/command";
+import type { SkillAuthoringProgress, SkillGenerationRequest } from "./skills/authoring/types";
 
 import { executeTurn } from "./orchestrator/agent-turn";
 import { AppServices } from "./app/services";
@@ -147,6 +151,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     this.addCommand({ id: "open-kg", name: "Abrir Knowledge Graph", callback: () => this.activateKgView() });
     this.addCommand({ id: "open-projects", name: "Abrir Proyectos", callback: () => this.activateProjectsView() });
     this.addCommand({ id: "open-chains", name: "Abrir Orquestador de Cadenas", callback: () => this.activateChainsView() });
+    this.addCommand({ id: "create-agent", name: "Crear o validar agente", callback: () => { void this.openAgentGenerator(); } });
     registerCommands(this);
     this.addSettingTab(new SanctumSettingTab(this.app, this));
 
@@ -212,28 +217,91 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
   // ── Chat ──
 
-  async sendChatMessage(userMessage: string, convMessages?: ConversationMessage[], convSummary?: string): Promise<ChatResponse | string> {
-    // ── Agent generator (@agent-generator) ──
-    const genMatch = userMessage.trim().match(/^@agent-generator(?:\s+([\s\S]*))?$/i);
+  async sendChatMessage(userMessage: string, convMessages?: ConversationMessage[], convSummary?: string, onSkillProgress?: (progress: SkillAuthoringProgress) => void): Promise<ChatResponse | string> {
+    // Built-in skill creator (/skill-creator) writes a validated skill definition.
+    const skillRequest = parseSkillCreatorCommand(userMessage);
+    if (skillRequest) {
+      return this.createSkillFromChat(skillRequest, onSkillProgress);
+    }
+
+    // ── Agent creator (@agent-creator / @agent-generator) ──
+    const genMatch = userMessage.trim().match(/^@(?:agent-creator|agent-generator)(?:\s+([\s\S]*))?$/i);
     if (genMatch) {
-      const { AgentGeneratorModal } = await import("./ui/agent-generator-modal");
-      const modal = new AgentGeneratorModal(this.app);
-      const result = await modal.ask();
-      if (result) {
-        const content = `---\nid: ${result.id}\nname: "${result.name}"\navatar: "${result.icon}"\ndescription: "${result.description}"\ntools: [${result.tools.join(", ")}]\npermissions:\n  read_paths: ["${result.read_paths.join("\", \"")}"]\n  write_paths: ${result.write_paths.length ? `["${result.write_paths.join("\", \"")}"]` : "[]"}\n---\n${result.instructions}\n\n{{rag_context}}\n\n{{user_prompt}}`;
-        try {
-          await this.app.vault.adapter.write(`sanctum-agents/${result.id}.md`, content);
-          new Notice(`✅ Agente "${result.name}" creado en sanctum-agents/${result.id}.md`);
-          return `✅ **Agente creado exitosamente:** @${result.id}\n\n**Nombre:** ${result.name}\n**Descripción:** ${result.description}\n**Icono:** ${result.icon}\n\nPodés mencionarlo con @${result.id} en el chat.`;
-        } catch (err: any) {
-          return `❌ Error al crear el agente: ${err.message}`;
-        }
-      }
-      return "❌ Creación de agente cancelada.";
+      return this.openAgentGenerator(genMatch[1]?.trim() || "");
     }
 
     const result = await this.chatOrch.handleMessage(userMessage, convMessages, convSummary);
     return result;
+  }
+
+  private async createSkillFromChat(request: SkillGenerationRequest, onProgress?: (progress: SkillAuthoringProgress) => void): Promise<string> {
+    if (!request.description) {
+      return request.mode === "update"
+        ? "Uso: `/skill-creator --update <id> describe cómo mejorar la skill`"
+        : "Uso: `/skill-creator crea una skill para diseñar apps`";
+    }
+
+    const mesh = new SkillAuthoringMesh({
+      adapter: this.app.vault.adapter,
+      opencodeClient: this.opencodeClient,
+      geminiBalancer: this.geminiBalancer,
+      vectorStore: this.services.vectorStore,
+      tracer: this.tracer,
+      tavilyApiKey: this.settings.tavilyApiKey,
+      projectContext: this.services.activeProjectContext,
+      pathFilter: this.services.pathFilter,
+      onProgress,
+    });
+    try {
+      const result = await mesh.run(request);
+      if (result.status === "escalated") {
+        const feedback = result.feedback.length ? result.feedback.map(item => `- ${item}`).join("\n") : "- No alcanzó el umbral de calidad.";
+        return `**Skill no guardada:** el mejor borrador obtuvo ${result.score}/100 tras ${result.attempts} intentos.\n\n**Feedback:**\n${feedback}\n\n<details><summary>Ver borrador no aprobado</summary>\n\n\`\`\`\`markdown\n${result.generation.skillMarkdown}\`\`\`\`\n</details>`;
+      }
+      await this.refreshAgentAutocomplete();
+      const action = request.mode === "update" ? "actualizada" : "creada";
+      new Notice(`Skill "${result.generation.skill.name}" ${action} con ${result.score}/100.`);
+      const tools = result.generation.skill.tools.length ? result.generation.skill.tools.map(tool => `\`${tool}\``).join(", ") : "ninguna";
+      const ragList = result.ragSources.slice(0, 3).map(source => `[[${source.notePath.replace(/\.md$/i, "")}]]`).join(", ") || "sin coincidencias locales";
+      const webList = result.webSources.slice(0, 3).map(source => `[${source.title}](${source.url})`).join(", ");
+      const history = result.saved?.historyPath ? `\nHistorial anterior: ${result.saved.historyPath}` : "";
+      return `**Skill ${action}:** /${result.generation.skill.id}\n\nNombre: ${result.generation.skill.name}\nTools de ejecución: ${tools}\nQuality gate: **${result.score}/100** · ${result.attempts} intento(s)\nRAG: ${result.ragSources.length} fuente(s) · ${ragList}\nWeb: ${result.webSources.length} fuente(s) · ${webList}\nArchivo: ${result.saved?.skillPath}${history}\nTrace: ${result.traceId}\n\nYa podés invocarla con /${result.generation.skill.id} en el chat.`;
+    } catch (error: any) {
+      const message = error instanceof AgentAuthoringError
+        ? error.issues.filter(issue => issue.severity === "error").map(issue => issue.message).join(" ")
+        : error?.message || "No se pudo guardar la skill.";
+      new Notice(message, 7000);
+      return `No se pudo crear la skill: ${message}`;
+    }
+  }
+
+  private async openAgentGenerator(initialDescription = ""): Promise<string> {
+    const { AgentGeneratorModal } = await import("./ui/agent-generator-modal");
+    const service = new AgentAuthoringService({ llm: this.opencodeClient, adapter: this.app.vault.adapter });
+    const modal = new AgentGeneratorModal(this.app, service, initialDescription);
+    const result = await modal.ask();
+    if (!result) return "Creación de agente cancelada.";
+    try {
+      const saved = await service.save(result);
+      await this.refreshAgentAutocomplete();
+      new Notice(`Agente "${result.agent.name}" creado.`);
+      const skillLine = saved.skillPath ? `\nSkill complementaria: ${saved.skillPath}` : "";
+      return `**Agente creado:** @${result.agent.id}\n\nNombre: ${result.agent.name}\nArchivo: ${saved.agentPath}${skillLine}\n\nPodés mencionarlo con @${result.agent.id} en el chat.`;
+    } catch (error: any) {
+      const message = error instanceof AgentAuthoringError
+        ? error.issues.filter(issue => issue.severity === "error").map(issue => issue.message).join(" ")
+        : error?.message || "No se pudo guardar el agente.";
+      new Notice(message, 7000);
+      return `No se pudo crear el agente: ${message}`;
+    }
+  }
+
+  private async refreshAgentAutocomplete(): Promise<void> {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_SANCTUM);
+    await Promise.all(leaves.map(async leaf => {
+      const view = leaf.view as unknown as ChatViewHandle;
+      await view.refreshAgentAutocomplete?.();
+    }));
   }
 
   async runMesh(userPrompt: string): Promise<MeshResultFull> {

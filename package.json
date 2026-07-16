@@ -23,6 +23,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "dotenv": "^16.4.0"
+    "dotenv": "^16.4.0",
+    "yaml": "^2.9.0"
   }
 }

@@ -1,17 +1,9 @@
 import type { AgentDefinition } from "./types";
 import { AGENTS_DIR, DEFAULT_MODEL } from "../constants";
-import { parseFrontmatter } from "../shared/agents/frontmatter";
+import { splitFrontmatter } from "../shared/agents/frontmatter";
 
 function parseAgentMd(content: string): AgentDefinition {
-  const parts = content.split("---");
-  if (parts.length < 3) {
-    throw new Error("Formato inválido: el archivo debe tener frontmatter --- separado");
-  }
-
-  const frontmatterRaw = parts[1].trim();
-  const bodyRaw = parts.slice(2).join("---").trim();
-
-  const frontmatter = parseFrontmatter(frontmatterRaw);
+  const { frontmatter, body: bodyRaw } = splitFrontmatter(content);
   const permissionsRaw = (frontmatter.permissions && typeof frontmatter.permissions === "object")
     ? frontmatter.permissions
     : {};

@@ -2,6 +2,7 @@ import { setIcon } from "obsidian";
 import type { App } from "obsidian";
 import type { ChatViewPlugin, RailAgent } from "./chat-types";
 import { getAgentIcon, renderAvatar } from "./chat-types";
+import type { SkillAuthoringProgress, SkillAuthoringStage, SkillRagSource, SkillWebSource } from "../skills/authoring/types";
 
 export class ChatComposer {
   inputEl!: HTMLInputElement;
@@ -16,6 +17,9 @@ export class ChatComposer {
   private meshMode = false;
   private onToggleMesh: (() => void) | null = null;
   private onSend: (() => Promise<void>) | null = null;
+  private skillLastStage: Exclude<SkillAuthoringStage, "done" | "failed"> = "rag";
+  private skillRagSources: SkillRagSource[] = [];
+  private skillWebSources: SkillWebSource[] = [];
 
   constructor(private plugin: ChatViewPlugin) {}
 
@@ -244,6 +248,51 @@ export class ChatComposer {
         const ring = this.pipelineEl.createDiv({ cls: `s-pipeline-score ${score >= 80 ? "ok" : "bad"}` });
         ring.setText(`${score}/100`);
       }
+    }
+  }
+
+  showSkillAuthoringPipeline(progress: SkillAuthoringProgress): void {
+    if (progress.stage === "rag") {
+      this.skillRagSources = progress.ragSources || [];
+      this.skillWebSources = [];
+    } else {
+      if (progress.ragSources) this.skillRagSources = progress.ragSources;
+      if (progress.webSources) this.skillWebSources = progress.webSources;
+    }
+    if (progress.stage !== "done" && progress.stage !== "failed") this.skillLastStage = progress.stage;
+
+    this.pipelineEl.style.display = "flex";
+    this.pipelineEl.empty();
+    const steps: { id: Exclude<SkillAuthoringStage, "done" | "failed">; label: string; icon: string }[] = [
+      { id: "rag", label: "Contexto RAG", icon: "database" },
+      { id: "web", label: "Investigación web", icon: "globe-2" },
+      { id: "author", label: "Autor", icon: "wand-sparkles" },
+      { id: "critic", label: "Crítico", icon: "badge-check" },
+    ];
+    const activeStage = progress.stage === "done" || progress.stage === "failed" ? this.skillLastStage : progress.stage;
+    const activeIndex = steps.findIndex(step => step.id === activeStage);
+
+    steps.forEach((step, index) => {
+      let state = "pending";
+      if (progress.stage === "done" || index < activeIndex) state = "done";
+      else if (progress.stage === "failed" && index === activeIndex) state = "escalated";
+      else if (index === activeIndex) state = "active";
+      const pill = this.pipelineEl.createDiv({ cls: `s-pipeline-pill ${state}` });
+      const icon = pill.createSpan();
+      setIcon(icon, step.icon);
+      let suffix = "";
+      if (step.id === "rag" && this.skillRagSources.length) suffix = ` ${this.skillRagSources.length}`;
+      if (step.id === "web" && this.skillWebSources.length) suffix = ` ${this.skillWebSources.length}`;
+      if ((step.id === "author" || step.id === "critic") && progress.attempt) suffix = ` ×${progress.attempt}`;
+      pill.createSpan({ text: ` ${step.label}${suffix}` });
+      if (step.id === "rag" && this.skillRagSources.length) pill.title = this.skillRagSources.map(source => `${source.notePath} (${source.score.toFixed(2)})`).join("\n");
+      else if (step.id === "web" && this.skillWebSources.length) pill.title = this.skillWebSources.map(source => `${source.title}\n${source.url}`).join("\n\n");
+      else if (progress.message && index === activeIndex) pill.title = progress.message;
+      if (index < steps.length - 1) this.pipelineEl.createSpan({ cls: "s-pipeline-arrow", text: "→" });
+    });
+    if (progress.score !== undefined) {
+      const score = this.pipelineEl.createDiv({ cls: `s-pipeline-score ${progress.score >= 85 ? "ok" : "bad"}` });
+      score.setText(`${progress.score}/100`);
     }
   }
 

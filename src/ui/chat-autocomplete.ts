@@ -3,6 +3,7 @@ import type { App } from "obsidian";
 import type { ChatViewPlugin, RailAgent } from "./chat-types";
 import { renderAvatar } from "./chat-types";
 import { isInternalPath } from "../utils";
+import { splitFrontmatter } from "../shared/agents/frontmatter";
 
 interface Suggestion {
   type: "agent" | "note" | "skill";
@@ -23,7 +24,7 @@ export class ChatAutocomplete {
   private chainsCache: { id: string; name: string }[] = [];
   private plugin: ChatViewPlugin;
   private getApp: () => App;
-  private onSkillSelect: ((id: string) => void) | null = null;
+  private onSkillSelect: ((id: string, name: string) => void) | null = null;
   private closeCallback: (() => void) | null = null;
   private onSelectCallback: (() => void) | null = null;
 
@@ -37,7 +38,7 @@ export class ChatAutocomplete {
   init(inputEl: HTMLInputElement, dropdownEl: HTMLElement, onSkillSelect?: (id: string, name: string) => void): void {
     this.inputEl = inputEl;
     this.dropdownEl = dropdownEl;
-    this.onSkillSelect = onSkillSelect ? ((id: string) => onSkillSelect(id, "")) : null;
+    this.onSkillSelect = onSkillSelect || null;
 
     inputEl.addEventListener("input", () => this.handleInput());
     inputEl.addEventListener("keyup", (e) => { if (e.key === "@") this.handleInput(); });
@@ -57,18 +58,17 @@ export class ChatAutocomplete {
       for (const path of mdFiles) {
         try {
           const content = await this.getApp().vault.adapter.read(path);
-          const parts = content.split("---");
-          if (parts.length >= 3) {
-            const fm = parts[1];
-            const id = fm.match(/^id:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || "";
+          try {
+            const { frontmatter: fm } = splitFrontmatter(content);
+            const id = typeof fm.id === "string" ? fm.id : "";
             if (!id) continue;
-            const internal = fm.match(/^internal:\s*(true|false)$/m)?.[1] === "true";
+            const internal = fm.internal === true;
             if (internal) continue;
-            const name = fm.match(/^name:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || id;
-            const avatar = fm.match(/^avatar:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || "🤖";
-            const model = fm.match(/^model:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || "";
+            const name = typeof fm.name === "string" ? fm.name : id;
+            const avatar = typeof fm.avatar === "string" ? fm.avatar : "bot";
+            const model = typeof fm.model === "string" ? fm.model : "";
             agents.push({ id, name, avatar, model });
-          }
+          } catch {}
         } catch {}
       }
     } catch {}
@@ -83,20 +83,24 @@ export class ChatAutocomplete {
         for (const f of listing.files.filter((f: string) => f.endsWith(".md"))) {
           try {
             const content = await this.getApp().vault.adapter.read(f);
-            const parts = content.split("---");
-            if (parts.length >= 3) {
-              const fm = parts[1];
-              const id = fm.match(/^id:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || "";
-              const name = fm.match(/^name:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || id;
-              const desc = fm.match(/^description:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "") || "";
-              const toolsStr = fm.match(/^tools:\s*\[(.+)\]/)?.[1] || "";
-              const tools = toolsStr.split(",").map((s: string) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-              if (id) this.skillsCache.push({ id, name, description: desc, tools });
-            }
+            const { frontmatter: fm } = splitFrontmatter(content);
+            const id = typeof fm.id === "string" ? fm.id : "";
+            const name = typeof fm.name === "string" ? fm.name : id;
+            const desc = typeof fm.description === "string" ? fm.description : "";
+            const tools = Array.isArray(fm.tools) ? fm.tools.filter((tool: unknown): tool is string => typeof tool === "string") : [];
+            if (id) this.skillsCache.push({ id, name, description: desc, tools });
           } catch {}
         }
       }
     } catch {}
+    if (!this.skillsCache.some(skill => skill.id === "skill-creator")) {
+      this.skillsCache.unshift({
+        id: "skill-creator",
+        name: "Skill Creator",
+        description: "Crea una skill reusable desde una descripción",
+        tools: [],
+      });
+    }
 
     // Chains
     this.chainsCache = [];
@@ -227,10 +231,20 @@ export class ChatAutocomplete {
     const val = this.inputEl.value;
 
     if (opt.type === "skill") {
+      if (opt.value === "skill-creator") {
+        const insertText = "/skill-creator ";
+        this.inputEl.value = val.slice(0, this.activeQuery.startIdx) + insertText + val.slice(this.activeQuery.endIdx);
+        const newPos = this.activeQuery.startIdx + insertText.length;
+        this.inputEl.selectionStart = newPos;
+        this.inputEl.selectionEnd = newPos;
+        this.inputEl.focus();
+        this.close();
+        return;
+      }
       this.inputEl.value = val.slice(0, this.activeQuery.startIdx) + val.slice(this.activeQuery.endIdx);
       this.inputEl.focus();
       this.close();
-      if (this.onSkillSelect) this.onSkillSelect(opt.value);
+      if (this.onSkillSelect) this.onSkillSelect(opt.value, opt.label);
       return;
     }
 
