@@ -18,6 +18,7 @@ export interface SanctumSettings {
   projectsEnabled: boolean;
   activeProjectId: string;
   projectAutoMemory: boolean;
+  projectAutoIndex: boolean;
   projectReindexOnOpen: boolean;
 }
 
@@ -38,6 +39,7 @@ export const DEFAULT_SETTINGS: SanctumSettings = {
   projectsEnabled: true,
   activeProjectId: "sanctum-ii",
   projectAutoMemory: false,
+  projectAutoIndex: true,
   projectReindexOnOpen: false,
 };
 

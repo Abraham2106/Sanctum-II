@@ -66,7 +66,7 @@ export async function executeTurn(
     // Search wide — pathFilter may narrow later
     const searchK = (activePathFilter?.length) ? Math.max(50, deps.vectorStore.count) : topK;
     let results = deps.vectorStore.search(queryEmbedding, searchK).filter((r) => r.score >= minSim);
-    console.info(`[RAG] search K=${searchK} → pre-filter: ${results.length} chunks (≥${minSim}), top scores: ${results.slice(0, 5).map(r => `${r.chunk.note_path.split("/").pop()}:${r.score.toFixed(3)}`).join(" | ")}`);
+    console.error(`[RAG] search K=${searchK} → pre-filter: ${results.length} chunks (≥${minSim}), top scores: ${results.slice(0, 5).map(r => `${r.chunk.note_path.split("/").pop()}:${r.score.toFixed(3)}`).join(" | ")}`);
 
     // If sim threshold filtered everything out, retry without it
     if (results.length === 0) {
@@ -109,7 +109,7 @@ export async function executeTurn(
     if (beforeFilterCount > 0 && results.length === 0) {
       console.warn(`[Permissions] Filtro combinado vacío (${beforeFilterCount} chunks descartados). pathFilter=${JSON.stringify(activePathFilter || "none")}, agent.read_paths=${JSON.stringify(agentPerms || "none")}`);
     }
-    console.info(`[RAG] post-filter (pathFilter=${JSON.stringify(activePathFilter || "none")} × agentPerms=${JSON.stringify(agentPerms || "none")}): ${results.length} chunks`);
+    console.error(`[RAG] post-filter (pathFilter=${JSON.stringify(activePathFilter || "none")} × agentPerms=${JSON.stringify(agentPerms || "none")}): ${results.length} chunks`);
     results = results.slice(0, topK);
     if (results.length === 0) {
       const samplePaths = deps.vectorStore.allChunks.slice(0, 3).map(c => c.note_path).join(", ");
@@ -161,7 +161,7 @@ export async function executeTurn(
       const agentTools = new Set(deps.agent?.tools || []);
       const extraTools = deps.skillContext.tools.filter(t => !agentTools.has(t));
       if (extraTools.length > 0) {
-      console.info(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent?.id || "unknown"}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent?.permissions?.read_paths || "none")}.`);
+      console.error(`[Permissions] Skill "${deps.skillContext.name}" expande tools del agente "${deps.agent?.id || "unknown"}": ${JSON.stringify(extraTools)}. El acceso a paths sigue limitado por agent.read_paths=${JSON.stringify(deps.agent?.permissions?.read_paths || "none")}.`);
       }
     }
     const renderedSkill = renderSkillPrompt(deps.skillContext, ragContext, webContext, userInput);

@@ -56,8 +56,10 @@ async function generateNoteContent(
   instruction: string,
   fallbackTitle?: string,
 ): Promise<GenerateResult> {
-  const rendered = renderSystemPrompt(deps.agent, "", instruction);
-  const result = await deps.opencodeClient.chat(rendered, instruction);
+  const latexInstruction = "Preserva literalmente bloques LaTeX, delimitadores, comandos, subindices, llaves, etiquetas y saltos de linea; no escapes backslashes ni conviertas formulas a texto plano.";
+  const modelInstruction = `${instruction}\n\n${latexInstruction}`;
+  const rendered = renderSystemPrompt(deps.agent, "", modelInstruction);
+  const result = await deps.opencodeClient.chat(rendered, modelInstruction);
   const title = extractTitle(result.content) || fallbackTitle || slugify(instruction.slice(0, 40));
   const basePath = deps.outputPath || RESEARCH_PATH;
   const path = `${basePath}/${slugify(title)}.md`;
@@ -115,6 +117,7 @@ export async function generateNoteFromSource(
   const instruction = [
     "Convierte la investigacion siguiente en una nota Markdown autonoma.",
     "Reformula y estructura el contenido, pero conserva todos los detalles tecnicos, formulas, resultados, advertencias y referencias presentes.",
+    "Preserva literalmente los bloques LaTeX ($...$, $$...$$, \\( ... \\), \\[ ... \\]), comandos, subindices, llaves, etiquetas y saltos de linea; no escapes ni conviertas formulas a texto plano.",
     "Elimina solamente saludos, preguntas al usuario, ofertas de crear notas y metacomentarios conversacionales.",
     "No inventes informacion, no agregues una guia generica y no hagas una nueva investigacion web o RAG.",
     "Empieza con un encabezado Markdown de nivel 1 y responde SOLO con el contenido Markdown completo.",

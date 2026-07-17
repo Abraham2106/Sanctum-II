@@ -154,7 +154,7 @@ export class ChatOrchestrator {
       const decision = JSON.parse(jsonStr);
       const action = decision.action;
       new Notice(`🎯 Orquestador: ${action}`, 2000);
-      console.log(`[Orchestrator] implicit decision: ${action} — ${decision.reason}`);
+      console.error(`[Orchestrator] implicit decision: ${action} — ${decision.reason}`);
 
       if (action === "respond_only") {
         return this.handleAgentMessage(userMessage, null, convMessages, convSummary, snap);

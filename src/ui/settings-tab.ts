@@ -9,6 +9,8 @@ export interface SettingsTabPlugin {
   indexResearch(): Promise<void>;
   runOrchestrate(prompt: string): Promise<void>;
   createNoteWithAI(): Promise<void>;
+  refreshAutoIndex(): Promise<void>;
+  getAutoIndexStatus(): string;
   agent: { avatar: string; name: string; description: string } | null;
 }
 
@@ -79,13 +81,24 @@ export class SanctumSettingTab extends PluginSettingTab {
       .setDesc("Keys de Gemini separadas por coma (gemini-embedding-2 → gemini-embedding-001)")
       .addTextArea((text) =>
         text
-          .setPlaceholder("AIza...,AIza...,AIza...")
+          .setPlaceholder("AQ... o AIza... (separadas por coma)")
           .setValue(this.plugin.settings.geminiApiKeys)
           .onChange(async (val) => {
             this.plugin.settings.geminiApiKeys = val;
             await this.plugin.saveSettings();
           })
       );
+
+    new Setting(containerEl)
+      .setName("Indexación automática por proyecto")
+      .setDesc(`Actualiza documentos Markdown permitidos y reutiliza embeddings sin cambios. Estado: ${this.plugin.getAutoIndexStatus()}`)
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.projectAutoIndex)
+        .onChange(async value => {
+          this.plugin.settings.projectAutoIndex = value;
+          await this.plugin.saveSettings();
+          if (value) await this.plugin.refreshAutoIndex();
+        }));
 
     new Setting(containerEl)
       .setName("Tavily API Key")

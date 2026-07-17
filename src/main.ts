@@ -30,6 +30,7 @@ import { ProjectStore } from "./projects/store";
 import type { Project } from "./projects/types";
 import { buildProjectContext } from "./projects/context";
 import { indexProject } from "./projects/indexer";
+import { IncrementalIndexCoordinator, type IndexCoordinatorStatus } from "./projects/index-coordinator";
 import { ensureVaultDirectory } from "./core/vault-fs";
 import { AgentAuthoringError, AgentAuthoringService } from "./agents/authoring/service";
 import { SkillAuthoringMesh } from "./skills/authoring/mesh";
@@ -57,6 +58,8 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   chainStore!: ChainStore;
   services!: AppServices;
   chatOrch!: ChatOrchestrator;
+  private indexCoordinator?: IncrementalIndexCoordinator;
+  private autoIndexStatus = "inactivo";
 
   get agentName(): string { return this.agent?.name || this.services?.agent?.name || "Sanctum"; }
   get pathFilter(): string[] | undefined { return this.services?.pathFilter; }
@@ -117,6 +120,22 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
     await this.initProjects();
 
+    this.indexCoordinator = new IncrementalIndexCoordinator({
+      adapter: this.app.vault.adapter,
+      projectStore: this.projectStore,
+      getVectorStore: projectId => this.getVectorStoreForProject(projectId).store,
+      getEmbeddingProvider: () => this.geminiBalancer,
+      canEmbed: () => this.geminiBalancer.canEmbed,
+      debounceMs: 1500,
+      onStatus: status => this.onAutoIndexStatus(status),
+      onIndexed: async project => {
+        if (project.id !== this.services.activeProject?.id) return;
+        await this.rebuildKgEdges();
+        this.refreshProjectViews();
+        this.refreshChatViews();
+      },
+    });
+
     // ── Register views ──
     this.registerView(VIEW_TYPE_SANCTUM, (leaf) => {
       const view = new SanctumChatView(leaf, this);
@@ -155,8 +174,31 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     registerCommands(this);
     this.addSettingTab(new SanctumSettingTab(this.app, this));
 
-    this.registerEvent(this.app.vault.on("modify", (file) => { if (!(file instanceof TFile) || !file.path.endsWith(".md")) return; this.onNoteModified(file.path); }));
-    this.registerEvent(this.app.vault.on("delete", (file) => { if (!(file instanceof TFile) || !file.path.endsWith(".md")) return; this.kgEdgeStore.delAllEdgesForNote(file.path); }));
+    this.registerEvent(this.app.vault.on("create", file => {
+      if (!(file instanceof TFile) || !file.path.endsWith(".md") || !this.settings.projectAutoIndex) return;
+      void this.indexCoordinator?.queueChange({ type: "upsert", path: file.path });
+    }));
+    this.registerEvent(this.app.vault.on("modify", file => {
+      if (!(file instanceof TFile) || !file.path.endsWith(".md")) return;
+      this.onNoteModified(file.path);
+      if (this.settings.projectAutoIndex) void this.indexCoordinator?.queueChange({ type: "upsert", path: file.path });
+    }));
+    this.registerEvent(this.app.vault.on("delete", file => {
+      if (!(file instanceof TFile) || !file.path.endsWith(".md")) return;
+      this.kgEdgeStore.delAllEdgesForNote(file.path);
+      if (this.settings.projectAutoIndex) void this.indexCoordinator?.queueChange({ type: "delete", path: file.path });
+    }));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      if (!(file instanceof TFile) || (!file.path.endsWith(".md") && !oldPath.endsWith(".md")) || !this.settings.projectAutoIndex) return;
+      void this.indexCoordinator?.queueChange({ type: "rename", oldPath, path: file.path });
+    }));
+    this.app.workspace.onLayoutReady(() => {
+      if (this.settings.projectAutoIndex) void this.indexCoordinator?.reconcileAll().catch(error => console.warn("[AutoIndex] startup:", error));
+    });
+  }
+
+  onunload(): void {
+    this.indexCoordinator?.dispose();
   }
 
   // ── Settings ──
@@ -169,6 +211,29 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     await this.saveData(this.settings);
     this.rebuildClients();
     if (this.services) this.services.settings = this.settings;
+  }
+
+  async refreshAutoIndex(): Promise<void> {
+    if (!this.settings.projectAutoIndex || !this.indexCoordinator) return;
+    await this.indexCoordinator.flushPending();
+    await this.indexCoordinator.reconcileAll();
+  }
+
+  getAutoIndexStatus(): string { return this.autoIndexStatus; }
+
+  private onAutoIndexStatus(status: IndexCoordinatorStatus): void {
+    if (status.state === "indexed") {
+      const indexed = status.result?.indexed || 0;
+      const skipped = status.result?.skipped || 0;
+      this.autoIndexStatus = `${status.projectId}: actualizado (${indexed} indexados, ${skipped} sin cambios)`;
+    } else if (status.state === "waiting-for-keys") {
+      this.autoIndexStatus = `${status.projectId}: esperando Gemini API keys`;
+    } else if (status.state === "error") {
+      this.autoIndexStatus = `${status.projectId}: error (${status.error || "desconocido"})`;
+    } else {
+      this.autoIndexStatus = `${status.projectId}: ${status.state}`;
+    }
+    console.info("[AutoIndex]", this.autoIndexStatus, { pending: status.pending });
   }
 
   async loadAgent(): Promise<void> {
@@ -545,7 +610,13 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   }
 
   async indexResearch(folder?: string): Promise<void> {
-    if (!this.geminiBalancer.hasKeys) { new Notice("Necesitás GEMINI_API_KEYS para indexar"); return; }
+    if (!this.geminiBalancer.canEmbed) {
+      const reason = this.geminiBalancer.hasKeys
+        ? `Gemini en cooldown (~${Math.ceil(this.geminiBalancer.cooldownRemainingMs / 1000)}s). Reintentá más tarde.`
+        : "Necesitás GEMINI_API_KEYS para indexar";
+      new Notice(reason);
+      return;
+    }
     const project = this.services.activeProject;
     if (!project) { new Notice("No hay un proyecto activo para indexar"); return; }
     const label = folder ? `/${folder}/` : "/Research/";
@@ -554,8 +625,13 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
       const result = await this.runProjectIndex(project, folder);
       notice.hide();
       if (result.errors.length > 0) {
-        new Notice(`Indexado ${label}: ${result.totalChunks} chunks (${result.errors.length} errores)`);
-        console.warn("Sanctum index errors:", result.errors);
+        const exhausted = result.errors.some(e => /agotaron|cooldown|quota|rate limit/i.test(e));
+        new Notice(
+          exhausted
+            ? `Indexado parcial ${label}: ${result.indexed} notas (${result.errors.length} errores — cuota Gemini)`
+            : `Indexado ${label}: ${result.totalChunks} chunks (${result.errors.length} errores)`,
+        );
+        console.warn("Sanctum index errors:", result.errors.slice(0, 5), result.errors.length > 5 ? `(+${result.errors.length - 5} más)` : "");
       } else new Notice(`✅ ${label} indexado: ${result.totalChunks} chunks.`);
     } catch (err: any) { notice.hide(); new Notice(`Error: ${err.message}`); }
   }

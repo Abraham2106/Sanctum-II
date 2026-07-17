@@ -9,10 +9,14 @@ const PRIORITY_MODELS = [
 
 const OUTPUT_DIMS = 768;
 
+const QUOTA_COOLDOWN_MS = 60_000;
+
 export class GeminiBalancer {
   private keys: string[];
   private currentKeyIndex: number = 0;
   private currentModelIndex: number = 0;
+  private cooldownUntil = 0;
+  private lastExhaustionMessage = "";
 
   constructor(keysCommaSeparated: string) {
     this.keys = keysCommaSeparated
@@ -29,11 +33,25 @@ export class GeminiBalancer {
     return this.keys.length;
   }
 
+  /** False when keys are missing or all keys recently hit quota/rate limits. */
+  get canEmbed(): boolean {
+    return this.hasKeys && Date.now() >= this.cooldownUntil;
+  }
+
+  get cooldownRemainingMs(): number {
+    return Math.max(0, this.cooldownUntil - Date.now());
+  }
+
   async embed(text: string): Promise<number[]> {
     if (!this.hasKeys) {
       throw new Error("No se configuraron GEMINI_API_KEYS");
     }
+    if (!this.canEmbed) {
+      const secs = Math.ceil(this.cooldownRemainingMs / 1000);
+      throw new Error(this.lastExhaustionMessage || `Gemini en cooldown por cuota (~${secs}s)`);
+    }
 
+    let sawQuota = false;
     for (let modelAttempt = 0; modelAttempt < PRIORITY_MODELS.length; modelAttempt++) {
       const modelIdx = (this.currentModelIndex + modelAttempt) % PRIORITY_MODELS.length;
       const model = PRIORITY_MODELS[modelIdx];
@@ -48,12 +66,15 @@ export class GeminiBalancer {
           if (modelAttempt > 0) {
             this.currentModelIndex = modelIdx;
           }
+          this.cooldownUntil = 0;
+          this.lastExhaustionMessage = "";
           return result;
         } catch (err: any) {
           this.currentKeyIndex = (keyIdx + 1) % this.keys.length;
 
-          if (this.isQuotaError(err) && this.keys.length > 1) {
-            continue;
+          if (this.isQuotaError(err)) {
+            sawQuota = true;
+            if (this.keys.length > 1) continue;
           }
 
           if (this.isModelError(err)) {
@@ -61,22 +82,31 @@ export class GeminiBalancer {
           }
 
           if (keyAttempt === this.keys.length - 1 && modelAttempt === PRIORITY_MODELS.length - 1) {
+            if (sawQuota) this.tripCircuit(err);
             throw err;
           }
         }
       }
     }
 
-    throw new Error("Todas las claves y modelos de Gemini se agotaron");
+    const exhausted = new Error("Todas las claves y modelos de Gemini se agotaron");
+    if (sawQuota) this.tripCircuit(exhausted);
+    throw exhausted;
+  }
+
+  private tripCircuit(err: unknown): void {
+    this.cooldownUntil = Date.now() + QUOTA_COOLDOWN_MS;
+    this.lastExhaustionMessage = err instanceof Error ? err.message : String(err);
   }
 
   private async callEmbed(key: string, model: string, text: string): Promise<number[]> {
-    const url = `${GEMINI_BASE}/${model}:embedContent?key=${key}`;
+    const url = `${GEMINI_BASE}/${model}:embedContent`;
 
     const response = await requestUrl({
       url,
       method: "POST",
       contentType: "application/json; charset=utf-8",
+      headers: { "x-goog-api-key": key },
       body: JSON.stringify({
         model: `models/${model}`,
         content: { parts: [{ text }] },
