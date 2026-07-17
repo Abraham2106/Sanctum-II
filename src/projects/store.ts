@@ -189,6 +189,20 @@ export class ProjectStore {
     return listing.files.filter(f => f.endsWith(".md")).map(f => f.replace(/^.*[\\/]/, "").replace(/\.md$/, ""));
   }
 
+  /** Lists projects that load cleanly; skips corrupt/empty files without aborting. */
+  async listValidProjects(): Promise<{ id: string; project: Project }[]> {
+    const ids = await this.listProjects();
+    const valid: { id: string; project: Project }[] = [];
+    for (const id of ids) {
+      try {
+        valid.push({ id, project: await this.loadProject(id) });
+      } catch (err: any) {
+        console.warn(`[Store] proyecto inválido omitido (${id}):`, err?.message || err);
+      }
+    }
+    return valid;
+  }
+
   async loadMemory(id: string): Promise<MemoryEntry[]> {
     try {
       const raw = await this.adapter.read(this.memoryPath(id));

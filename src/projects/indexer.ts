@@ -1,195 +1,328 @@
-import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import { VectorStore, type Chunk } from "../rag/vector-store";
 import type { Project } from "./types";
-import { isInternalPath } from "../utils";
+import { isInternalPath, pathMatchesAny } from "../utils";
 import { ensureVaultDirectory } from "../core/vault-fs";
+import { chunkMarkdown, FORMULA_CHUNKER_VERSION } from "../rag/formula-aware-chunker";
+import { sha256Hex } from "../rag/fingerprint";
 
-const CHUNK_MAX_WORDS = 400;
-
-function simpleHash(text: string): string {
-  let h = 0;
-  for (let i = 0; i < text.length; i++) {
-    h = ((h << 5) - h) + text.charCodeAt(i);
-    h |= 0;
-  }
-  return (h >>> 0).toString(36);
+export interface EmbeddingProvider {
+  embed(text: string): Promise<number[]>;
 }
 
-function chunkText(text: string): string[] {
-  const words = text.split(/\s+/).filter((w) => w.length > 0);
-  const chunks: string[] = [];
-  for (let i = 0; i < words.length; i += CHUNK_MAX_WORDS) {
-    chunks.push(words.slice(i, i + CHUNK_MAX_WORDS).join(" "));
-  }
-  if (chunks.length === 0) chunks.push("");
-  return chunks;
+export const INDEX_MANIFEST_SCHEMA_VERSION = 2;
+export const chunkText = chunkMarkdown;
+
+export interface IndexManifestDocument {
+  path: string;
+  content_hash: string;
+  config_fingerprint: string;
+  chunk_hashes: string[];
+  indexed_at: number;
 }
+
+export interface IndexManifestV2 {
+  schema_version: 2;
+  documents: Record<string, IndexManifestDocument>;
+}
+
+export type IndexChange =
+  | { type: "upsert"; path: string }
+  | { type: "delete"; path: string }
+  | { type: "rename"; oldPath: string; path: string };
 
 export interface IndexResult {
   totalNotes: number;
   totalChunks: number;
   indexed: number;
   skipped: number;
+  reusedEmbeddings: number;
+  generatedEmbeddings: number;
   errors: string[];
 }
 
 export interface IndexOptions {
-  /** Reindex only these paths while preserving manifest entries outside them. */
+  /** Reindex only these directories while preserving entries outside them. */
   paths?: string[];
+  /** Apply exact file changes without scanning a directory. */
+  changes?: IndexChange[];
 }
 
-const activeIndexJobs = new Map<string, Promise<IndexResult>>();
+interface IndexAdapter {
+  read(path: string): Promise<string>;
+  list(path: string): Promise<{ files: string[]; folders: string[] }>;
+  exists(path: string): Promise<boolean>;
+  write(path: string, content: string): Promise<void>;
+  mkdir(path: string): Promise<void>;
+}
+
+const projectIndexChains = new Map<string, Promise<unknown>>();
+
+function emptyResult(): IndexResult {
+  return { totalNotes: 0, totalChunks: 0, indexed: 0, skipped: 0, reusedEmbeddings: 0, generatedEmbeddings: 0, errors: [] };
+}
+
+function isEmbeddingExhaustedError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("se agotaron")
+    || lower.includes("cooldown")
+    || lower.includes("quota")
+    || lower.includes("rate limit")
+    || lower.includes("resource_exhausted");
+}
 
 function cleanPath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
 }
 
+function rootDirectory(path: string): string {
+  return cleanPath(path).replace(/\/\*\*?$/, "").replace(/^\*\*?$/, "") || ".";
+}
+
 function isWithinPath(filePath: string, directory: string): boolean {
   const file = cleanPath(filePath);
-  const dir = cleanPath(directory);
+  const dir = rootDirectory(directory);
+  if (dir === ".") return true;
   return file === dir || file.startsWith(`${dir}/`);
 }
 
-function isAllowedPath(candidate: string, allowed: string[]): boolean {
-  return allowed.some(root => isWithinPath(candidate, root) || isWithinPath(root, candidate));
+function canTraverseDirectory(path: string): boolean {
+  const normalized = cleanPath(path);
+  if (!normalized || normalized === ".") return true;
+  if (isInternalPath(normalized)) return false;
+  const segments = normalized.toLowerCase().split("/");
+  return !segments.some(segment => segment === ".git" || segment === ".obsidian" || segment === "node_modules");
 }
 
-async function loadManifest(adapter: { read: (p: string) => Promise<string>; exists: (p: string) => Promise<boolean> }, projectId: string): Promise<Record<string, string>> {
+export function isProjectPathAllowed(filePath: string, project: Pick<Project, "read_paths">): boolean {
+  if (isInternalPath(filePath) || !filePath.toLowerCase().endsWith(".md")) return false;
+  return project.read_paths.some(pattern => pattern.includes("*")
+    ? pathMatchesAny(filePath, [pattern])
+    : isWithinPath(filePath, pattern));
+}
+
+function blankManifest(): IndexManifestV2 {
+  return { schema_version: INDEX_MANIFEST_SCHEMA_VERSION, documents: {} };
+}
+
+export function parseIndexManifest(raw: string): { manifest: IndexManifestV2; migrated: boolean } {
   try {
-    const path = `sanctum-logs/index/${projectId}/manifest.json`;
-    if (await adapter.exists(path)) return JSON.parse(await adapter.read(path));
-  } catch (err: any) { if (err) console.warn(`[Indexer] loadManifest ${projectId}:`, err.message); }
-  return {};
+    const parsed = JSON.parse(raw);
+    if (parsed?.schema_version === INDEX_MANIFEST_SCHEMA_VERSION && parsed.documents && typeof parsed.documents === "object") {
+      return { manifest: parsed as IndexManifestV2, migrated: false };
+    }
+    // Legacy manifests were maps of path -> short content hash. They cannot
+    // prove which model/chunker produced the vectors, so one rebuild is safer.
+    if (parsed && typeof parsed === "object") return { manifest: blankManifest(), migrated: true };
+  } catch {}
+  return { manifest: blankManifest(), migrated: false };
 }
 
-async function saveManifest(adapter: { write: (p: string, c: string) => Promise<void> }, projectId: string, manifest: Record<string, string>): Promise<void> {
+async function loadManifest(adapter: Pick<IndexAdapter, "read" | "exists">, projectId: string): Promise<{ manifest: IndexManifestV2; migrated: boolean }> {
+  const path = `sanctum-logs/index/${projectId}/manifest.json`;
+  try {
+    if (await adapter.exists(path)) return parseIndexManifest(await adapter.read(path));
+  } catch (error: any) {
+    console.warn(`[Indexer] loadManifest ${projectId}:`, error?.message || error);
+  }
+  return { manifest: blankManifest(), migrated: false };
+}
+
+async function saveManifest(adapter: Pick<IndexAdapter, "write">, projectId: string, manifest: IndexManifestV2): Promise<void> {
   await adapter.write(`sanctum-logs/index/${projectId}/manifest.json`, JSON.stringify(manifest, null, 2));
 }
 
+async function projectConfigFingerprint(project: Project): Promise<string> {
+  return sha256Hex(JSON.stringify({
+    embed_model: project.rag?.embed_model || "gemini-embedding-2",
+    dims: project.rag?.dims || 768,
+    chunk_words: project.rag?.chunk_words || 400,
+    chunker_version: FORMULA_CHUNKER_VERSION,
+  }));
+}
+
+async function chunkFingerprint(configFingerprint: string, text: string): Promise<string> {
+  return sha256Hex(`${configFingerprint}\0${text}`);
+}
+
+async function buildEmbeddingCache(
+  store: VectorStore,
+  manifest: IndexManifestV2,
+  configFingerprint: string,
+): Promise<Map<string, number[]>> {
+  const cache = new Map<string, number[]>();
+  for (const chunk of store.allChunks) {
+    const document = manifest.documents[chunk.note_path];
+    if (!document || document.config_fingerprint !== configFingerprint) continue;
+    cache.set(await chunkFingerprint(configFingerprint, chunk.chunk_text), chunk.embedding);
+  }
+  return cache;
+}
+
+function coalesceChanges(changes: IndexChange[]): Map<string, "upsert" | "delete"> {
+  const result = new Map<string, "upsert" | "delete">();
+  for (const change of changes) {
+    if (change.type === "rename") {
+      result.set(cleanPath(change.oldPath), "delete");
+      result.set(cleanPath(change.path), "upsert");
+    } else {
+      result.set(cleanPath(change.path), change.type);
+    }
+  }
+  return result;
+}
+
+async function collectFiles(
+  adapter: IndexAdapter,
+  project: Project,
+  options: IndexOptions,
+): Promise<{ files: string[]; deletes: Set<string>; partial: boolean; errors: string[] }> {
+  const errors: string[] = [];
+  const deletes = new Set<string>();
+  if (options.changes?.length) {
+    const operations = coalesceChanges(options.changes);
+    const files: string[] = [];
+    for (const [path, operation] of operations) {
+      const allowed = isProjectPathAllowed(path, project);
+      if (!allowed && operation === "upsert") {
+        errors.push(`La nota ${path} está fuera de los read_paths del proyecto`);
+        continue;
+      }
+      if (operation === "delete") deletes.add(path);
+      else files.push(path);
+    }
+    return { files, deletes, partial: true, errors };
+  }
+
+  const configuredRoots = (project.read_paths.length ? project.read_paths : ["Research"]).map(rootDirectory);
+  const targetRoots = (options.paths?.length ? options.paths : configuredRoots).map(rootDirectory);
+  if (options.paths?.length && !targetRoots.every(path => project.read_paths.some(root => isWithinPath(path, root) || isWithinPath(root, path)))) {
+    return { files: [], deletes, partial: true, errors: ["La carpeta solicitada está fuera de los read_paths del proyecto"] };
+  }
+  const files: string[] = [];
+  for (const target of targetRoots) {
+    if (!await adapter.exists(target).catch(() => false)) {
+      errors.push(`La carpeta ${target} no existe`);
+      continue;
+    }
+    const directories = [target];
+    const visited = new Set<string>();
+    while (directories.length) {
+      const directory = directories.shift()!;
+      if (visited.has(directory)) continue;
+      visited.add(directory);
+      const listing = await adapter.list(directory);
+      for (const folder of listing.folders) {
+        const normalizedFolder = cleanPath(folder);
+        if (canTraverseDirectory(normalizedFolder)) directories.push(normalizedFolder);
+      }
+      for (const file of listing.files) {
+        const normalized = cleanPath(file);
+        if (isProjectPathAllowed(normalized, project) && !files.includes(normalized)) files.push(normalized);
+      }
+    }
+  }
+  return { files, deletes, partial: Boolean(options.paths?.length), errors };
+}
+
 async function indexProjectInternal(
-  adapter: {
-    read: (p: string) => Promise<string>;
-    list: (p: string) => Promise<{ files: string[]; folders: string[] }>;
-    exists: (p: string) => Promise<boolean>;
-    write: (p: string, c: string) => Promise<void>;
-    mkdir: (p: string) => Promise<void>;
-  },
-  gemini: GeminiBalancer,
+  adapter: IndexAdapter,
+  embeddings: EmbeddingProvider,
   project: Project,
   vectorStore: VectorStore,
-  options: IndexOptions = {},
+  options: IndexOptions,
 ): Promise<IndexResult> {
-  const errors: string[] = [];
-  let totalNotes = 0;
-  let totalChunks = 0;
-  let indexed = 0;
-  let skipped = 0;
-
+  const result = emptyResult();
   await ensureVaultDirectory(adapter, `sanctum-logs/index/${project.id}`);
 
-  console.log(`[KG] 📦 Indexando proyecto "${project.id}" → store: ${vectorStore.getStorePath()}`);
-  console.log(`[KG] 📁 read_paths: ${JSON.stringify(project.read_paths)}`);
+  const loaded = await loadManifest(adapter, project.id);
+  const manifest = loaded.manifest;
+  const configFingerprint = await projectConfigFingerprint(project);
+  const collected = await collectFiles(adapter, project, options);
+  result.errors.push(...collected.errors);
+  const seen = new Set(collected.files);
 
-  const configuredPaths = (project.read_paths.length ? project.read_paths : ["Research"]).map(cleanPath);
-  const targetPaths = (options.paths?.length ? options.paths : configuredPaths).map(cleanPath);
-  if (options.paths?.length && !targetPaths.every(path => isAllowedPath(path, configuredPaths))) {
-    return { totalNotes: 0, totalChunks: 0, indexed: 0, skipped: 0, errors: ["La carpeta solicitada está fuera de los read_paths del proyecto"] };
+  if (!collected.partial) {
+    const knownPaths = new Set([...Object.keys(manifest.documents), ...vectorStore.allChunks.map(chunk => chunk.note_path)]);
+    for (const path of knownPaths) if (!seen.has(path)) collected.deletes.add(path);
   }
-  const allFiles: string[] = [];
 
-  for (const targetPath of targetPaths) {
-    const exists = await adapter.exists(targetPath).catch(() => false);
-    if (!exists) {
-      console.log(`[KG] ❌ Carpeta ${targetPath} no existe`);
-      errors.push(`La carpeta ${targetPath} no existe`);
-      continue;
-    }
-    const listing = await adapter.list(targetPath);
-    const mdFiles = listing.files.filter((f) => f.endsWith(".md"));
-    console.log(`[KG] 📂 ${targetPath}: ${mdFiles.length} archivos .md encontrados`);
-    for (const f of mdFiles) {
-      if (!allFiles.includes(f)) allFiles.push(f);
-    }
+  // Capture reusable vectors before applying tombstones so a pure rename can
+  // move unchanged content without calling the embedding provider again.
+  const embeddingCache = await buildEmbeddingCache(vectorStore, manifest, configFingerprint);
+  for (const deletedPath of collected.deletes) {
+    vectorStore.addChunks([], deletedPath);
+    delete manifest.documents[deletedPath];
   }
-  console.log(`[KG] 📄 ${allFiles.length} archivos totales a procesar`);
 
-  const manifest = await loadManifest(adapter, project.id);
-  const partial = Boolean(options.paths?.length);
-  const newManifest: Record<string, string> = partial ? { ...manifest } : {};
-  const filesToPrune = new Set(
-    Object.keys(manifest).filter(note => !partial || targetPaths.some(path => isWithinPath(note, path))),
-  );
-
-  for (const filePath of allFiles) {
-    const noteName = filePath.replace(/\\/g, "/");
-    filesToPrune.delete(noteName);
-
-    if (isInternalPath(noteName)) {
-      console.log(`[KG] ⏭ Saltando path interno: ${noteName}`);
-      continue;
-    }
-
+  for (const filePath of collected.files) {
     try {
       const content = await adapter.read(filePath);
-      const hash = simpleHash(content);
-
-      if (manifest[noteName] === hash) {
-        newManifest[noteName] = hash;
-        skipped++;
+      const contentHash = await sha256Hex(content);
+      const previous = manifest.documents[filePath];
+      if (previous?.content_hash === contentHash && previous.config_fingerprint === configFingerprint) {
+        result.skipped++;
         continue;
       }
 
-      const textChunks = chunkText(content);
-      console.log(`[KG] 🔄 Indexando: ${noteName} (${textChunks.length} chunks)`);
-      const newChunks: Chunk[] = [];
-      for (let ci = 0; ci < textChunks.length; ci++) {
-        const text = textChunks[ci];
-        if (!text.trim()) continue;
-        const embedding = await gemini.embed(text.slice(0, 3000));
-        newChunks.push({
-          id: `${noteName}#chunk-${ci}`,
-          note_path: noteName,
-          chunk_text: text,
-          embedding,
-        });
+      const texts = chunkText(content, project.rag?.chunk_words || 400).filter(text => text.trim());
+      const hashes = await Promise.all(texts.map(text => chunkFingerprint(configFingerprint, text)));
+      const chunks: Chunk[] = [];
+      for (let index = 0; index < texts.length; index++) {
+        const text = texts[index];
+        const hash = hashes[index];
+        let embedding = embeddingCache.get(hash);
+        if (embedding) {
+          result.reusedEmbeddings++;
+        } else {
+          embedding = await embeddings.embed(text);
+          embeddingCache.set(hash, embedding);
+          result.generatedEmbeddings++;
+        }
+        chunks.push({ id: `${filePath}#chunk-${index}`, note_path: filePath, chunk_text: text, embedding });
       }
-
-      vectorStore.addChunks(newChunks, noteName);
-      newManifest[noteName] = hash;
-      totalChunks += newChunks.length;
-      totalNotes++;
-      indexed++;
-    } catch (err: any) {
-      errors.push(`${filePath}: ${err.message}`);
+      vectorStore.addChunks(chunks, filePath);
+      manifest.documents[filePath] = {
+        path: filePath,
+        content_hash: contentHash,
+        config_fingerprint: configFingerprint,
+        chunk_hashes: hashes,
+        indexed_at: Date.now(),
+      };
+      result.totalNotes++;
+      result.totalChunks += chunks.length;
+      result.indexed++;
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      result.errors.push(`${filePath}: ${message}`);
+      if (isEmbeddingExhaustedError(message)) {
+        const remaining = collected.files.length - result.indexed - result.skipped - result.errors.length;
+        if (remaining > 0) {
+          result.errors.push(`Indexación detenida: embeddings agotados (${remaining} notas pendientes)`);
+        }
+        break;
+      }
     }
   }
 
-  // Prune deleted files from store
-  for (const deletedPath of filesToPrune) {
-    console.log(`[KG] 🗑 Pruneando: ${deletedPath}`);
-    vectorStore.addChunks([], deletedPath);
-  }
-
   await vectorStore.save(adapter);
-  await saveManifest(adapter, project.id, newManifest);
-  console.log(`[KG] ✅ Indexado: ${indexed} notas (${totalChunks} chunks), ${skipped} saltados, ${errors.length} errores → store count: ${vectorStore.count}`);
-  if (errors.length) console.log(`[KG] ❌ Errores:`, errors);
-  return { totalNotes, totalChunks, indexed, skipped, errors };
+  await saveManifest(adapter, project.id, manifest);
+  if (loaded.migrated) console.error(`[Indexer] Manifiesto de ${project.id} migrado a schema v${INDEX_MANIFEST_SCHEMA_VERSION}`);
+  return result;
 }
 
-/** Runs one index operation per project, even when several UI surfaces trigger it. */
+/** Serializes index operations per project without dropping changes arriving mid-run. */
 export function indexProject(
-  adapter: Parameters<typeof indexProjectInternal>[0],
-  gemini: GeminiBalancer,
+  adapter: IndexAdapter,
+  embeddings: EmbeddingProvider,
   project: Project,
   vectorStore: VectorStore,
   options: IndexOptions = {},
 ): Promise<IndexResult> {
-  const existing = activeIndexJobs.get(project.id);
-  if (existing) return existing;
-  const job = indexProjectInternal(adapter, gemini, project, vectorStore, options);
-  activeIndexJobs.set(project.id, job);
-  return job.finally(() => {
-    if (activeIndexJobs.get(project.id) === job) activeIndexJobs.delete(project.id);
+  const previous = projectIndexChains.get(project.id) || Promise.resolve();
+  const job = previous.catch(() => undefined).then(() => indexProjectInternal(adapter, embeddings, project, vectorStore, options));
+  const tracked = job.finally(() => {
+    if (projectIndexChains.get(project.id) === tracked) projectIndexChains.delete(project.id);
   });
+  projectIndexChains.set(project.id, tracked);
+  return tracked;
 }

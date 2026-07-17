@@ -172,13 +172,10 @@ export class VectorStore {
       await adapter.write(this.storePath, fileContent);
       this.shouldTruncate = false;
       this.pendingTxns = [];
-      console.error(`[VectorStore] 💾 Truncate-saved ${this.chunks.length} chunks to ${this.storePath} (${(fileContent.length / 1024).toFixed(1)}KB)`);
     } else if (this.pendingTxns.length > 0) {
-      const txnCount = this.pendingTxns.length;
       const appendContent = this.pendingTxns.join("");
       await appendToFile(adapter, this.storePath, appendContent);
       this.pendingTxns = [];
-      console.info(`[VectorStore] 💾 Append-saved ${txnCount} txns to ${this.storePath}`);
     }
   }
 
