@@ -1,4 +1,4 @@
-import type { ToolDef } from "../mcp/types.js"
+import type { ToolDef, ToolResult } from "../mcp/types.js"
 import type { VaultAdapter } from "../../../src/core/vault-adapter.js"
 import { loadAgentFromVault, renderSystemPrompt } from "../../../src/agents/agent-loader.js"
 import { resolvePermissions } from "../mcp/permission-resolver.js"
@@ -11,6 +11,7 @@ export function createInvokeAgentTool(
   opencodeBaseUrl: string,
   opencodeApiKey: string,
   tracer: TraceWriter,
+  autoCheckTool?: ToolDef,
 ): ToolDef {
   return {
     name: "sanctum_invoke_agent",
@@ -26,6 +27,10 @@ export function createInvokeAgentTool(
         prompt: {
           type: "string",
           description: "Prompt del usuario. Se inyecta como {{user_prompt}} en el system prompt del agente.",
+        },
+        project_id: {
+          type: "string",
+          description: "Proyecto RAG opcional que se propaga al auto-chequeo del agente.",
         },
       },
       required: ["agent_id", "prompt"],
@@ -53,11 +58,44 @@ export function createInvokeAgentTool(
 
       const result = await opencodeChat(systemPrompt, prompt, opencodeBaseUrl, opencodeApiKey)
 
+      let output = result.content
+      if (agent.auto_check_tool) {
+        if (agent.auto_check_tool !== "sanctum_validate_qubo" || !autoCheckTool) {
+          output += `\n\n## ⚠️ Auto-chequeo no disponible\nLa tool declarada '${agent.auto_check_tool}' no está registrada en este runtime; la respuesta requiere revisión manual.`
+          log.warn("agent auto-check unavailable", { agentId, tool: agent.auto_check_tool })
+        } else {
+          let check: ToolResult
+          try {
+            check = await autoCheckTool.handler({
+              agent_id: agentId,
+              formulation: { expression: result.content },
+              context_query: prompt,
+              project_id: String(args.project_id ?? "").trim() || undefined,
+            })
+          } catch (error) {
+            check = { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true }
+          }
+          const checkText = check.content?.map(item => item.text).join("\n") || "Sin resultado"
+          if (check.isError) {
+            output += `\n\n## ⚠️ Auto-chequeo QUBO/Ising\n${checkText}`
+          } else {
+            let parsed: any
+            try { parsed = JSON.parse(checkText) } catch { parsed = { issues: [{ code: "AUTO_CHECK_INVALID_OUTPUT", severity: "warning", message: checkText }] } }
+            const issues = Array.isArray(parsed.issues) ? parsed.issues : []
+            if (issues.length > 0) {
+              output += `\n\n## ⚠️ Auto-chequeo QUBO/Ising\nSe detectaron inconsistencias o advertencias; revisá estos puntos antes de usar la formulación:\n${issues.map((issue: any) => `- [${issue.severity || "warning"}] ${issue.message || issue.code}`).join("\n")}`
+            } else {
+              output += "\n\n## ✅ Auto-chequeo QUBO/Ising\nNo se detectaron inconsistencias en el contexto RAG recuperado."
+            }
+          }
+        }
+      }
+
       const traceId = await tracer.writeTrace({
         type: "agent_invocation",
         agent_id: agentId,
         input: { system_prompt: systemPrompt, user_prompt: prompt },
-        output: result.content,
+        output,
         duration_ms: Date.now() - startTime,
       })
 
@@ -67,7 +105,7 @@ export function createInvokeAgentTool(
         content: [
           {
             type: "text",
-            text: `## Output de @${agent.name} (${agentId})\n\`\`\`trace_id: ${traceId}\`\`\`\n\n${result.content}`,
+            text: `## Output de @${agent.name} (${agentId})\n\`\`\`trace_id: ${traceId}\`\`\`\n\n${output}`,
           },
         ],
       }

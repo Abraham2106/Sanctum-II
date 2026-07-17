@@ -1,15 +1,16 @@
 import type { ToolDef } from "../mcp/types.js"
 import type { VaultAdapter } from "../../../src/core/vault-adapter.js"
-import type { VectorStore } from "../../../src/rag/vector-store.js"
+import type { RagRuntimeSource } from "../rag/runtime.js"
+import { resolveRagRuntime } from "../rag/runtime.js"
 import { log } from "../mcp/logger.js"
-import { resolvePermissions, checkPathPermission } from "../mcp/permission-resolver.js"
+import { resolvePermissions } from "../mcp/permission-resolver.js"
 import { embedText } from "../embeddings/gemini-embed.js"
 
 const MIN_SIMILARITY = 0.65
 
 export function createQueryVaultTool(
   vault: VaultAdapter,
-  store: VectorStore,
+  ragSource: RagRuntimeSource,
   geminiApiKey: string | undefined,
 ): ToolDef {
   return {
@@ -31,6 +32,10 @@ export function createQueryVaultTool(
           type: "number",
           description: "Máximo de resultados a devolver (default 5).",
         },
+        project_id: {
+          type: "string",
+          description: "Proyecto RAG opcional. Precedencia: argumento, SANCTUM_PROJECT_ID, indice global legacy.",
+        },
       },
       required: ["agent_id", "query"],
     },
@@ -41,8 +46,15 @@ export function createQueryVaultTool(
       if (!query) throw new Error("'query' es obligatorio")
       const limit = typeof args.max_results === "number" && args.max_results > 0 ? Math.min(args.max_results, 20) : 5
 
+      const perms = await resolvePermissions(vault, agentId)
+      if (!perms.readPaths.length) {
+        log.warn("query blocked: empty read_paths", { agentId })
+        return { content: [{ type: "text", text: "Error: PERMISSION_DENIED - El agente no tiene read_paths para consultar contexto RAG." }], isError: true }
+      }
+      const runtime = await resolveRagRuntime(ragSource, String(args.project_id ?? "").trim() || undefined)
+      const store = runtime.store
       if (store.count === 0) {
-        log.warn("vault not indexed", { agentId })
+        log.warn("vault not indexed", { agentId, projectId: runtime.projectId })
         return {
           content: [{ type: "text", text: "Error: VAULT_NOT_INDEXED - El vault no tiene fragmentos indexados. Ejecutá primero el indexador (Research/ u otra carpeta) desde Obsidian antes de consultar por MCP." }],
           isError: true,
@@ -56,8 +68,6 @@ export function createQueryVaultTool(
           isError: true,
         }
       }
-
-      const perms = await resolvePermissions(vault, agentId)
 
       const embedding = await embedText(query, geminiApiKey)
 
@@ -73,6 +83,7 @@ export function createQueryVaultTool(
         raw: rawResults.length,
         filtered: filtered.length,
         permitted: permitted.length,
+        projectId: runtime.projectId,
       })
 
       if (permitted.length === 0) {

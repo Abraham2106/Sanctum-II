@@ -7615,12 +7615,35 @@ function pathMatchesAny(filePath, patterns) {
   if (patterns.includes("/**") || patterns.includes("**")) return true;
   return patterns.some((p) => globMatch(filePath, p));
 }
+var SYSTEM_PREFIXES = ["sanctum-", "docs/"];
+function isInternalPath(filePath) {
+  const normalized = filePath.startsWith("/") ? filePath.slice(1) : filePath;
+  return SYSTEM_PREFIXES.some((p) => normalized.startsWith(p));
+}
 
 // src/core/vault-fs.ts
 function isNotFoundError(error) {
   const candidate = error;
   if (candidate?.code === "ENOENT") return true;
   return typeof candidate?.message === "string" && /(?:ENOENT|not found|no such file|does not exist)/i.test(candidate.message);
+}
+async function ensureVaultDirectory(adapter, rawPath) {
+  const normalized = rawPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normalized) return;
+  const segments = normalized.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\0"))) {
+    throw new Error(`Invalid vault directory path: ${rawPath}`);
+  }
+  let current = "";
+  for (const segment of segments) {
+    current = current ? `${current}/${segment}` : segment;
+    if (await adapter.exists(current)) continue;
+    try {
+      await adapter.mkdir(current);
+    } catch (error) {
+      if (!await adapter.exists(current)) throw error;
+    }
+  }
 }
 
 // src/rag/vector-store.ts
@@ -7761,13 +7784,10 @@ var VectorStore = class {
       await adapter.write(this.storePath, fileContent);
       this.shouldTruncate = false;
       this.pendingTxns = [];
-      console.error(`[VectorStore] \u{1F4BE} Truncate-saved ${this.chunks.length} chunks to ${this.storePath} (${(fileContent.length / 1024).toFixed(1)}KB)`);
     } else if (this.pendingTxns.length > 0) {
-      const txnCount = this.pendingTxns.length;
       const appendContent = this.pendingTxns.join("");
       await appendToFile(adapter, this.storePath, appendContent);
       this.pendingTxns = [];
-      console.info(`[VectorStore] \u{1F4BE} Append-saved ${txnCount} txns to ${this.storePath}`);
     }
   }
   addChunks(newChunks, notePath) {
@@ -7824,8 +7844,556 @@ var VectorStore = class {
   }
 };
 
+// src/rag/formula-aware-chunker.ts
+var FORMULA_CHUNKER_VERSION = 2;
+var ENVIRONMENT_NAMES = /* @__PURE__ */ new Set([
+  "equation",
+  "equation*",
+  "align",
+  "align*",
+  "aligned",
+  "gather",
+  "gather*",
+  "multline",
+  "multline*",
+  "split"
+]);
+function isEscaped(input, index) {
+  let slashes = 0;
+  for (let i = index - 1; i >= 0 && input[i] === "\\"; i--) slashes++;
+  return slashes % 2 === 1;
+}
+function findClosingDelimiter(input, start, delimiter) {
+  let cursor = start;
+  while (cursor < input.length) {
+    const found = input.indexOf(delimiter, cursor);
+    if (found < 0) return -1;
+    if (!isEscaped(input, found)) return found;
+    cursor = found + delimiter.length;
+  }
+  return -1;
+}
+function findEnvironmentEnd(input, start, name) {
+  const end = `\\end{${name}}`;
+  const found = input.indexOf(end, start);
+  return found < 0 ? -1 : found + end.length;
+}
+function readDelimitedRegion(input, start) {
+  if (input.startsWith("$$", start)) {
+    const close = findClosingDelimiter(input, start + 2, "$$");
+    return close < 0 ? void 0 : { end: close + 2, kind: "formula" };
+  }
+  if (input[start] === "$" && !isEscaped(input, start) && input[start + 1] !== "$") {
+    const close = findClosingDelimiter(input, start + 1, "$");
+    return close < 0 ? void 0 : { end: close + 1, kind: "formula" };
+  }
+  for (const [open, close] of [["\\(", "\\)"], ["\\[", "\\]"]]) {
+    if (input.startsWith(open, start)) {
+      const end = findClosingDelimiter(input, start + open.length, close);
+      return end < 0 ? void 0 : { end: end + close.length, kind: "formula" };
+    }
+  }
+  if (input.startsWith("\\begin{", start)) {
+    const match = input.slice(start).match(/^\\begin\{([^}]+)\}/);
+    const name = match?.[1];
+    if (name && ENVIRONMENT_NAMES.has(name)) {
+      const end = findEnvironmentEnd(input, start + match[0].length, name);
+      return end < 0 ? void 0 : { end, kind: "formula" };
+    }
+  }
+  return void 0;
+}
+function scanRegions(input) {
+  const regions = [];
+  let plainStart = 0;
+  let cursor = 0;
+  const flushPlain = (end) => {
+    if (end > plainStart) regions.push({ kind: "text", text: input.slice(plainStart, end) });
+  };
+  while (cursor < input.length) {
+    if (input.startsWith("```", cursor) && (cursor === 0 || input[cursor - 1] === "\n")) {
+      const close = input.indexOf("\n```", cursor + 3);
+      if (close >= 0) {
+        flushPlain(cursor);
+        const end = close + 4;
+        regions.push({ kind: "code", text: input.slice(cursor, end) });
+        cursor = end;
+        plainStart = cursor;
+        continue;
+      }
+    }
+    if (input[cursor] === "`" && !isEscaped(input, cursor)) {
+      const close = findClosingDelimiter(input, cursor + 1, "`");
+      if (close >= 0) {
+        flushPlain(cursor);
+        regions.push({ kind: "code", text: input.slice(cursor, close + 1) });
+        cursor = close + 1;
+        plainStart = cursor;
+        continue;
+      }
+    }
+    const region = readDelimitedRegion(input, cursor);
+    if (region) {
+      flushPlain(cursor);
+      regions.push({ kind: region.kind, text: input.slice(cursor, region.end) });
+      cursor = region.end;
+      plainStart = cursor;
+      continue;
+    }
+    cursor++;
+  }
+  flushPlain(input.length);
+  return regions;
+}
+function wordCount(text) {
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+function appendChunk(chunks, value) {
+  const normalized = value.trim();
+  if (normalized) chunks.push(normalized);
+}
+function chunkMarkdown(text, maxWords = 400) {
+  const limit = Number.isFinite(maxWords) && maxWords > 0 ? Math.floor(maxWords) : 400;
+  const chunks = [];
+  let current = "";
+  let currentWords = 0;
+  const flush = () => {
+    appendChunk(chunks, current);
+    current = "";
+    currentWords = 0;
+  };
+  for (const region of scanRegions(text)) {
+    if (region.kind === "formula" || region.kind === "code") {
+      const regionWords = wordCount(region.text);
+      if (currentWords > 0 && currentWords + regionWords > limit) flush();
+      current += region.text;
+      currentWords += regionWords;
+      if (currentWords > limit) flush();
+      continue;
+    }
+    for (const token of region.text.match(/\s+|\S+/g) || []) {
+      if (/^\s+$/.test(token)) {
+        current += token;
+        continue;
+      }
+      if (currentWords >= limit) flush();
+      current += token;
+      currentWords++;
+    }
+  }
+  flush();
+  return chunks.length ? chunks : [""];
+}
+
+// src/rag/fingerprint.ts
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+// src/projects/indexer.ts
+var INDEX_MANIFEST_SCHEMA_VERSION = 2;
+var chunkText = chunkMarkdown;
+var projectIndexChains = /* @__PURE__ */ new Map();
+function emptyResult() {
+  return { totalNotes: 0, totalChunks: 0, indexed: 0, skipped: 0, reusedEmbeddings: 0, generatedEmbeddings: 0, errors: [] };
+}
+function isEmbeddingExhaustedError(message) {
+  const lower = message.toLowerCase();
+  return lower.includes("se agotaron") || lower.includes("cooldown") || lower.includes("quota") || lower.includes("rate limit") || lower.includes("resource_exhausted");
+}
+function cleanPath(path3) {
+  return path3.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+}
+function rootDirectory(path3) {
+  return cleanPath(path3).replace(/\/\*\*?$/, "").replace(/^\*\*?$/, "") || ".";
+}
+function isWithinPath(filePath, directory) {
+  const file = cleanPath(filePath);
+  const dir = rootDirectory(directory);
+  if (dir === ".") return true;
+  return file === dir || file.startsWith(`${dir}/`);
+}
+function canTraverseDirectory(path3) {
+  const normalized = cleanPath(path3);
+  if (!normalized || normalized === ".") return true;
+  if (isInternalPath(normalized)) return false;
+  const segments = normalized.toLowerCase().split("/");
+  return !segments.some((segment) => segment === ".git" || segment === ".obsidian" || segment === "node_modules");
+}
+function isProjectPathAllowed(filePath, project) {
+  if (isInternalPath(filePath) || !filePath.toLowerCase().endsWith(".md")) return false;
+  return project.read_paths.some((pattern) => pattern.includes("*") ? pathMatchesAny(filePath, [pattern]) : isWithinPath(filePath, pattern));
+}
+function blankManifest() {
+  return { schema_version: INDEX_MANIFEST_SCHEMA_VERSION, documents: {} };
+}
+function parseIndexManifest(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.schema_version === INDEX_MANIFEST_SCHEMA_VERSION && parsed.documents && typeof parsed.documents === "object") {
+      return { manifest: parsed, migrated: false };
+    }
+    if (parsed && typeof parsed === "object") return { manifest: blankManifest(), migrated: true };
+  } catch {
+  }
+  return { manifest: blankManifest(), migrated: false };
+}
+async function loadManifest(adapter, projectId) {
+  const path3 = `sanctum-logs/index/${projectId}/manifest.json`;
+  try {
+    if (await adapter.exists(path3)) return parseIndexManifest(await adapter.read(path3));
+  } catch (error) {
+    console.warn(`[Indexer] loadManifest ${projectId}:`, error?.message || error);
+  }
+  return { manifest: blankManifest(), migrated: false };
+}
+async function saveManifest(adapter, projectId, manifest) {
+  await adapter.write(`sanctum-logs/index/${projectId}/manifest.json`, JSON.stringify(manifest, null, 2));
+}
+async function projectConfigFingerprint(project) {
+  return sha256Hex(JSON.stringify({
+    embed_model: project.rag?.embed_model || "gemini-embedding-2",
+    dims: project.rag?.dims || 768,
+    chunk_words: project.rag?.chunk_words || 400,
+    chunker_version: FORMULA_CHUNKER_VERSION
+  }));
+}
+async function chunkFingerprint(configFingerprint, text) {
+  return sha256Hex(`${configFingerprint}\0${text}`);
+}
+async function buildEmbeddingCache(store, manifest, configFingerprint) {
+  const cache = /* @__PURE__ */ new Map();
+  for (const chunk of store.allChunks) {
+    const document = manifest.documents[chunk.note_path];
+    if (!document || document.config_fingerprint !== configFingerprint) continue;
+    cache.set(await chunkFingerprint(configFingerprint, chunk.chunk_text), chunk.embedding);
+  }
+  return cache;
+}
+function coalesceChanges(changes) {
+  const result = /* @__PURE__ */ new Map();
+  for (const change of changes) {
+    if (change.type === "rename") {
+      result.set(cleanPath(change.oldPath), "delete");
+      result.set(cleanPath(change.path), "upsert");
+    } else {
+      result.set(cleanPath(change.path), change.type);
+    }
+  }
+  return result;
+}
+async function collectFiles(adapter, project, options) {
+  const errors = [];
+  const deletes = /* @__PURE__ */ new Set();
+  if (options.changes?.length) {
+    const operations = coalesceChanges(options.changes);
+    const files2 = [];
+    for (const [path3, operation] of operations) {
+      const allowed = isProjectPathAllowed(path3, project);
+      if (!allowed && operation === "upsert") {
+        errors.push(`La nota ${path3} est\xE1 fuera de los read_paths del proyecto`);
+        continue;
+      }
+      if (operation === "delete") deletes.add(path3);
+      else files2.push(path3);
+    }
+    return { files: files2, deletes, partial: true, errors };
+  }
+  const configuredRoots = (project.read_paths.length ? project.read_paths : ["Research"]).map(rootDirectory);
+  const targetRoots = (options.paths?.length ? options.paths : configuredRoots).map(rootDirectory);
+  if (options.paths?.length && !targetRoots.every((path3) => project.read_paths.some((root) => isWithinPath(path3, root) || isWithinPath(root, path3)))) {
+    return { files: [], deletes, partial: true, errors: ["La carpeta solicitada est\xE1 fuera de los read_paths del proyecto"] };
+  }
+  const files = [];
+  for (const target of targetRoots) {
+    if (!await adapter.exists(target).catch(() => false)) {
+      errors.push(`La carpeta ${target} no existe`);
+      continue;
+    }
+    const directories = [target];
+    const visited = /* @__PURE__ */ new Set();
+    while (directories.length) {
+      const directory = directories.shift();
+      if (visited.has(directory)) continue;
+      visited.add(directory);
+      const listing = await adapter.list(directory);
+      for (const folder of listing.folders) {
+        const normalizedFolder = cleanPath(folder);
+        if (canTraverseDirectory(normalizedFolder)) directories.push(normalizedFolder);
+      }
+      for (const file of listing.files) {
+        const normalized = cleanPath(file);
+        if (isProjectPathAllowed(normalized, project) && !files.includes(normalized)) files.push(normalized);
+      }
+    }
+  }
+  return { files, deletes, partial: Boolean(options.paths?.length), errors };
+}
+async function indexProjectInternal(adapter, embeddings, project, vectorStore, options) {
+  const result = emptyResult();
+  await ensureVaultDirectory(adapter, `sanctum-logs/index/${project.id}`);
+  const loaded = await loadManifest(adapter, project.id);
+  const manifest = loaded.manifest;
+  const configFingerprint = await projectConfigFingerprint(project);
+  const collected = await collectFiles(adapter, project, options);
+  result.errors.push(...collected.errors);
+  const seen = new Set(collected.files);
+  if (!collected.partial) {
+    const knownPaths = /* @__PURE__ */ new Set([...Object.keys(manifest.documents), ...vectorStore.allChunks.map((chunk) => chunk.note_path)]);
+    for (const path3 of knownPaths) if (!seen.has(path3)) collected.deletes.add(path3);
+  }
+  const embeddingCache = await buildEmbeddingCache(vectorStore, manifest, configFingerprint);
+  for (const deletedPath of collected.deletes) {
+    vectorStore.addChunks([], deletedPath);
+    delete manifest.documents[deletedPath];
+  }
+  for (const filePath of collected.files) {
+    try {
+      const content = await adapter.read(filePath);
+      const contentHash = await sha256Hex(content);
+      const previous = manifest.documents[filePath];
+      if (previous?.content_hash === contentHash && previous.config_fingerprint === configFingerprint) {
+        result.skipped++;
+        continue;
+      }
+      const texts = chunkText(content, project.rag?.chunk_words || 400).filter((text) => text.trim());
+      const hashes = await Promise.all(texts.map((text) => chunkFingerprint(configFingerprint, text)));
+      const chunks = [];
+      for (let index = 0; index < texts.length; index++) {
+        const text = texts[index];
+        const hash = hashes[index];
+        let embedding = embeddingCache.get(hash);
+        if (embedding) {
+          result.reusedEmbeddings++;
+        } else {
+          embedding = await embeddings.embed(text);
+          embeddingCache.set(hash, embedding);
+          result.generatedEmbeddings++;
+        }
+        chunks.push({ id: `${filePath}#chunk-${index}`, note_path: filePath, chunk_text: text, embedding });
+      }
+      vectorStore.addChunks(chunks, filePath);
+      manifest.documents[filePath] = {
+        path: filePath,
+        content_hash: contentHash,
+        config_fingerprint: configFingerprint,
+        chunk_hashes: hashes,
+        indexed_at: Date.now()
+      };
+      result.totalNotes++;
+      result.totalChunks += chunks.length;
+      result.indexed++;
+    } catch (error) {
+      const message = error?.message || String(error);
+      result.errors.push(`${filePath}: ${message}`);
+      if (isEmbeddingExhaustedError(message)) {
+        const remaining = collected.files.length - result.indexed - result.skipped - result.errors.length;
+        if (remaining > 0) {
+          result.errors.push(`Indexaci\xF3n detenida: embeddings agotados (${remaining} notas pendientes)`);
+        }
+        break;
+      }
+    }
+  }
+  await vectorStore.save(adapter);
+  await saveManifest(adapter, project.id, manifest);
+  if (loaded.migrated) console.error(`[Indexer] Manifiesto de ${project.id} migrado a schema v${INDEX_MANIFEST_SCHEMA_VERSION}`);
+  return result;
+}
+function indexProject(adapter, embeddings, project, vectorStore, options = {}) {
+  const previous = projectIndexChains.get(project.id) || Promise.resolve();
+  const job = previous.catch(() => void 0).then(() => indexProjectInternal(adapter, embeddings, project, vectorStore, options));
+  const tracked = job.finally(() => {
+    if (projectIndexChains.get(project.id) === tracked) projectIndexChains.delete(project.id);
+  });
+  projectIndexChains.set(project.id, tracked);
+  return tracked;
+}
+
+// src/projects/index-coordinator.ts
+var IncrementalIndexCoordinator = class {
+  constructor(options) {
+    this.options = options;
+    this.pending = /* @__PURE__ */ new Map();
+    this.timers = /* @__PURE__ */ new Map();
+    this.loadedStores = /* @__PURE__ */ new Set();
+    this.debounceMs = options.debounceMs ?? 1500;
+  }
+  async queueChange(change) {
+    const projects = await this.loadValidProjects();
+    for (const { id, project } of projects) {
+      const oldPath = change.type === "rename" ? change.oldPath : change.path;
+      const newPath = change.path;
+      const oldAllowed = isProjectPathAllowed(oldPath, project);
+      const newAllowed = change.type === "delete" ? false : isProjectPathAllowed(newPath, project);
+      if (!oldAllowed && !newAllowed) continue;
+      if (change.type === "rename") {
+        if (oldAllowed) this.setPending(id, oldPath, "delete");
+        if (newAllowed) this.setPending(id, newPath, "upsert");
+      } else if (change.type === "delete") {
+        if (oldAllowed) this.setPending(id, oldPath, "delete");
+      } else if (newAllowed) {
+        this.setPending(id, newPath, "upsert");
+      }
+      this.schedule(id);
+    }
+  }
+  async reconcileAll() {
+    const projects = await this.loadValidProjects();
+    for (const { id } of projects) {
+      try {
+        await this.reconcileProject(id);
+      } catch (error) {
+        this.emit(id, "error", void 0, error?.message || String(error));
+      }
+    }
+  }
+  async loadValidProjects() {
+    if (typeof this.options.projectStore.listValidProjects === "function") {
+      return this.options.projectStore.listValidProjects();
+    }
+    const ids = await this.options.projectStore.listProjects();
+    const valid = [];
+    for (const id of ids) {
+      try {
+        valid.push({ id, project: await this.options.projectStore.loadProject(id) });
+      } catch (error) {
+        this.emit(id, "error", void 0, error?.message || String(error));
+      }
+    }
+    return valid;
+  }
+  async reconcileProject(projectId) {
+    let project;
+    try {
+      project = await this.options.projectStore.loadProject(projectId);
+    } catch (error) {
+      this.emit(projectId, "error", void 0, error?.message || String(error));
+      return void 0;
+    }
+    if (!this.options.canEmbed()) {
+      this.emit(projectId, "waiting-for-keys");
+      return void 0;
+    }
+    const store = await this.getLoadedStore(projectId);
+    this.emit(projectId, "indexing");
+    try {
+      const result = await indexProject(this.options.adapter, this.options.getEmbeddingProvider(), project, store);
+      this.emit(projectId, "indexed", result);
+      await this.options.onIndexed?.(project, result);
+      return result;
+    } catch (error) {
+      this.emit(projectId, "error", void 0, error?.message || String(error));
+      throw error;
+    }
+  }
+  /** Flushes debounced work immediately; useful before a query and in tests. */
+  async flushPending(projectId) {
+    if (projectId) {
+      await this.flushProject(projectId);
+      return;
+    }
+    for (const id of [...this.pending.keys()]) await this.flushProject(id);
+  }
+  dispose() {
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+  }
+  setPending(projectId, path3, operation) {
+    let operations = this.pending.get(projectId);
+    if (!operations) {
+      operations = /* @__PURE__ */ new Map();
+      this.pending.set(projectId, operations);
+    }
+    operations.set(path3.replace(/\\/g, "/").replace(/^\/+/, ""), operation);
+    this.emit(projectId, "queued");
+  }
+  schedule(projectId) {
+    const current = this.timers.get(projectId);
+    if (current) clearTimeout(current);
+    this.timers.set(projectId, setTimeout(() => {
+      this.timers.delete(projectId);
+      void this.flushProject(projectId);
+    }, this.debounceMs));
+  }
+  async flushProject(projectId) {
+    const timer = this.timers.get(projectId);
+    if (timer) clearTimeout(timer);
+    this.timers.delete(projectId);
+    const operations = this.pending.get(projectId);
+    if (!operations?.size) return;
+    if (!this.options.canEmbed() && [...operations.values()].some((value) => value === "upsert")) {
+      this.emit(projectId, "waiting-for-keys");
+      return;
+    }
+    this.pending.delete(projectId);
+    const changes = [...operations].map(([path3, type]) => ({ type, path: path3 }));
+    try {
+      const project = await this.options.projectStore.loadProject(projectId);
+      const store = await this.getLoadedStore(projectId);
+      this.emit(projectId, "indexing");
+      const result = await indexProject(this.options.adapter, this.options.getEmbeddingProvider(), project, store, { changes });
+      this.emit(projectId, "indexed", result);
+      await this.options.onIndexed?.(project, result);
+    } catch (error) {
+      const restored = this.pending.get(projectId) || /* @__PURE__ */ new Map();
+      for (const [path3, operation] of operations) if (!restored.has(path3)) restored.set(path3, operation);
+      this.pending.set(projectId, restored);
+      this.emit(projectId, "error", void 0, error?.message || String(error));
+    }
+  }
+  async getLoadedStore(projectId) {
+    const store = this.options.getVectorStore(projectId);
+    if (!this.loadedStores.has(projectId)) {
+      await store.load(this.options.adapter);
+      this.loadedStores.add(projectId);
+    }
+    return store;
+  }
+  emit(projectId, state, result, error) {
+    this.options.onStatus?.({ projectId, state, result, error, pending: this.pending.get(projectId)?.size || 0 });
+  }
+};
+
+// src/constants.ts
+var AGENTS_DIR = "sanctum-agents";
+var PROJECTS_DIR = "sanctum-projects";
+var DEFAULT_MODEL = "deepseek-v4-flash";
+
+// src/projects/types.ts
+var DEFAULT_PROJECT_RAG = {
+  embed_model: "gemini-embedding-2",
+  dims: 768,
+  chunk_words: 400,
+  top_k: 5,
+  min_similarity: 0.65
+};
+function defaultProject(id, name) {
+  return {
+    id,
+    name: name || id,
+    icon: "\u25C8",
+    description: "",
+    instructions: "",
+    read_paths: [`/Research/`, `/Projects/${id}/`],
+    write_paths: [`/Projects/${id}/`, `/sanctum-memory/${id}/`],
+    outputPath: `Projects/${id}`,
+    model: DEFAULT_MODEL,
+    rag: { ...DEFAULT_PROJECT_RAG },
+    files: [],
+    attachedFiles: [],
+    starred: false
+  };
+}
+
 // src/shared/agents/frontmatter.ts
 var import_yaml = __toESM(require_dist(), 1);
+function parseScalar(value) {
+  const parsed = (0, import_yaml.parse)(value.trim());
+  return parsed === void 0 ? "" : parsed;
+}
 function parseFrontmatter(raw) {
   const parsed = (0, import_yaml.parse)(raw);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -7838,6 +8406,496 @@ function splitFrontmatter(markdown) {
   if (!match) throw new Error("Formato inv\xE1lido: falta el bloque frontmatter ---");
   return { frontmatter: parseFrontmatter(match[1]), body: match[2].trim() };
 }
+
+// src/projects/store.ts
+function sanitizeId(id) {
+  if (!id) return id;
+  return id.replace(/[/\\:;!@#$%^&*()<>"'|?*~`]/g, "").slice(0, 120);
+}
+function parseProjectMd(content) {
+  const parts = content.split("---");
+  if (parts.length < 3) {
+    throw new Error("Formato inv\xE1lido: el archivo debe tener frontmatter --- separado");
+  }
+  const fmLines = parts[1].trim().split("\n");
+  const bodyRaw = parts.slice(2).join("---").trim();
+  const data = {};
+  const rag = {};
+  let inRag = false;
+  let inInstructions = false;
+  const instructions = [];
+  for (let i = 0; i < fmLines.length; i++) {
+    const line = fmLines[i];
+    const indent = line.length - line.trimStart().length;
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed === "---") continue;
+    if (inRag) {
+      if (indent > 0 && trimmed.includes(":")) {
+        const colonIdx2 = trimmed.indexOf(":");
+        const key2 = trimmed.slice(0, colonIdx2).trim();
+        const value2 = trimmed.slice(colonIdx2 + 1).trim();
+        rag[key2] = parseScalar(value2);
+        continue;
+      } else {
+        inRag = false;
+      }
+    }
+    if (inInstructions) {
+      if (indent > 0 || trimmed === "") {
+        instructions.push(line);
+        continue;
+      } else {
+        inInstructions = false;
+      }
+    }
+    if (!trimmed.includes(":")) continue;
+    const colonIdx = trimmed.indexOf(":");
+    const key = trimmed.slice(0, colonIdx).trim();
+    let value = trimmed.slice(colonIdx + 1).trim();
+    if (key === "rag") {
+      inRag = true;
+      continue;
+    }
+    if (key === "instructions" && value === "|") {
+      inInstructions = true;
+      continue;
+    }
+    data[key] = parseScalar(value);
+  }
+  data.instructions = instructions.join("\n").trim();
+  if (Object.keys(rag).length > 0) data.rag = rag;
+  const id = data.id || "project";
+  let attachedFiles = [];
+  if (data.attachedFiles) {
+    try {
+      attachedFiles = typeof data.attachedFiles === "string" ? JSON.parse(data.attachedFiles) : data.attachedFiles;
+    } catch (err) {
+      console.warn("[Store] attachedFiles parse:", err.message);
+    }
+  }
+  return {
+    id,
+    name: data.name || id,
+    icon: data.icon || "\u25C8",
+    description: data.description || "",
+    instructions: data.instructions || bodyRaw,
+    read_paths: data.read_paths || [],
+    write_paths: data.write_paths || [],
+    outputPath: data.outputPath || `Projects/${id}`,
+    model: data.model || DEFAULT_MODEL,
+    rag: {
+      embed_model: data.rag?.embed_model || "gemini-embedding-2",
+      dims: data.rag?.dims || 768,
+      chunk_words: data.rag?.chunk_words || 400,
+      top_k: data.rag?.top_k || 5,
+      min_similarity: data.rag?.min_similarity || 0.65
+    },
+    files: data.files || [],
+    attachedFiles,
+    starred: data.starred === true
+  };
+}
+function serializeProject(p) {
+  const lines = ["---"];
+  lines.push(`id: ${p.id}`);
+  lines.push(`name: ${p.name}`);
+  lines.push(`icon: ${p.icon}`);
+  if (p.description) lines.push(`description: ${p.description}`);
+  lines.push(`model: ${p.model}`);
+  lines.push(`read_paths: [${p.read_paths.map((x) => `"${x}"`).join(", ")}]`);
+  lines.push(`write_paths: [${p.write_paths.map((x) => `"${x}"`).join(", ")}]`);
+  lines.push(`outputPath: ${p.outputPath || `Projects/${p.id}`}`);
+  lines.push("rag:");
+  lines.push(`  embed_model: ${p.rag.embed_model}`);
+  lines.push(`  dims: ${p.rag.dims}`);
+  lines.push(`  chunk_words: ${p.rag.chunk_words}`);
+  lines.push(`  top_k: ${p.rag.top_k}`);
+  lines.push(`  min_similarity: ${p.rag.min_similarity}`);
+  if (p.starred) lines.push(`starred: true`);
+  if (p.files?.length) lines.push(`files: [${p.files.map((x) => `"${x}"`).join(", ")}]`);
+  if (p.attachedFiles?.length) lines.push(`attachedFiles: ${JSON.stringify(p.attachedFiles)}`);
+  lines.push("instructions: |");
+  for (const line of p.instructions.split("\n")) lines.push("  " + line);
+  lines.push("---");
+  lines.push("");
+  return lines.join("\n");
+}
+var ProjectStore = class {
+  constructor(adapter) {
+    this.adapter = adapter;
+    this.threadLocks = /* @__PURE__ */ new Map();
+  }
+  async withThreadLock(id, threadId, work) {
+    const key = `${id}/${sanitizeId(threadId) || threadId}`;
+    const previous = this.threadLocks.get(key) || Promise.resolve();
+    let release = () => {
+    };
+    const current = new Promise((resolve) => {
+      release = resolve;
+    });
+    this.threadLocks.set(key, current);
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.threadLocks.get(key) === current) this.threadLocks.delete(key);
+    }
+  }
+  projectPath(id) {
+    return `${PROJECTS_DIR}/${id}.md`;
+  }
+  memoryDir(id) {
+    return `sanctum-memory/${id}`;
+  }
+  memoryPath(id) {
+    return `${this.memoryDir(id)}/memory.jsonl`;
+  }
+  threadsDir(id) {
+    return `sanctum-logs/threads/${id}`;
+  }
+  async ensureDir(dir) {
+    await ensureVaultDirectory(this.adapter, dir);
+  }
+  /** Obsidian rename() refuses to replace an existing file; writes are serialized by their caller. */
+  async writeSerialized(path3, content) {
+    await this.adapter.write(path3, content);
+  }
+  async loadProject(id) {
+    const path3 = this.projectPath(id);
+    try {
+      const content = await this.adapter.read(path3);
+      return parseProjectMd(content);
+    } catch (err) {
+      throw new Error(`No se pudo leer ${path3}: ${err.message}`);
+    }
+  }
+  async saveProject(p) {
+    await this.ensureDir(PROJECTS_DIR);
+    await this.writeSerialized(this.projectPath(p.id), serializeProject(p));
+  }
+  async projectExists(id) {
+    return await this.adapter.exists(this.projectPath(id)).catch(() => false);
+  }
+  async listProjects() {
+    const exists = await this.adapter.exists(PROJECTS_DIR).catch(() => false);
+    if (!exists) return [];
+    const listing = await this.adapter.list(PROJECTS_DIR);
+    return listing.files.filter((f) => f.endsWith(".md")).map((f) => f.replace(/^.*[\\/]/, "").replace(/\.md$/, ""));
+  }
+  /** Lists projects that load cleanly; skips corrupt/empty files without aborting. */
+  async listValidProjects() {
+    const ids = await this.listProjects();
+    const valid = [];
+    for (const id of ids) {
+      try {
+        valid.push({ id, project: await this.loadProject(id) });
+      } catch (err) {
+        console.warn(`[Store] proyecto inv\xE1lido omitido (${id}):`, err?.message || err);
+      }
+    }
+    return valid;
+  }
+  async loadMemory(id) {
+    try {
+      const raw = await this.adapter.read(this.memoryPath(id));
+      const entries = [];
+      for (const line of raw.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          entries.push(JSON.parse(line));
+        } catch (err) {
+          console.warn("[Store] memory JSONL parse:", err.message);
+        }
+      }
+      return entries;
+    } catch (err) {
+      if (!isNotFoundError(err)) console.warn("[Store] loadMemory:", err?.message || err);
+      return [];
+    }
+  }
+  async appendMemory(id, entry) {
+    await this.ensureDir(this.memoryDir(id));
+    const path3 = this.memoryPath(id);
+    let existing = "";
+    try {
+      existing = await this.adapter.read(path3);
+    } catch (err) {
+      if (!isNotFoundError(err)) console.warn("[Store] appendMemory read:", err?.message || err);
+    }
+    await this.adapter.write(path3, existing + JSON.stringify(entry) + "\n");
+  }
+  async loadThreads(id) {
+    const dir = this.threadsDir(id);
+    let listing;
+    try {
+      listing = await this.adapter.list(dir);
+    } catch {
+      return [];
+    }
+    const threads = [];
+    const files = (listing.files || []).filter((f) => f.endsWith(".json"));
+    for (const f of files) {
+      try {
+        const content = await this.adapter.read(f);
+        const data = JSON.parse(content);
+        if (data.thread) threads.push(data.thread);
+      } catch (err) {
+        console.warn(`[Store] loadThread ${f}:`, err.message);
+      }
+    }
+    return threads.sort((a, b) => b.updated_at - a.updated_at);
+  }
+  async loadThreadData(id, threadId) {
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return null;
+    const path3 = `${this.threadsDir(id)}/${safeId}.json`;
+    try {
+      const content = await this.adapter.read(path3);
+      return JSON.parse(content);
+    } catch {
+      return null;
+    }
+  }
+  async saveThreadData(id, thread, messages, extra) {
+    await this.withThreadLock(id, thread.thread_id, () => this.saveThreadDataUnlocked(id, thread, messages, extra));
+  }
+  async saveThreadDataUnlocked(id, thread, messages, extra) {
+    const dir = this.threadsDir(id);
+    await this.ensureDir(dir);
+    if (!thread.starred) thread.starred = false;
+    const safeTid = sanitizeId(thread.thread_id) || thread.thread_id;
+    let disk = {};
+    try {
+      const raw = await this.adapter.read(`${dir}/${safeTid}.json`);
+      const parsed = JSON.parse(raw);
+      if (parsed.summary) disk.summary = parsed.summary;
+      if (parsed.pendingAction) disk.pendingAction = parsed.pendingAction;
+      if (parsed.createdNotes) disk.createdNotes = parsed.createdNotes;
+    } catch (err) {
+      if (!isNotFoundError(err)) console.warn(`[Store] saveThreadData merge ${dir}/${safeTid}.json:`, err?.message || err);
+    }
+    const hasExtra = (key) => extra !== void 0 && Object.prototype.hasOwnProperty.call(extra, key);
+    const data = {
+      thread,
+      messages,
+      summary: hasExtra("summary") ? extra?.summary : disk.summary,
+      pendingAction: hasExtra("pendingAction") ? extra?.pendingAction : disk.pendingAction,
+      createdNotes: hasExtra("createdNotes") ? extra?.createdNotes : disk.createdNotes
+    };
+    await this.writeSerialized(`${dir}/${safeTid}.json`, JSON.stringify(data, null, 2));
+  }
+  async deleteThread(id, threadId) {
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return;
+    const path3 = `${this.threadsDir(id)}/${safeId}.json`;
+    try {
+      if (this.adapter.remove) await this.adapter.remove(path3);
+      else await this.adapter.write(path3, "");
+    } catch (_err) {
+    }
+  }
+  /**
+   * Serialized read-modify-write for thread data within this process.
+   */
+  async patchThreadData(id, threadId, updater) {
+    return this.withThreadLock(id, threadId, async () => {
+      const data = await this.loadThreadData(id, threadId);
+      if (!data) return null;
+      const patched = updater(data);
+      await this.saveThreadDataUnlocked(id, patched.thread, patched.messages, patched);
+      return patched;
+    });
+  }
+  /** Convenience: loads existing thread data or creates skeleton, then saves new messages atomically. */
+  async updateThreadMessages(id, threadId, messages) {
+    await this.withThreadLock(id, threadId, async () => {
+      const safeId = sanitizeId(threadId) || threadId;
+      const existing = await this.loadThreadData(id, safeId);
+      const thread = existing?.thread || {
+        thread_id: safeId,
+        project_id: id,
+        title: "Nueva conversaci\xF3n",
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        starred: false
+      };
+      thread.updated_at = Date.now();
+      const firstUserMsg = messages.find((m) => m.role === "user");
+      if (firstUserMsg?.content) thread.title = firstUserMsg.content.slice(0, 60);
+      await this.saveThreadDataUnlocked(id, thread, messages, existing || void 0);
+    });
+  }
+  async renameThread(id, threadId, newTitle) {
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return;
+    const data = await this.loadThreadData(id, safeId);
+    if (!data) return;
+    data.thread.title = newTitle;
+    data.thread.updated_at = Date.now();
+    await this.saveThreadData(id, data.thread, data.messages, data);
+  }
+  async toggleStarThread(id, threadId) {
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return null;
+    const data = await this.loadThreadData(id, safeId);
+    if (!data) return null;
+    data.thread.starred = !data.thread.starred;
+    await this.saveThreadData(id, data.thread, data.messages, data);
+    return data.thread;
+  }
+  async moveThread(id, threadId, targetProjectId) {
+    const safeId = sanitizeId(threadId);
+    if (!safeId) return;
+    if (id === targetProjectId) return;
+    await this.withThreadLock(id, safeId, async () => {
+      const data = await this.loadThreadData(id, safeId);
+      if (!data) return;
+      data.thread.project_id = targetProjectId;
+      data.thread.updated_at = Date.now();
+      await this.saveThreadData(targetProjectId, data.thread, data.messages, {
+        summary: data.summary,
+        pendingAction: data.pendingAction,
+        createdNotes: data.createdNotes
+      });
+      const sourcePath = `${this.threadsDir(id)}/${safeId}.json`;
+      if (this.adapter.remove) await this.adapter.remove(sourcePath);
+      else await this.adapter.write(sourcePath, "");
+    });
+  }
+  async createProject(id, name) {
+    const p = defaultProject(id, name || id);
+    await this.saveProject(p);
+    return p;
+  }
+  /** Deletes a project's metadata file. Thread data and memory files remain orphaned. */
+  async deleteProject(id) {
+    const path3 = this.projectPath(id);
+    try {
+      if (this.adapter.remove) await this.adapter.remove(path3);
+      else await this.adapter.write(path3, "");
+    } catch (_err) {
+    }
+  }
+};
+
+// mcp-server/src/embeddings/gemini-embed.ts
+var GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+var PRIORITY_MODELS = ["gemini-embedding-2", "gemini-embedding-001"];
+var OUTPUT_DIMS = 768;
+async function callEmbed(key, model, text) {
+  const url = `${GEMINI_BASE}/${model}:embedContent`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+    body: JSON.stringify({
+      model: `models/${model}`,
+      content: { parts: [{ text }] },
+      outputDimensionality: OUTPUT_DIMS
+    })
+  });
+  if (!response.ok) {
+    const err = new Error(`Gemini API error [${response.status}] modelo "${model}"`);
+    err.status = response.status;
+    throw err;
+  }
+  const data = await response.json();
+  if (!data.embedding?.values) {
+    throw new Error(`Respuesta inesperada de Gemini API: ${JSON.stringify(data).slice(0, 200)}`);
+  }
+  return data.embedding.values;
+}
+async function embedText(text, apiKey) {
+  const truncated = text;
+  let lastError = null;
+  for (const model of PRIORITY_MODELS) {
+    try {
+      const result = await callEmbed(apiKey, model, truncated);
+      log.debug("gemini embed ok", { model, dims: result.length });
+      return result;
+    } catch (err) {
+      const status = err?.status;
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (status === 404 || status === 400) {
+        log.warn("gemini model no disponible, saltando", { model, status });
+        continue;
+      }
+      throw lastError;
+    }
+  }
+  throw lastError ?? new Error("Todos los modelos de Gemini fallaron");
+}
+
+// mcp-server/src/rag/project-rag-runtime.ts
+var PROJECT_ID_PATTERN = /^[A-Za-z0-9_-]{1,120}$/;
+var ProjectRagRuntimeRegistry = class {
+  constructor(vault, geminiApiKey, defaultProjectId) {
+    this.vault = vault;
+    this.geminiApiKey = geminiApiKey;
+    this.defaultProjectId = defaultProjectId;
+    this.legacyStore = new VectorStore();
+    this.stores = /* @__PURE__ */ new Map();
+    this.loaded = /* @__PURE__ */ new Set();
+    this.projectStore = new ProjectStore(vault);
+    this.coordinator = new IncrementalIndexCoordinator({
+      adapter: vault,
+      projectStore: this.projectStore,
+      getVectorStore: (projectId) => this.getProjectStore(projectId),
+      getEmbeddingProvider: () => ({ embed: (text) => embedText(text, this.requireGeminiKey()) }),
+      canEmbed: () => Boolean(this.geminiApiKey),
+      onStatus: (status) => {
+        const details = { projectId: status.projectId, state: status.state, pending: status.pending, error: status.error };
+        if (status.state === "error") log.error("mcp project index", details);
+        else log.debug("mcp project index", details);
+      }
+    });
+  }
+  async initialize() {
+    await this.legacyStore.load(this.vault);
+    log.info("vector store legacy cargado", { chunks: this.legacyStore.count });
+    if (this.defaultProjectId) {
+      try {
+        await this.resolve(this.defaultProjectId);
+      } catch (error) {
+        log.error("reconciliacion inicial MCP fallida; se reintentara en la consulta", { projectId: this.defaultProjectId, error: String(error) });
+      }
+    }
+  }
+  async resolve(requestedProjectId) {
+    const projectId = requestedProjectId?.trim() || this.defaultProjectId?.trim();
+    if (!projectId) return { store: this.legacyStore };
+    this.assertProjectId(projectId);
+    if (!await this.projectStore.projectExists(projectId)) {
+      throw new Error(`PROJECT_NOT_FOUND - No existe sanctum-projects/${projectId}.md`);
+    }
+    const store = this.getProjectStore(projectId);
+    if (!this.loaded.has(projectId)) {
+      await store.load(this.vault);
+      this.loaded.add(projectId);
+    }
+    if (this.geminiApiKey) await this.coordinator.reconcileProject(projectId);
+    else log.warn("reconciliacion MCP pendiente: Gemini no configurado", { projectId });
+    return { store, projectId };
+  }
+  dispose() {
+    this.coordinator.dispose();
+  }
+  getProjectStore(projectId) {
+    let store = this.stores.get(projectId);
+    if (!store) {
+      store = new VectorStore(`sanctum-logs/index/${projectId}/vector-store.jsonl`);
+      this.stores.set(projectId, store);
+    }
+    return store;
+  }
+  requireGeminiKey() {
+    if (!this.geminiApiKey) throw new Error("GEMINI_NOT_CONFIGURED");
+    return this.geminiApiKey;
+  }
+  assertProjectId(projectId) {
+    if (!PROJECT_ID_PATTERN.test(projectId)) throw new Error("INVALID_PROJECT_ID - project_id solo admite letras, numeros, guion y guion bajo");
+  }
+};
 
 // mcp-server/src/tools/list-agents.ts
 function loadAgents(vault) {
@@ -7983,57 +9041,15 @@ ${content}` }]
   };
 }
 
-// mcp-server/src/embeddings/gemini-embed.ts
-var GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-var PRIORITY_MODELS = ["gemini-embedding-2", "gemini-embedding-001"];
-var OUTPUT_DIMS = 768;
-var MAX_TEXT_LENGTH = 3e3;
-async function callEmbed(key, model, text) {
-  const url = `${GEMINI_BASE}/${model}:embedContent?key=${key}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: `models/${model}`,
-      content: { parts: [{ text }] },
-      outputDimensionality: OUTPUT_DIMS
-    })
-  });
-  if (!response.ok) {
-    const err = new Error(`Gemini API error [${response.status}] modelo "${model}"`);
-    err.status = response.status;
-    throw err;
-  }
-  const data = await response.json();
-  if (!data.embedding?.values) {
-    throw new Error(`Respuesta inesperada de Gemini API: ${JSON.stringify(data).slice(0, 200)}`);
-  }
-  return data.embedding.values;
-}
-async function embedText(text, apiKey) {
-  const truncated = text.slice(0, MAX_TEXT_LENGTH);
-  let lastError = null;
-  for (const model of PRIORITY_MODELS) {
-    try {
-      const result = await callEmbed(apiKey, model, truncated);
-      log.debug("gemini embed ok", { model, dims: result.length });
-      return result;
-    } catch (err) {
-      const status = err?.status;
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (status === 404 || status === 400) {
-        log.warn("gemini model no disponible, saltando", { model, status });
-        continue;
-      }
-      throw lastError;
-    }
-  }
-  throw lastError ?? new Error("Todos los modelos de Gemini fallaron");
+// mcp-server/src/rag/runtime.ts
+async function resolveRagRuntime(source, projectId) {
+  if (typeof source === "function") return source(projectId);
+  return { store: source, projectId: projectId?.trim() || void 0 };
 }
 
 // mcp-server/src/tools/query-vault.ts
 var MIN_SIMILARITY = 0.65;
-function createQueryVaultTool(vault, store, geminiApiKey) {
+function createQueryVaultTool(vault, ragSource, geminiApiKey) {
   return {
     name: "sanctum_query_vault",
     description: "Busca fragmentos relevantes en el vault usando RAG. Recibe una query, la convierte a embedding con Gemini, y devuelve los chunks m\xE1s similares del vault filtrados por los read_paths del agente. Si el vault no ha sido indexado, devuelve VAULT_NOT_INDEXED.",
@@ -8051,6 +9067,10 @@ function createQueryVaultTool(vault, store, geminiApiKey) {
         max_results: {
           type: "number",
           description: "M\xE1ximo de resultados a devolver (default 5)."
+        },
+        project_id: {
+          type: "string",
+          description: "Proyecto RAG opcional. Precedencia: argumento, SANCTUM_PROJECT_ID, indice global legacy."
         }
       },
       required: ["agent_id", "query"]
@@ -8061,8 +9081,15 @@ function createQueryVaultTool(vault, store, geminiApiKey) {
       const query = String(args.query ?? "").trim();
       if (!query) throw new Error("'query' es obligatorio");
       const limit = typeof args.max_results === "number" && args.max_results > 0 ? Math.min(args.max_results, 20) : 5;
+      const perms = await resolvePermissions(vault, agentId);
+      if (!perms.readPaths.length) {
+        log.warn("query blocked: empty read_paths", { agentId });
+        return { content: [{ type: "text", text: "Error: PERMISSION_DENIED - El agente no tiene read_paths para consultar contexto RAG." }], isError: true };
+      }
+      const runtime = await resolveRagRuntime(ragSource, String(args.project_id ?? "").trim() || void 0);
+      const store = runtime.store;
       if (store.count === 0) {
-        log.warn("vault not indexed", { agentId });
+        log.warn("vault not indexed", { agentId, projectId: runtime.projectId });
         return {
           content: [{ type: "text", text: "Error: VAULT_NOT_INDEXED - El vault no tiene fragmentos indexados. Ejecut\xE1 primero el indexador (Research/ u otra carpeta) desde Obsidian antes de consultar por MCP." }],
           isError: true
@@ -8075,7 +9102,6 @@ function createQueryVaultTool(vault, store, geminiApiKey) {
           isError: true
         };
       }
-      const perms = await resolvePermissions(vault, agentId);
       const embedding = await embedText(query, geminiApiKey);
       const rawResults = store.search(embedding, limit);
       const filtered = rawResults.filter((r) => r.score >= MIN_SIMILARITY);
@@ -8085,7 +9111,8 @@ function createQueryVaultTool(vault, store, geminiApiKey) {
         query: query.slice(0, 80),
         raw: rawResults.length,
         filtered: filtered.length,
-        permitted: permitted.length
+        permitted: permitted.length,
+        projectId: runtime.projectId
       });
       if (permitted.length === 0) {
         return {
@@ -8106,9 +9133,164 @@ ${excerpt}${r.chunk.chunk_text.length > 400 ? "..." : ""}`;
   };
 }
 
-// src/constants.ts
-var AGENTS_DIR = "sanctum-agents";
-var DEFAULT_MODEL = "deepseek-v4-flash";
+// mcp-server/src/tools/validate-qubo.ts
+function asFormulation(input) {
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      return { expression: input };
+    }
+  }
+  if (Array.isArray(input)) return { matrix: input };
+  if (input && typeof input === "object") return input;
+  return {};
+}
+function matrixOf(input) {
+  if (!Array.isArray(input) || input.length === 0) return void 0;
+  if (!input.every((row) => Array.isArray(row))) return void 0;
+  const matrix = input.map((row) => row.map((value) => Number(value)));
+  if (!matrix.every((row) => row.every((value) => Number.isFinite(value)))) return void 0;
+  return matrix;
+}
+function detectKind(formulation, expression) {
+  const explicit = `${formulation.convention ?? ""} ${formulation.encoding ?? ""} ${expression}`.toLowerCase();
+  if (/ising|spin|s[_\s]?\{?i|\+?\/[-−]?1|±\s*1/.test(explicit)) return "ising";
+  if (/qubo|binary|boolean|0\s*[,/]\s*1|x[_\s]?i/.test(explicit) || formulation.matrix !== void 0) return "qubo";
+  return "unknown";
+}
+function contextKind(context) {
+  const lower = context.toLowerCase();
+  const hasIsing = /ising|spin|s[_\s]?i|\+?\s*[-−]\s*1|±\s*1/.test(lower);
+  const hasQubo = /qubo|binary|0\s*[,/]\s*1|x[_\s]?i/.test(lower);
+  if (hasIsing && !hasQubo) return "ising";
+  if (hasQubo && !hasIsing) return "qubo";
+  return "unknown";
+}
+function matrixIssues(matrixInput, kind, context) {
+  const issues = [];
+  if (!Array.isArray(matrixInput)) return issues;
+  const matrix = matrixOf(matrixInput);
+  if (!matrix) {
+    issues.push({ code: "MATRIX_INVALID", severity: "error", message: "La matriz debe ser cuadrada y contener \xFAnicamente n\xFAmeros finitos." });
+    return issues;
+  }
+  if (!matrix.every((row) => row.length === matrix.length)) {
+    issues.push({ code: "MATRIX_NOT_SQUARE", severity: "error", message: "La matriz de la formulaci\xF3n no es cuadrada." });
+    return issues;
+  }
+  let symmetric = true;
+  for (let i = 0; i < matrix.length; i++) {
+    for (let j = i + 1; j < matrix.length; j++) {
+      if (Math.abs(matrix[i][j] - matrix[j][i]) > 1e-9) symmetric = false;
+    }
+  }
+  if (kind === "ising" && !symmetric) {
+    issues.push({ code: "ISING_MATRIX_ASYMMETRIC", severity: "error", message: "Una matriz Ising de acoplamientos debe ser sim\xE9trica: J\u1D62\u2C7C = J\u2C7C\u1D62." });
+  }
+  if (kind === "qubo" && symmetric && /upper[- ]triangular|off[- ]diagonal[^.\n]{0,40}(once|una sola vez)/i.test(context)) {
+    issues.push({ code: "QUBO_OFFDIAGONAL_CONVENTION", severity: "warning", message: "La matriz es sim\xE9trica, pero el contexto describe una convenci\xF3n triangular superior; los t\xE9rminos fuera de diagonal podr\xEDan estar cont\xE1ndose dos veces." });
+  }
+  return issues;
+}
+function normalizationIssues(formulationText, context) {
+  const issues = [];
+  const contextHalf = /(?:factor|normalizaci[oó]n|normalization|mapeo|mapping)[^\n.]{0,100}(?:1\s*\/\s*2|0\.5|½)/i.test(context);
+  const contextQuarter = /(?:factor|normalizaci[oó]n|normalization|mapeo|mapping)[^\n.]{0,100}(?:1\s*\/\s*4|0\.25|¼)/i.test(context);
+  const proposedHalf = /(?:1\s*\/\s*2|0\.5|½)/.test(formulationText);
+  const proposedQuarter = /(?:1\s*\/\s*4|0\.25|¼)/.test(formulationText);
+  if (contextHalf && !proposedHalf && !proposedQuarter) {
+    issues.push({ code: "NORMALIZATION_MISSING", severity: "warning", message: "El contexto RAG documenta un factor 1/2 (o 0.5), pero la formulaci\xF3n no lo declara.", evidence: "factor 1/2" });
+  }
+  if (contextQuarter && !proposedQuarter && !proposedHalf) {
+    issues.push({ code: "NORMALIZATION_MISSING", severity: "warning", message: "El contexto RAG documenta un factor 1/4 (o 0.25), pero la formulaci\xF3n no lo declara.", evidence: "factor 1/4" });
+  }
+  return issues;
+}
+function signIssues(formulationText, context) {
+  const issues = [];
+  const proposedPositive = /(?:\+\s*(?:\d+(?:\.\d+)?\s*)?(?:J|Q)|(?:J|Q)\s*[_\{]?i[^\n=]{0,20}=\s*\+)/i.test(formulationText);
+  const proposedNegative = /(?:-\s*(?:\d+(?:\.\d+)?\s*)?(?:J|Q)|(?:J|Q)\s*[_\{]?i[^\n=]{0,20}=\s*-)/i.test(formulationText);
+  const contextAntiferro = /(?:J|acoplamiento|coupling)[^\n.]{0,100}(?:antiferromagn|negative|negativo|<\s*0)/i.test(context);
+  const contextFerro = /(?:J|acoplamiento|coupling)[^\n.]{0,100}(?:ferromagn|positive|positivo|>\s*0)/i.test(context);
+  if (proposedPositive && contextAntiferro) {
+    issues.push({ code: "COUPLING_SIGN_MISMATCH", severity: "error", message: "La formulaci\xF3n propone un acoplamiento positivo, pero las notas/papers describen J\u1D62\u2C7C como negativo o antiferromagn\xE9tico." });
+  }
+  if (proposedNegative && contextFerro) {
+    issues.push({ code: "COUPLING_SIGN_MISMATCH", severity: "error", message: "La formulaci\xF3n propone un acoplamiento negativo, pero las notas/papers describen J\u1D62\u2C7C como positivo o ferromagn\xE9tico." });
+  }
+  return issues;
+}
+function validateQuboAgainstContext(input, context) {
+  const formulation = asFormulation(input);
+  const expression = String(formulation.expression ?? "");
+  const kind = detectKind(formulation, expression);
+  const issues = [];
+  const documentedKind = contextKind(context);
+  if (kind === "unknown") {
+    issues.push({ code: "CONVENTION_UNCLEAR", severity: "warning", message: "No se pudo determinar si la formulaci\xF3n usa QUBO binario (0/1) o Ising de espines (\xB11)." });
+  } else if (documentedKind !== "unknown" && documentedKind !== kind) {
+    issues.push({ code: "SPIN_BINARY_CONVENTION_MISMATCH", severity: "error", message: `La formulaci\xF3n parece ${kind.toUpperCase()}, pero el contexto RAG usa la convenci\xF3n ${documentedKind.toUpperCase()}.`, evidence: context.slice(0, 240) });
+  }
+  issues.push(...matrixIssues(formulation.matrix, kind, context));
+  issues.push(...normalizationIssues(`${expression} ${JSON.stringify(formulation.matrix ?? "")}`, context));
+  issues.push(...signIssues(expression, context));
+  return {
+    kind,
+    convention: kind === "ising" ? "spin \xB11" : kind === "qubo" ? "binary 0/1" : "unknown",
+    issues
+  };
+}
+function createValidateQuboTool(vault, ragSource, geminiApiKey) {
+  return {
+    name: "sanctum_validate_qubo",
+    description: "Valida una formulaci\xF3n QUBO/Ising contra contexto RAG permitido, detectando convenciones spin \xB11 vs 0/1, signos de acoplamiento, simetr\xEDa y normalizaci\xF3n.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agent_id: { type: "string", description: "Agente cuya lista read_paths autoriza el contexto RAG." },
+        formulation: { description: "Expresi\xF3n, matriz cuadrada o objeto {matrix, expression, convention, encoding, offset}." },
+        context_query: { type: "string", description: "Consulta adicional para recuperar las notas/papers relevantes." },
+        max_results: { type: "number", description: "M\xE1ximo de chunks RAG (default 5, m\xE1ximo 20)." },
+        project_id: { type: "string", description: "Proyecto RAG opcional. Precedencia: argumento, SANCTUM_PROJECT_ID, indice global legacy." }
+      },
+      required: ["agent_id", "formulation"]
+    },
+    async handler(args) {
+      const agentId = String(args.agent_id ?? "").trim();
+      if (!agentId) throw new Error("'agent_id' es obligatorio");
+      if (args.formulation === void 0 || args.formulation === null) throw new Error("'formulation' es obligatorio");
+      const perms = await resolvePermissions(vault, agentId);
+      if (!perms.readPaths.length) {
+        log.warn("qubo validation blocked: empty read_paths", { agentId });
+        return { content: [{ type: "text", text: "Error: PERMISSION_DENIED - El agente no tiene read_paths para consultar contexto RAG." }], isError: true };
+      }
+      const runtime = await resolveRagRuntime(ragSource, String(args.project_id ?? "").trim() || void 0);
+      const store = runtime.store;
+      if (store.count === 0) {
+        return { content: [{ type: "text", text: "Error: VAULT_NOT_INDEXED - No hay chunks RAG indexados." }], isError: true };
+      }
+      if (!geminiApiKey) {
+        return { content: [{ type: "text", text: "Error: GEMINI_NOT_CONFIGURED - No hay GEMINI_API_KEYS configuradas." }], isError: true };
+      }
+      const query = `${String(args.context_query ?? "").trim()}
+Formulaci\xF3n QUBO/Ising:
+${typeof args.formulation === "string" ? args.formulation : JSON.stringify(args.formulation)}`.trim();
+      const limit = typeof args.max_results === "number" && args.max_results > 0 ? Math.min(Math.floor(args.max_results), 20) : 5;
+      const embedding = await embedText(query, geminiApiKey);
+      const candidates = store.search(embedding, Math.max(limit * 4, 20)).filter((result) => result.score >= 0.65);
+      const permitted = store.filterByPaths(candidates, perms.readPaths).slice(0, limit);
+      const context = permitted.map((result) => result.chunk.chunk_text).join("\n\n");
+      const validation = validateQuboAgainstContext(args.formulation, context);
+      if (!context) validation.issues.push({ code: "RAG_CONTEXT_INSUFFICIENT", severity: "warning", message: "No se recuper\xF3 contexto permitido con similitud suficiente; la validaci\xF3n solo cubre invariantes estructurales." });
+      log.info("sanctum_validate_qubo", { agentId, projectId: runtime.projectId, permitted: permitted.length, issueCount: validation.issues.length, kind: validation.kind });
+      return {
+        content: [{ type: "text", text: JSON.stringify({ ...validation, sources: permitted.map((result) => ({ note_path: result.chunk.note_path, similarity: result.score })) }, null, 2) }]
+      };
+    }
+  };
+}
 
 // src/agents/agent-loader.ts
 function parseAgentMd(content) {
@@ -8127,6 +9309,7 @@ function parseAgentMd(content) {
       write_paths: permissionsRaw.write_paths || frontmatter.write_paths || []
     },
     system_prompt: bodyRaw,
+    auto_check_tool: typeof frontmatter.auto_check === "string" ? frontmatter.auto_check : typeof frontmatter.auto_check_tool === "string" ? frontmatter.auto_check_tool : void 0,
     internal: frontmatter.internal === true || void 0
   };
 }
@@ -8188,7 +9371,7 @@ async function opencodeChat(systemPrompt, userPrompt, baseUrl, apiKey) {
 }
 
 // mcp-server/src/tools/invoke-agent.ts
-function createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
+function createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer, autoCheckTool) {
   return {
     name: "sanctum_invoke_agent",
     description: "Invoca un agente puntual (no el mesh completo) con un prompt. Carga la definici\xF3n del agente desde sanctum-agents/, resuelve sus permisos, renderiza el system prompt con el cuerpo del agente, y llama al modelo de lenguaje configurado (deepseek-v4-flash). Devuelve el output crudo del agente + trace_id para correlaci\xF3n.",
@@ -8202,6 +9385,10 @@ function createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
         prompt: {
           type: "string",
           description: "Prompt del usuario. Se inyecta como {{user_prompt}} en el system prompt del agente."
+        },
+        project_id: {
+          type: "string",
+          description: "Proyecto RAG opcional que se propaga al auto-chequeo del agente."
         }
       },
       required: ["agent_id", "prompt"]
@@ -8222,11 +9409,57 @@ function createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
       const agent = await loadAgentFromVault(vault, `${agentId}.md`);
       const systemPrompt = renderSystemPrompt(agent, "", prompt);
       const result = await opencodeChat(systemPrompt, prompt, opencodeBaseUrl, opencodeApiKey);
+      let output = result.content;
+      if (agent.auto_check_tool) {
+        if (agent.auto_check_tool !== "sanctum_validate_qubo" || !autoCheckTool) {
+          output += `
+
+## \u26A0\uFE0F Auto-chequeo no disponible
+La tool declarada '${agent.auto_check_tool}' no est\xE1 registrada en este runtime; la respuesta requiere revisi\xF3n manual.`;
+          log.warn("agent auto-check unavailable", { agentId, tool: agent.auto_check_tool });
+        } else {
+          let check;
+          try {
+            check = await autoCheckTool.handler({
+              agent_id: agentId,
+              formulation: { expression: result.content },
+              context_query: prompt,
+              project_id: String(args.project_id ?? "").trim() || void 0
+            });
+          } catch (error) {
+            check = { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+          }
+          const checkText = check.content?.map((item) => item.text).join("\n") || "Sin resultado";
+          if (check.isError) {
+            output += `
+
+## \u26A0\uFE0F Auto-chequeo QUBO/Ising
+${checkText}`;
+          } else {
+            let parsed;
+            try {
+              parsed = JSON.parse(checkText);
+            } catch {
+              parsed = { issues: [{ code: "AUTO_CHECK_INVALID_OUTPUT", severity: "warning", message: checkText }] };
+            }
+            const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
+            if (issues.length > 0) {
+              output += `
+
+## \u26A0\uFE0F Auto-chequeo QUBO/Ising
+Se detectaron inconsistencias o advertencias; revis\xE1 estos puntos antes de usar la formulaci\xF3n:
+${issues.map((issue) => `- [${issue.severity || "warning"}] ${issue.message || issue.code}`).join("\n")}`;
+            } else {
+              output += "\n\n## \u2705 Auto-chequeo QUBO/Ising\nNo se detectaron inconsistencias en el contexto RAG recuperado.";
+            }
+          }
+        }
+      }
       const traceId = await tracer.writeTrace({
         type: "agent_invocation",
         agent_id: agentId,
         input: { system_prompt: systemPrompt, user_prompt: prompt },
-        output: result.content,
+        output,
         duration_ms: Date.now() - startTime
       });
       log.info("sanctum_invoke_agent", { agentId, traceId, promptLen: prompt.length, outputLen: result.content.length });
@@ -8237,7 +9470,7 @@ function createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
             text: `## Output de @${agent.name} (${agentId})
 \`\`\`trace_id: ${traceId}\`\`\`
 
-${result.content}`
+${output}`
           }
         ]
       };
@@ -8478,15 +9711,18 @@ async function main() {
   server.registerTool(createListAgentsTool(vault));
   server.registerTool(createGetNoteTool(vault));
   const geminiApiKey = process.env.GEMINI_API_KEYS?.split(",")[0]?.trim();
-  const vectorStore = new VectorStore();
-  await vectorStore.load(vault);
-  log.info("vector store cargado", { chunks: vectorStore.count, hasKey: !!geminiApiKey });
-  server.registerTool(createQueryVaultTool(vault, vectorStore, geminiApiKey));
+  const ragRegistry = new ProjectRagRuntimeRegistry(vault, geminiApiKey, process.env.SANCTUM_PROJECT_ID?.trim());
+  await ragRegistry.initialize();
+  const resolveRag = (projectId) => ragRegistry.resolve(projectId);
+  log.info("runtime RAG cargado", { hasKey: !!geminiApiKey, defaultProjectId: process.env.SANCTUM_PROJECT_ID?.trim() });
+  server.registerTool(createQueryVaultTool(vault, resolveRag, geminiApiKey));
+  const validateQuboTool = createValidateQuboTool(vault, resolveRag, geminiApiKey);
+  server.registerTool(validateQuboTool);
   const opencodeBaseUrl = process.env.OPENCODE_GO_BASE_URL ?? "https://api.opencode.ai/v1";
   const opencodeApiKey = (process.env.OPENCODE_GO_API_KEY ?? "").trim();
   const tracer = new TraceWriter(vault);
   log.info("opencode config", { hasKey: !!opencodeApiKey, baseUrl: opencodeBaseUrl });
-  server.registerTool(createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer));
+  server.registerTool(createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer, validateQuboTool));
   server.registerTool(createRunMeshTool(vault, opencodeBaseUrl, opencodeApiKey, tracer));
   server.start();
 }
