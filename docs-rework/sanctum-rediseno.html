@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sanctum-II — Rediseño</title>
+<style>
+:root{
+  --bg-app:#171717; --bg-surface:#1e1e1e; --bg-elevated:#262626; --bg-hover:#2e2e2e;
+  --border-subtle:rgba(255,255,255,.07); --border-strong:rgba(255,255,255,.13);
+  --tp:rgba(255,255,255,.92); --ts:rgba(255,255,255,.63); --tt:rgba(255,255,255,.45);
+  --accent:#8b7cf6; --accent-hover:#a394f8; --accent-subtle:rgba(139,124,246,.14);
+  --success:#4caf7f; --running:#e0b341; --error:#e5637a; --info:#5b9bd5;
+  --forager:#4caf7f; --researcher:#5b9bd5; --critic:#e0a341; --websearch:#8b7cf6; --base:#9b9b9b;
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
+  --shadow-card:0 1px 2px rgba(0,0,0,.3); --shadow-pop:0 8px 24px rgba(0,0,0,.45);
+  --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  background:var(--bg-app); color:var(--tp); font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.app{display:flex; flex-direction:column; height:100vh; overflow:hidden}
+
+/* ===== Top brand bar with view switcher ===== */
+.brandbar{
+  display:flex; align-items:center; gap:16px; height:52px; padding:0 16px;
+  background:var(--bg-surface); border-bottom:1px solid var(--border-subtle); flex-shrink:0;
+}
+.brand{display:flex; align-items:center; gap:10px; font-weight:600}
+.brand .logo{width:28px;height:28px;border-radius:8px;
+  background:linear-gradient(135deg,var(--accent),var(--info));
+  display:grid;place-items:center;font-size:15px}
+.brand small{display:block;font-size:11px;color:var(--tt);font-weight:500}
+.switcher{display:flex;gap:2px;margin-left:8px;background:var(--bg-app);
+  padding:3px;border-radius:var(--r-md);border:1px solid var(--border-subtle)}
+.switcher button{
+  font:inherit;font-size:13px;font-weight:500;color:var(--ts);
+  background:transparent;border:0;padding:7px 16px;border-radius:7px;cursor:pointer;
+  transition:background .18s,color .18s;
+}
+.switcher button:hover{color:var(--tp)}
+.switcher button.active{background:var(--bg-elevated);color:var(--tp);box-shadow:var(--shadow-card)}
+.brandbar .spacer{flex:1}
+.vault-badge{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ts);
+  background:var(--bg-app);padding:6px 11px;border-radius:20px;border:1px solid var(--border-subtle)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 6px var(--success)}
+.model-chip{font-family:var(--mono);font-size:11px;color:var(--accent);
+  background:var(--accent-subtle);padding:5px 9px;border-radius:var(--r-sm)}
+
+/* ===== Shared shell ===== */
+.view{flex:1;overflow:hidden}
+.view[hidden]{display:none}
+
+/* buttons */
+.btn{font:inherit;font-size:13px;font-weight:500;border-radius:var(--r-md);
+  padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+  border:1px solid transparent;transition:background .18s,border-color .18s,color .18s;min-height:36px}
+.btn svg{width:16px;height:16px}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-ghost{background:transparent;color:var(--ts);border-color:transparent}
+.btn-ghost:hover{background:var(--bg-hover);color:var(--tp)}
+.btn-outline{background:transparent;color:var(--ts);border-color:var(--border-strong)}
+.btn-outline:hover{background:var(--bg-hover);color:var(--tp)}
+.icon-btn{width:36px;height:36px;padding:0;justify-content:center;border-radius:8px;
+  background:transparent;color:var(--ts);border:1px solid transparent;cursor:pointer;
+  display:inline-flex;align-items:center;transition:background .18s,color .18s}
+.icon-btn:hover{background:var(--bg-hover);color:var(--tp)}
+.icon-btn svg{width:17px;height:17px}
+
+/* agent avatar */
+.avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;
+  font-size:13px;font-weight:600;color:#0d0d0d}
+
+/* section label */
+.sec-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--tt);padding:0 4px}
+
+/* ===== MESH ===== */
+.mesh{display:grid;grid-template-columns:260px 1fr;height:100%}
+.mesh-side{background:var(--bg-surface);border-right:1px solid var(--border-subtle);
+  padding:16px;display:flex;flex-direction:column;gap:20px;overflow-y:auto}
+.agent-list{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.agent-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;
+  cursor:grab;transition:background .15s}
+.agent-row:hover{background:var(--bg-hover)}
+.agent-row .meta{display:flex;flex-direction:column;min-width:0}
+.agent-row .name{font-size:13px;font-weight:600}
+.agent-row .ahandle{font-family:var(--mono);font-size:11px;color:var(--tt)}
+details.help{border-top:1px solid var(--border-subtle);padding-top:14px}
+details.help summary{font-size:12px;color:var(--ts);cursor:pointer;list-style:none;
+  display:flex;align-items:center;gap:6px;font-weight:500}
+details.help summary::-webkit-details-marker{display:none}
+details.help summary::before{content:'›';transition:transform .2s;display:inline-block}
+details.help[open] summary::before{transform:rotate(90deg)}
+details.help p{font-size:12px;color:var(--tt);margin-top:10px;line-height:1.6}
+
+.mesh-main{position:relative;display:flex;flex-direction:column;overflow:hidden}
+.mesh-toolbar{display:flex;align-items:center;gap:6px;padding:12px 16px;
+  border-bottom:1px solid var(--border-subtle);background:var(--bg-app)}
+.mesh-toolbar .title{display:flex;align-items:center;gap:9px;font-weight:600;margin-right:auto}
+.mesh-toolbar .title .logo{width:24px;height:24px;border-radius:6px;background:var(--accent-subtle);
+  display:grid;place-items:center;color:var(--accent)}
+.canvas{flex:1;position:relative;overflow:hidden;
+  background-image:radial-gradient(var(--border-subtle) 1px,transparent 1px);
+  background-size:22px 22px}
+.node{position:absolute;width:200px;background:var(--bg-elevated);border-radius:var(--r-md);
+  border:2px solid var(--nc,var(--border-strong));box-shadow:var(--shadow-card);padding:13px}
+.node .nhead{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.node .nname{font-size:13px;font-weight:600}
+.node .nhandle{font-family:var(--mono);font-size:10px;color:var(--tt)}
+.node .ndesc{font-size:12px;color:var(--ts);line-height:1.45}
+.node .nstate{position:absolute;top:11px;right:11px;font-size:10px;font-weight:600;
+  padding:2px 7px;border-radius:20px;display:flex;align-items:center;gap:4px}
+.st-run{background:rgba(224,179,65,.15);color:var(--running)}
+.st-done{background:rgba(76,175,127,.15);color:var(--success)}
+.st-idle{background:rgba(255,255,255,.06);color:var(--tt)}
+.handle{position:absolute;top:50%;width:13px;height:13px;border-radius:50%;
+  background:var(--bg-app);border:2px solid var(--nc);transform:translateY(-50%);cursor:crosshair}
+.handle::after{content:'';position:absolute;inset:-16px}
+.handle.out{right:-8px}.handle.in{left:-8px}
+.pulse{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(224,179,65,.4)}50%{box-shadow:0 0 0 6px rgba(224,179,65,0)}}
+.wire{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:-0}
+
+/* ===== PROYECTOS ===== */
+.proj{display:grid;grid-template-columns:240px 1fr 328px;height:100%}
+.proj-nav{background:var(--bg-surface);border-right:1px solid var(--border-subtle);padding:16px 12px;overflow-y:auto}
+.proj-nav .newbtn{width:100%;justify-content:center;margin-bottom:16px}
+.proj-item{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:9px 10px;border-radius:8px;cursor:pointer;font-size:14px;transition:background .15s}
+.proj-item:hover{background:var(--bg-hover)}
+.proj-item.active{background:var(--accent-subtle);color:var(--tp)}
+.proj-item .tag{font-family:var(--mono);font-size:10px;color:var(--tt)}
+.proj-main{padding:28px 32px;overflow-y:auto}
+.crumb{font-size:12px;color:var(--tt);margin-bottom:14px}
+.proj-title{display:flex;align-items:center;gap:11px;font-size:22px;font-weight:600;margin-bottom:18px}
+.proj-title .ic{width:30px;height:30px;border-radius:8px;background:var(--accent-subtle);
+  color:var(--accent);display:grid;place-items:center}
+.stats{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap}
+.stat{background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--r-md);
+  padding:12px 16px;min-width:104px}
+.stat .val{font-family:var(--mono);font-size:20px;font-weight:600}
+.stat .lab{font-size:12px;color:var(--tt);margin-top:2px}
+.composer{background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:var(--r-lg);
+  padding:14px;margin-bottom:26px}
+.composer .row{display:flex;align-items:center;gap:10px}
+.composer input{flex:1;background:transparent;border:0;color:var(--tp);font:inherit;font-size:15px;outline:none}
+.composer input::placeholder{color:var(--tt)}
+.composer .foot{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;
+  border-top:1px solid var(--border-subtle)}
+.conv-title{font-size:15px;font-weight:600;margin-bottom:12px}
+.conv{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg-surface);
+  border:1px solid var(--border-subtle);border-radius:var(--r-md);cursor:pointer;transition:background .15s}
+.conv:hover{background:var(--bg-hover)}
+.conv .ic{width:32px;height:32px;border-radius:8px;background:var(--bg-elevated);
+  display:grid;place-items:center;color:var(--ts)}
+.conv .t{font-size:14px;font-weight:500}
+.conv .time{margin-left:auto;font-size:12px;color:var(--tt)}
+
+.proj-ctx{background:var(--bg-surface);border-left:1px solid var(--border-subtle);
+  padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--r-md);padding:14px}
+.card .chead{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:10px}
+.card .chead svg{width:16px;height:16px;color:var(--ts)}
+.kv{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--ts)}
+.kv .k{color:var(--tt)}.kv b{font-family:var(--mono);color:var(--tp);font-weight:600}
+.perm-row{display:flex;align-items:center;justify-content:space-between;font-size:12px;
+  padding:6px 0;color:var(--ts);font-family:var(--mono)}
+.badge{font-size:9px;font-weight:600;letter-spacing:.05em;padding:3px 7px;border-radius:var(--r-sm)}
+.badge.read{background:rgba(91,155,213,.15);color:var(--info)}
+.badge.write{background:rgba(76,175,127,.15);color:var(--success)}
+.empty-note{font-size:12px;color:var(--tt);line-height:1.5;margin-bottom:10px}
+.dropzone{border:1.5px dashed var(--border-strong);border-radius:var(--r-md);padding:18px;
+  text-align:center;font-size:12px;color:var(--tt);transition:background .15s,border-color .15s}
+.dropzone:hover{background:var(--accent-subtle);border-color:var(--accent)}
+
+/* ===== CHAT ===== */
+.chat{display:grid;grid-template-columns:250px 1fr 300px;height:100%}
+.chat-side{background:var(--bg-surface);border-right:1px solid var(--border-subtle);
+  padding:16px 12px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.chat-agent{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:background .15s}
+.chat-agent:hover{background:var(--bg-hover)}
+.chat-agent.active{background:var(--accent-subtle)}
+.chat-agent .meta{display:flex;flex-direction:column;min-width:0;flex:1}
+.chat-agent .name{font-size:13px;font-weight:600}
+.chat-agent .role{font-family:var(--mono);font-size:10px;color:var(--tt)}
+.chat-agent .rolechip{font-size:9px;font-weight:600;color:var(--tt);
+  background:var(--bg-elevated);padding:2px 6px;border-radius:var(--r-sm)}
+.divider{height:1px;background:var(--border-subtle);margin:8px 0}
+.acc{border:0}
+.acc summary{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;
+  cursor:pointer;font-size:13px;color:var(--ts);list-style:none;transition:background .15s}
+.acc summary::-webkit-details-marker{display:none}
+.acc summary:hover{background:var(--bg-hover);color:var(--tp)}
+.acc summary svg{width:16px;height:16px}
+.acc summary .chev{margin-left:auto;transition:transform .2s}
+.acc[open] summary .chev{transform:rotate(90deg)}
+.acc .body{font-size:12px;color:var(--tt);padding:8px 12px 12px 39px;line-height:1.6}
+
+.chat-main{display:flex;flex-direction:column;overflow:hidden;background:var(--bg-app)}
+.chat-head{display:flex;align-items:center;gap:10px;padding:14px 24px;border-bottom:1px solid var(--border-subtle)}
+.chat-head .t{font-weight:600}
+.chat-head .crumb{color:var(--tt);font-weight:400}
+.chat-log{flex:1;overflow-y:auto;padding:28px 0}
+.msg{max-width:720px;margin:0 auto 26px;padding:0 24px;display:flex;gap:13px}
+.msg .body{flex:1}
+.msg .mhead{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.msg .mname{font-size:13px;font-weight:600}
+.msg .mtime{font-size:11px;color:var(--tt)}
+.callout{background:var(--accent-subtle);border:1px solid rgba(139,124,246,.25);
+  border-radius:var(--r-md);padding:13px 15px;font-size:14px;color:var(--tp);line-height:1.55}
+.msg .mtext{font-size:15px;color:var(--tp);line-height:1.6}
+.msg .mtext code{font-family:var(--mono);font-size:13px;background:var(--bg-elevated);
+  padding:2px 5px;border-radius:4px}
+.chat-composer{padding:16px 24px 20px;border-top:1px solid var(--border-subtle)}
+.cc-inner{max-width:720px;margin:0 auto}
+.seg{display:inline-flex;gap:2px;background:var(--bg-surface);padding:3px;border-radius:8px;
+  border:1px solid var(--border-subtle);margin-bottom:10px}
+.seg button{font:inherit;font-size:12px;font-weight:500;color:var(--ts);background:transparent;
+  border:0;padding:6px 14px;border-radius:6px;cursor:pointer}
+.seg button.active{background:var(--accent);color:#fff}
+.cc-field{display:flex;align-items:center;gap:10px;background:var(--bg-surface);
+  border:1px solid var(--border-strong);border-radius:var(--r-lg);padding:12px 14px}
+.cc-field input{flex:1;background:transparent;border:0;color:var(--tp);font:inherit;font-size:15px;outline:none}
+.cc-field input::placeholder{color:var(--tt)}
+.cc-chips{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.chip{font-size:12px;color:var(--ts);background:var(--bg-surface);border:1px solid var(--border-subtle);
+  padding:5px 11px;border-radius:20px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{background:var(--bg-hover)}
+.chip svg{width:13px;height:13px}
+
+.chat-trace{background:var(--bg-surface);border-left:1px solid var(--border-subtle);
+  display:flex;flex-direction:column;overflow:hidden}
+.trace-head{padding:14px 16px 0}
+.trace-head .t{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:12px}
+.tabs{display:flex;gap:16px;border-bottom:1px solid var(--border-subtle)}
+.tabs button{font:inherit;font-size:13px;font-weight:500;color:var(--tt);background:transparent;
+  border:0;padding:8px 0;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.active{color:var(--tp);border-bottom-color:var(--accent)}
+.trace-body{flex:1;overflow-y:auto;padding:16px}
+.tl{position:relative;padding-left:22px}
+.tl::before{content:'';position:absolute;left:6px;top:4px;bottom:4px;width:2px;background:var(--border-subtle)}
+.tl-step{position:relative;margin-bottom:18px}
+.tl-step::before{content:'';position:absolute;left:-19px;top:3px;width:11px;height:11px;
+  border-radius:50%;background:var(--sc,var(--info));border:2px solid var(--bg-surface)}
+.tl-step .s-name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
+.tl-step .s-meta{font-family:var(--mono);font-size:11px;color:var(--tt);margin-top:3px}
+.tl-step .s-act{font-size:12px;color:var(--ts);margin-top:3px}
+.dot-sm{width:8px;height:8px;border-radius:50%}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Brand bar -->
+  <header class="brandbar">
+    <div class="brand">
+      <div class="logo">✦</div>
+      <div>Sanctum-II<small>Mesh de agentes · RAG</small></div>
+    </div>
+    <nav class="switcher">
+      <button class="active" data-view="mesh">Mesh</button>
+      <button data-view="proj">Proyectos</button>
+      <button data-view="chat">Chat</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="vault-badge"><span class="dot"></span>116 chunks indexados</div>
+    <div class="model-chip">deepseek-v4-flash</div>
+  </header>
+
+  <!-- ===================== MESH ===================== -->
+  <section class="view" id="v-mesh">
+    <div class="mesh">
+      <aside class="mesh-side">
+        <div>
+          <div class="sec-label">Agentes</div>
+          <div class="agent-list">
+            <div class="agent-row"><div class="avatar" style="background:var(--forager)">F</div><div class="meta"><span class="name">Forager</span><span class="ahandle">@forager</span></div></div>
+            <div class="agent-row"><div class="avatar" style="background:var(--researcher)">R</div><div class="meta"><span class="name">Researcher</span><span class="ahandle">@researcher</span></div></div>
+            <div class="agent-row"><div class="avatar" style="background:var(--critic)">C</div><div class="meta"><span class="name">Critic</span><span class="ahandle">@critic</span></div></div>
+            <div class="agent-row"><div class="avatar" style="background:var(--websearch)">W</div><div class="meta"><span class="name">Web Search</span><span class="ahandle">@web-search</span></div></div>
+            <div class="agent-row"><div class="avatar" style="background:var(--base)">B</div><div class="meta"><span class="name">Agente Base</span><span class="ahandle">@agente_base</span></div></div>
+          </div>
+        </div>
+        <details class="help">
+          <summary>Cómo encadenar</summary>
+          <p>Arrastrá desde el punto derecho ● de una burbuja hacia otra para conectarlas. Arrastrá la burbuja para moverla. Pasá el cursor y tocá ✕ para eliminar una conexión.</p>
+        </details>
+      </aside>
+
+      <div class="mesh-main">
+        <div class="mesh-toolbar">
+          <div class="title"><span class="logo">⌥</span>Mesh <span style="color:var(--tt);font-weight:400;font-size:13px">· Orquestador</span></div>
+          <button class="icon-btn" title="Auto-layout" aria-label="Auto-layout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg></button>
+          <button class="icon-btn" title="Abrir" aria-label="Abrir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h5l2 2h11v9a2 2 0 0 1-2 2H3z"/></svg></button>
+          <button class="icon-btn" title="Guardar" aria-label="Guardar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5zM8 3v6h7"/></svg></button>
+          <button class="icon-btn" title="Eliminar" aria-label="Eliminar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/></svg></button>
+          <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Ejecutar</button>
+        </div>
+        <div class="canvas">
+          <svg class="wire">
+            <path d="M 300 210 C 360 210, 380 300, 440 300" stroke="var(--researcher)" stroke-width="2" stroke-dasharray="5 5" fill="none"/>
+            <path d="M 660 300 C 720 300, 740 210, 800 210" stroke="var(--critic)" stroke-width="2" stroke-dasharray="5 5" fill="none"/>
+          </svg>
+          <div class="node" style="--nc:var(--forager);left:100px;top:170px">
+            <span class="nstate st-done"><span class="dot-sm" style="background:var(--success)"></span>hecho</span>
+            <div class="nhead"><div class="avatar" style="width:24px;height:24px;font-size:11px;background:var(--forager)">F</div><div><div class="nname">Forager</div><div class="nhandle">@forager</div></div></div>
+            <div class="ndesc">Recolecta y filtra fuentes del vault.</div>
+            <span class="handle out"></span>
+          </div>
+          <div class="node pulse" style="--nc:var(--researcher);left:440px;top:255px">
+            <span class="nstate st-run"><span class="dot-sm" style="background:var(--running)"></span>corriendo</span>
+            <div class="nhead"><div class="avatar" style="width:24px;height:24px;font-size:11px;background:var(--researcher)">R</div><div><div class="nname">Researcher</div><div class="nhandle">@researcher</div></div></div>
+            <div class="ndesc">Sintetiza e investiga en profundidad.</div>
+            <span class="handle in"></span><span class="handle out"></span>
+          </div>
+          <div class="node" style="--nc:var(--critic);left:800px;top:170px">
+            <span class="nstate st-idle">en espera</span>
+            <div class="nhead"><div class="avatar" style="width:24px;height:24px;font-size:11px;background:var(--critic)">C</div><div><div class="nname">Critic</div><div class="nhandle">@critic</div></div></div>
+            <div class="ndesc">Revisa y cuestiona resultados.</div>
+            <span class="handle in"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PROYECTOS ===================== -->
+  <section class="view" id="v-proj" hidden>
+    <div class="proj">
+      <aside class="proj-nav">
+        <button class="btn btn-primary newbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Nuevo proyecto</button>
+        <div class="sec-label" style="margin-bottom:8px">Proyectos</div>
+        <div class="proj-item"><span>prueba</span><span class="tag">Research/</span></div>
+        <div class="proj-item active"><span>sanctum-ii</span><span class="tag">Research/</span></div>
+      </aside>
+
+      <div class="proj-main">
+        <div class="crumb">← Todos los proyectos</div>
+        <div class="proj-title"><span class="ic">✦</span>sanctum-ii</div>
+        <div class="stats">
+          <div class="stat"><div class="val">0</div><div class="lab">chunks</div></div>
+          <div class="stat"><div class="val">1</div><div class="lab">carpeta</div></div>
+          <div class="stat"><div class="val">0</div><div class="lab">memorias</div></div>
+        </div>
+        <div class="composer">
+          <div class="row">
+            <input placeholder="Continuá en el contexto de este proyecto…">
+            <div class="model-chip">deepseek-v4-flash</div>
+            <button class="btn btn-primary">Enviar</button>
+          </div>
+        </div>
+        <div class="conv-title">Conversaciones</div>
+        <div class="conv">
+          <span class="ic"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <div><div class="t">Nueva conversación</div></div>
+          <span class="time">hace 5 h</span>
+        </div>
+      </div>
+
+      <aside class="proj-ctx">
+        <div class="card">
+          <div class="chead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Instrucciones</div>
+          <div class="empty-note">Sin instrucciones aún.</div>
+          <button class="btn btn-ghost" style="padding:6px 10px">+ Añadir</button>
+        </div>
+        <div class="card">
+          <div class="chead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg>Carpetas con acceso</div>
+          <div class="perm-row"><span>/Research/</span><span class="badge read">LECTURA</span></div>
+          <div class="perm-row"><span>/sanctum-memory/</span><span class="badge write">ESCRITURA</span></div>
+          <button class="btn btn-ghost" style="padding:6px 10px;margin-top:6px">+ Añadir carpeta</button>
+        </div>
+        <div class="card">
+          <div class="chead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg>Índice · RAG</div>
+          <div class="kv"><span class="k">Chunks indexados</span><b>0</b></div>
+          <div class="kv"><span class="k">Embeddings</span><b>gemini-2</b></div>
+          <div class="kv"><span class="k">Recuperación</span><b>top-5 / ≥0.65</b></div>
+          <button class="btn btn-outline" style="width:100%;justify-content:center;margin-top:10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Reindexar proyecto</button>
+        </div>
+        <div class="card">
+          <div class="chead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Memoria persistente</div>
+          <div class="empty-note">Aún no hay memoria; se llenará sola o agrégala manualmente.</div>
+          <button class="btn btn-ghost" style="padding:6px 10px">+ Añadir memoria</button>
+        </div>
+        <div class="card">
+          <div class="chead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14l4-4h12a2 2 0 0 0 2-2z"/></svg>Archivos</div>
+          <div class="dropzone">Soltá archivos aquí</div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ===================== CHAT ===================== -->
+  <section class="view" id="v-chat" hidden>
+    <div class="chat">
+      <aside class="chat-side">
+        <div class="sec-label">Agentes</div>
+        <div class="chat-agent active"><div class="avatar" style="background:var(--forager)">F</div><div class="meta"><span class="name">Forager</span><span class="role">@forager</span></div></div>
+        <div class="chat-agent"><div class="avatar" style="background:var(--researcher)">R</div><div class="meta"><span class="name">Researcher</span><span class="role">@researcher</span></div></div>
+        <div class="chat-agent"><div class="avatar" style="background:var(--critic)">C</div><div class="meta"><span class="name">Critic</span><span class="role">@critic</span></div><span class="rolechip">INTERNO</span></div>
+        <div class="chat-agent"><div class="avatar" style="background:var(--base)">B</div><div class="meta"><span class="name">Agente Base</span><span class="role">@agente_base</span></div></div>
+        <div class="chat-agent"><div class="avatar" style="background:var(--websearch)">W</div><div class="meta"><span class="name">Web Search</span><span class="role">@web-search</span></div></div>
+        <div class="divider"></div>
+        <div class="sec-label" style="margin-bottom:4px">Configuración del agente</div>
+        <details class="acc"><summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg>Identidad<span class="chev">›</span></summary><div class="body">Nombre, avatar y rol visibles del agente.</div></details>
+        <details class="acc"><summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>System Prompt<span class="chev">›</span></summary><div class="body">Instrucciones base que definen el comportamiento.</div></details>
+        <details class="acc"><summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg>Contexto RAG<span class="chev">›</span></summary><div class="body">Carpetas y umbral de recuperación.</div></details>
+        <details class="acc"><summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Permisos<span class="chev">›</span></summary><div class="body">Qué herramientas y carpetas puede usar.</div></details>
+        <details class="acc"><summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4M3 17l9 4 9-4"/></svg>Índice del vault<span class="chev">›</span></summary><div class="body">116 chunks · embeddings gemini-2.</div></details>
+      </aside>
+
+      <div class="chat-main">
+        <div class="chat-head"><span class="avatar" style="width:22px;height:22px;font-size:11px;background:var(--base)">B</span><span class="t">Agente Base</span><span class="crumb">· prueba / Chat</span></div>
+        <div class="chat-log">
+          <div class="msg">
+            <div class="avatar" style="background:var(--base)">B</div>
+            <div class="body">
+              <div class="mhead"><span class="mname">Agente Base</span><span class="mtime">19:08</span></div>
+              <div class="callout">Bienvenido a Sanctum-II · Proyecto: <b>prueba</b>. Indexá tu carpeta de investigación y haceme preguntas usando <code>@</code> para mencionar agentes.</div>
+            </div>
+          </div>
+          <div class="msg">
+            <div class="avatar" style="background:var(--base)">A</div>
+            <div class="body">
+              <div class="mhead"><span class="mname">Abepoke</span><span class="mtime">19:09</span></div>
+              <div class="mtext">¿Qué fuentes recolectó <code>@forager</code> sobre geografía de Costa Rica?</div>
+            </div>
+          </div>
+          <div class="msg">
+            <div class="avatar" style="background:var(--forager)">F</div>
+            <div class="body">
+              <div class="mhead"><span class="mname">Forager</span><span class="mtime">19:09</span></div>
+              <div class="mtext">Encontré 12 fragmentos relevantes en <code>/Research/</code>. Los pasé a <code>@researcher</code> para síntesis. Revisá el panel de Trace para ver el flujo.</div>
+            </div>
+          </div>
+        </div>
+        <div class="chat-composer">
+          <div class="cc-inner">
+            <div class="seg"><button class="active">Chat</button><button>Mesh</button><button>🔗</button></div>
+            <div class="cc-field">
+              <input placeholder="Pregunta para Agente Base…">
+              <button class="btn btn-primary">Enviar</button>
+            </div>
+            <div class="cc-chips">
+              <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg>Todo /Research/</span>
+              <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/></svg>Reindexar</span>
+              <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg>Ver RAG</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="chat-trace">
+        <div class="trace-head">
+          <div class="t"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>Trace &amp; Fuentes</div>
+          <div class="tabs"><button class="active">Trace</button><button>Fuentes</button></div>
+        </div>
+        <div class="trace-body">
+          <div class="tl">
+            <div class="tl-step" style="--sc:var(--forager)">
+              <div class="s-name"><span class="dot-sm" style="background:var(--forager)"></span>Forager</div>
+              <div class="s-act">Recolectó 12 fragmentos de /Research/</div>
+              <div class="s-meta">1.2 s · 840 tokens</div>
+            </div>
+            <div class="tl-step" style="--sc:var(--researcher)">
+              <div class="s-name"><span class="dot-sm" style="background:var(--researcher)"></span>Researcher</div>
+              <div class="s-act">Sintetizó respuesta desde 5 fuentes top</div>
+              <div class="s-meta">3.4 s · 2,110 tokens</div>
+            </div>
+            <div class="tl-step" style="--sc:var(--critic)">
+              <div class="s-name"><span class="dot-sm" style="background:var(--critic)"></span>Critic</div>
+              <div class="s-act">En espera de validación</div>
+              <div class="s-meta">—</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+</div>
+<script>
+  const btns=document.querySelectorAll('.switcher button');
+  const views={mesh:document.getElementById('v-mesh'),proj:document.getElementById('v-proj'),chat:document.getElementById('v-chat')};
+  btns.forEach(b=>b.addEventListener('click',()=>{
+    btns.forEach(x=>x.classList.remove('active'));b.classList.add('active');
+    Object.values(views).forEach(v=>v.hidden=true);
+    views[b.dataset.view].hidden=false;
+  }));
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "sanctum-ii": {
+      "command": "node",
+      "args": ["${workspaceFolder}/mcp-server/dist/index.cjs"],
+      "env": {
+        "SANCTUM_VAULT_PATH": "${workspaceFolder}",
+        "GEMINI_API_KEYS": "${env:GEMINI_API_KEYS}",
+        "OPENCODE_GO_API_KEY": "${env:OPENCODE_GO_API_KEY}",
+        "OPENCODE_GO_BASE_URL": "${env:OPENCODE_GO_BASE_URL}"
+      }
+    }
+  }
+}

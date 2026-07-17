@@ -1209,3 +1209,25 @@ Basado en `docs/orquestador.html` — el mockup HTML se reemplazó por la implem
 | — | Folderos UI: toggle lectura/escritura + ✕ | ✅ | Etapa 20 |
 
 ---
+
+## 2026-07-16 — Objetivos formales e indexación adaptativa
+
+La fuente canónica de intención de producto pasa a ser [`objetivos-y-casos-de-uso.md`](objetivos-y-casos-de-uso.md). Define ocho objetivos medibles, nueve casos de uso y una matriz objetivo → componente → aceptación → prueba → estado. Computación cuántica es el primer dominio de referencia y no una dependencia del núcleo.
+
+### Decisiones de indexación
+
+- `IncrementalIndexCoordinator` es compartido por el plugin y el runtime MCP; recibe un `VaultAdapter` y un `EmbeddingProvider` genérico.
+- El plugin escucha `create`, `modify`, `delete` y `rename`, coalesce eventos durante 1,5 segundos, serializa por proyecto y reconcilia al abrir.
+- `IndexManifestV2` reemplaza el mapa de hashes antiguo. Registra SHA-256 de documento, configuración y chunks, además de versión del chunker y fecha.
+- Un documento intacto produce cero embeddings. Los chunks idénticos reutilizan el vector dentro del mismo proyecto; el aislamiento impide caché entre proyectos.
+- Delete elimina manifiesto y chunks; rename coordina delete de la ruta anterior y upsert de la nueva.
+- Las rutas se vuelven a validar antes de leer y se excluyen `sanctum-*` y `docs/`.
+- La ausencia de credenciales no descarta eventos pendientes.
+
+### MCP por proyecto
+
+`sanctum_query_vault`, `sanctum_validate_qubo` y `sanctum_invoke_agent` aceptan `project_id`. `ProjectRagRuntimeRegistry` aplica argumento → `SANCTUM_PROJECT_ID` → índice global legacy, valida el identificador, carga `sanctum-logs/index/{projectId}/` y reconcilia antes de consultar. El permiso del agente se resuelve antes del runtime RAG para conservar fail-closed. El servidor mantiene seis tools y todo logging continúa por `stderr`.
+
+### Fidelidad técnica
+
+El chunker versionado trata LaTeX inline, bloques `$$`, delimitadores `\(...\)`/`\[...\]`, entornos de ecuación y código como regiones atómicas. `create_note` y `append_to_note` escriben el Markdown sin escapar las fórmulas. `qc-programmer` integra `sanctum_validate_qubo` como auto-chequeo y presenta cualquier conflicto en vez de ocultarlo.

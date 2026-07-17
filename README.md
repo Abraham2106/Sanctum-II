@@ -27,7 +27,7 @@
   <p>
     <a href="#inicio-rápido"><strong>Inicio rápido</strong></a>
     ·
-    <a href="docs/registro-arquitectura.md"><strong>Documentación</strong></a>
+    <a href="docs/objetivos-y-casos-de-uso.md"><strong>Objetivos y casos de uso</strong></a>
     ·
     <a href="mcp-server/README.md"><strong>Servidor MCP</strong></a>
     ·
@@ -44,6 +44,7 @@
   <summary><strong>Tabla de contenidos</strong></summary>
 
 - [Visión general](#visión-general)
+  - [Contrato de objetivos](#contrato-de-objetivos)
   - [Construido con](#construido-con)
 - [Capacidades principales](#capacidades-principales)
 - [Experiencia del producto](#experiencia-del-producto)
@@ -75,6 +76,12 @@ La plataforma ofrece dos superficies sobre el mismo conocimiento:
 
 - **Plugin de Obsidian:** experiencia visual para conversar, investigar, administrar proyectos, explorar el Knowledge Graph y diseñar cadenas de agentes.
 - **Servidor MCP standalone:** proceso Node sobre `stdio` que permite consultar el vault e invocar agentes desde VS Code, OpenCode y otros clientes compatibles, incluso sin Obsidian abierto.
+
+### Contrato de objetivos
+
+Sanctum II convierte notas propias y papers Markdown en una base de conocimiento operativa para proyectos de programación. La hackathon de computación cuántica que motivó el proyecto es su primer caso de referencia, no un límite: proyectos, corpus, agentes y skills permiten cambiar de dominio sin modificar el núcleo.
+
+Los ocho objetivos medibles, su matriz de trazabilidad, criterios de aceptación, casos de uso y no-objetivos se mantienen en [Objetivos y casos de uso](docs/objetivos-y-casos-de-uso.md), la fuente canónica para acoplar nuevas funcionalidades.
 
 ### Por qué existe Sanctum II
 
@@ -113,7 +120,7 @@ Un chat genérico puede responder preguntas, pero normalmente desconoce cómo es
 | **Agent Creator** | Modal guiado para generar, revisar, validar y guardar agentes con iconos Lucide y una skill complementaria opcional. |
 | **Skill Creator** | Mesh contextual RAG → web → autor → crítico, con quality gate, regeneración y actualización con historial. |
 | **Cadenas visuales** | Composición y ejecución de flujos dirigidos de agentes desde Obsidian. |
-| **MCP** | Cinco tools para listar agentes, leer notas, consultar RAG, invocar agentes y ejecutar el mesh. |
+| **MCP** | Seis tools para listar agentes, leer notas, consultar RAG, validar QUBO/Ising, invocar agentes y ejecutar el mesh. |
 | **Observabilidad** | Trazas JSON con origen, agente, duración, uso y estado de la ejecución. |
 
 ## Experiencia del producto
@@ -213,7 +220,7 @@ Las credenciales pueden configurarse desde **Settings → Sanctum II** o mediant
 ```env
 OPENCODE_GO_API_KEY=sk-tu-api-key
 OPENCODE_GO_BASE_URL=https://api.opencode.ai
-GEMINI_API_KEYS=AIza-key-1,AIza-key-2
+GEMINI_API_KEYS=your-gemini-api-key-1,your-gemini-api-key-2
 TAVILY_API_KEY=tvly-tu-api-key
 ```
 
@@ -359,16 +366,20 @@ Cada proyecto mantiene su propio perímetro de contexto y persistencia:
 La indexación por proyecto:
 
 - valida que las carpetas solicitadas pertenezcan a `read_paths`;
+- escucha `create`, `modify`, `delete` y `rename` de Markdown, agrupa eventos durante 1,5 segundos y reconcilia al abrir;
 - serializa solicitudes concurrentes por proyecto;
+- usa SHA-256 para documentos, configuración y chunks, con manifiesto `IndexManifestV2` versionado;
+- produce cero embeddings para documentos intactos y reutiliza chunks idénticos solo dentro del mismo proyecto;
 - conserva otras carpetas durante un reindexado parcial;
 - elimina del índice archivos borrados durante un reindexado completo;
+- conserva cambios pendientes si faltan credenciales de Gemini;
 - inicia vacío, sin tratar la ausencia del primer índice como error.
 
 ## Recuperación y Knowledge Graph
 
 ### RAG vectorial
 
-El indexador recorre únicamente las carpetas autorizadas del proyecto, divide las notas en chunks, genera embeddings con Gemini y persiste transacciones compactas en JSONL. La configuración predeterminada utiliza embeddings de `768` dimensiones, chunks de hasta `400` palabras, `top_k = 5` y similitud mínima de `0.65`; cada proyecto puede ajustar estos valores.
+El indexador recorre únicamente las carpetas autorizadas del proyecto, divide las notas con un chunker que mantiene indivisibles LaTeX inline, bloques, entornos de ecuación y código, genera embeddings con Gemini y persiste transacciones compactas en JSONL. La configuración predeterminada utiliza embeddings de `768` dimensiones, chunks de hasta `400` palabras, `top_k = 5` y similitud mínima de `0.65`; cada proyecto puede ajustar estos valores.
 
 Durante una consulta, el sistema busca candidatos en el índice activo y aplica dos filtros antes de entregar contexto al modelo:
 
@@ -403,6 +414,7 @@ Los agentes viven en `sanctum-agents/*.md` y las skills en `sanctum-skills/*.md`
 | `orchestrator` | Clasificación de intención para mensajes implícitos. | Ninguna | Interno |
 | `agent-creator` | Punto de entrada para crear y validar agentes desde el chat. | Ninguna | Usuario |
 | `boilerplate-agent` | Definición de referencia para agentes basados en RAG. | `rag_query` | Interno |
+| `qc-programmer` | Programación QAOA/QUBO/Ising con auto-chequeo previo a la entrega. | `rag_query`, `sanctum_validate_qubo` | Usuario |
 | `skill-context-analyst` | Extrae convenciones y vacíos desde el RAG del proyecto. | `rag_query` | Interno |
 | `skill-web-researcher` | Sintetiza fuentes públicas para fundamentar una skill. | `web_search` | Interno |
 | `skill-author` | Redacta el borrador usando el brief y la evidencia reunida. | Ninguna | Interno |
@@ -501,6 +513,7 @@ El servidor MCP se ejecuta como un proceso Node independiente y se comunica medi
 | `sanctum_list_agents` | Ninguna | Lista agentes fijos y personalizados. |
 | `sanctum_get_note` | Agente válido | Lee una nota aplicando sus `read_paths`. |
 | `sanctum_query_vault` | Gemini | Ejecuta búsqueda semántica sobre el índice. |
+| `sanctum_validate_qubo` | Gemini | Contrasta QUBO/Ising con el contexto autorizado y explicita inconsistencias. |
 | `sanctum_invoke_agent` | OpenCode | Invoca un agente individual. |
 | `sanctum_run_mesh` | OpenCode | Ejecuta Forager → Researcher → Critic. |
 
@@ -514,6 +527,7 @@ Configuración mínima para VS Code (`.vscode/mcp.json`):
       "args": ["${workspaceFolder}/mcp-server/dist/index.cjs"],
       "env": {
         "SANCTUM_VAULT_PATH": "C:/ruta/al/vault",
+        "SANCTUM_PROJECT_ID": "quantum-computing",
         "GEMINI_API_KEYS": "${env:GEMINI_API_KEYS}",
         "OPENCODE_GO_API_KEY": "${env:OPENCODE_GO_API_KEY}",
         "OPENCODE_GO_BASE_URL": "${env:OPENCODE_GO_BASE_URL}"
@@ -522,6 +536,8 @@ Configuración mínima para VS Code (`.vscode/mcp.json`):
   }
 }
 ```
+
+`sanctum_query_vault`, `sanctum_validate_qubo` y `sanctum_invoke_agent` aceptan `project_id`. La precedencia es argumento → `SANCTUM_PROJECT_ID` → índice global legacy; antes de consultar un proyecto, MCP reconcilia su índice namespaced.
 
 Documentación completa: [mcp-server/README.md](mcp-server/README.md). Especificación y decisiones: [Sanctum-II-MCP-Server.md](docs/Sanctum-II-MCP-Server.md).
 
@@ -590,7 +606,9 @@ Implementado:
 - [x] Agent Creator con modal, revisión, permisos fail-closed e iconos Lucide.
 - [x] Skill Creator contextual con RAG, investigación web, quality gate e historial.
 - [x] Frontmatter YAML compartido y autocompletado dinámico de agentes y skills.
-- [x] Servidor MCP standalone con cinco tools.
+- [x] Indexación automática incremental, fingerprints SHA-256 y caché de chunks por proyecto.
+- [x] Chunking consciente de LaTeX y especialización QAOA/QUBO/Ising.
+- [x] Servidor MCP standalone con seis tools y selección opcional de proyecto.
 - [x] Suite automatizada, smoke tests y CI.
 
 Próximos pasos:
