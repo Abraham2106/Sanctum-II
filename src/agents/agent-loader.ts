@@ -21,6 +21,9 @@ function parseAgentMd(content: string): AgentDefinition {
       write_paths: permissionsRaw.write_paths || frontmatter.write_paths || [],
     },
     system_prompt: bodyRaw,
+    auto_check_tool: typeof frontmatter.auto_check === "string"
+      ? frontmatter.auto_check
+      : typeof frontmatter.auto_check_tool === "string" ? frontmatter.auto_check_tool : undefined,
     internal: frontmatter.internal === true || undefined,
   };
 }

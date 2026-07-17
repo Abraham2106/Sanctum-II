@@ -128,6 +128,17 @@ describe("AgentAuthoringService", () => {
     expect(result.issues.some(issue => issue.code === "AGENT_AVATAR_IMAGE_UNSUPPORTED")).toBe(true);
   });
 
+  it("preserva y valida un auto-chequeo QUBO opcional", () => {
+    const draft = validateAgentDraft({
+      ...baseDraft,
+      autoCheckTool: "sanctum_validate_qubo",
+    });
+    expect(draft.valid).toBe(true);
+    const markdown = serializeAgentMarkdown(draft.value);
+    expect(markdown).toContain("auto_check: sanctum_validate_qubo");
+    expect(new AgentAuthoringService().audit(markdown).value.autoCheckTool).toBe("sanctum_validate_qubo");
+  });
+
   it("no escribe si existe el agente y permite guardar una definición válida", async () => {
     const vault = new MemoryVault();
     const service = new AgentAuthoringService({ adapter: vault });

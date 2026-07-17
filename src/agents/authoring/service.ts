@@ -146,6 +146,7 @@ export function serializeAgentMarkdown(agent: AgentDraft): string {
     ...(agent.triggers?.length ? { triggers: agent.triggers } : {}),
     tools: agent.tools,
     permissions: agent.permissions,
+    ...(agent.autoCheckTool ? { auto_check: agent.autoCheckTool } : {}),
   };
   return `---\n${serializeFrontmatter(frontmatter)}\n---\n${agent.systemPrompt.trim()}\n`;
 }
@@ -174,6 +175,7 @@ function parseAgentMarkdown(markdown: string): AgentDraft {
       read_paths: asStrings(permissions.read_paths) || asStrings(frontmatter.read_paths) || [],
       write_paths: asStrings(permissions.write_paths) || asStrings(frontmatter.write_paths) || [],
     },
+    autoCheckTool: asString(frontmatter.auto_check || frontmatter.auto_check_tool),
     systemPrompt: body,
   });
 }
@@ -232,6 +234,7 @@ export class AgentAuthoringService {
         read_paths: request.readPaths || [],
         write_paths: writePaths,
       },
+      autoCheckTool: request.autoCheckTool || asString(proposedAgent.auto_check || proposedAgent.autoCheckTool),
       systemPrompt,
     });
 

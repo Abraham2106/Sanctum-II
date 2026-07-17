@@ -30,6 +30,7 @@ export function normalizeAgentDraft(input: Partial<AgentDraft>): AgentDraft {
       read_paths: normalizeVaultPaths(input.permissions?.read_paths),
       write_paths: normalizeVaultPaths(input.permissions?.write_paths),
     },
+    ...(input.autoCheckTool?.trim() ? { autoCheckTool: input.autoCheckTool.trim() } : {}),
     ...(input.avatar?.trim() ? { avatar: input.avatar.trim() } : {}),
     ...(input.model?.trim() ? { model: input.model.trim() } : {}),
     ...(input.internal ? { internal: true } : {}),
@@ -66,6 +67,12 @@ export function validateAgentDraft(input: AgentDraft, options: { filename?: stri
   if (value.tools.includes("rag_query")) {
     if (!value.permissions.read_paths.length) add(issues, "RAG_READ_PATH_REQUIRED", "error", "permissions.read_paths", "rag_query requiere al menos una ruta de lectura explícita.");
     if (!value.systemPrompt.includes("{{rag_context}}")) add(issues, "RAG_CONTEXT_MISSING", "error", "systemPrompt", "rag_query requiere {{rag_context}} en el prompt.");
+  }
+  if (value.autoCheckTool && value.autoCheckTool !== "sanctum_validate_qubo") {
+    add(issues, "AUTO_CHECK_TOOL_UNKNOWN", "error", "auto_check", `Tool de auto-chequeo no soportada: ${value.autoCheckTool}.`);
+  }
+  if (value.autoCheckTool === "sanctum_validate_qubo" && !value.permissions.read_paths.length) {
+    add(issues, "AUTO_CHECK_READ_PATH_REQUIRED", "error", "permissions.read_paths", "sanctum_validate_qubo requiere rutas de lectura explícitas para el contexto RAG.");
   }
   if (value.tools.includes("web_search") && !value.systemPrompt.includes("{{web_context}}")) add(issues, "WEB_CONTEXT_MISSING", "error", "systemPrompt", "web_search requiere {{web_context}} en el prompt.");
   if ((value.tools.includes("create_note") || value.tools.includes("append_to_note")) && !value.permissions.write_paths.length) {

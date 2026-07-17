@@ -26,6 +26,7 @@ export interface AgentDraft {
   systemPrompt: string;
   tools: AgentTool[];
   permissions: AgentPermissionDraft;
+  autoCheckTool?: string;
   avatar?: string;
   model?: string;
   internal?: boolean;
@@ -53,6 +54,7 @@ export interface AgentGenerationRequest {
   writePaths?: string[];
   includeSkill?: boolean;
   skillName?: string;
+  autoCheckTool?: string;
 }
 
 export interface ValidationIssue {
