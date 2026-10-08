@@ -3,7 +3,7 @@
 - Status: `accepted`
 - Decider: planner
 - Date: 2026-10-08
-- Supersedes:
+- Supersedes: la prohibición de reescribir queda limitada por DEC-0008
 
 ## Decision
 

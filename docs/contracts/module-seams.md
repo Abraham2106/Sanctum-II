@@ -14,4 +14,9 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-prune-ui | `src/ui/chain-inspector.ts` | el archivo huérfano | el resto de `src/ui` | accepted |
 | S-prune-symbols | `src/shared/mesh/core.ts`, `src/kg/types.ts`, `src/agents/authoring/types.ts`, `src/chains/executor.ts` | los cuatro símbolos de DEC-0007 | `executeTurn`, `MESH_DEFAULTS`, `KgOptions` | accepted |
 | S-prune-scan | `src/orchestrator/**`, `src/core/commands.ts`, `src/core/note-writer.ts`, `src/core/vault-fs.ts`, `src/core/vault-adapter.ts` | símbolos de esos archivos con cero usos | `tests.ts`, `env-loader.ts`, firmas vivas | accepted |
+| S-rewrite-main | `src/main.ts`, `src/plugin/**` | turno, sesión y diagnósticos sacados de main | UI, orquestador, llm | accepted |
+| S-rewrite-chat | `src/app/chat-orchestrator.ts`, `src/app/pending-turn.ts`, `src/app/write-turn.ts` | confirmación y escritura de notas | `executeTurn`, `services.ts` | accepted |
+| S-rewrite-projects | `src/ui/projects-view.ts`, `src/ui/projects/**` | lista, centro y detalle | otras vistas | accepted |
+| S-rewrite-chain | `src/ui/chain-view.ts`, `src/ui/chain-canvas.ts` | lienzo y modal de resultado | `chain-types.ts`, `chains/executor.ts` | accepted |
+| S-rewrite-kg | `src/ui/kg-view.ts`, `src/ui/kg-scene.ts`, `src/ui/kg-inspector.ts` | escena e inspector | `src/kg/**` | accepted |
 | S-verify | suite al cierre | `npm run typecheck` y `npm test` una vez | features nuevas | accepted |

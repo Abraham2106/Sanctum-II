@@ -23,6 +23,8 @@ Rollback: revertir solo commits de la hoja; conservar worktrees, evidencia y cam
 - T-008: Borrar `chain-inspector.ts` — ready (S-prune-ui, DEC-0007).
 - T-009: Borrar cuatro símbolos sin uso — ready (S-prune-symbols, DEC-0007).
 - T-010: Barrido de orquestador y core — ready (S-prune-scan, DEC-0007).
-- T-006: Typecheck y vitest una vez — espera a la poda.
+- T-006: typecheck y vitest en verde sobre la poda ya mergeada.
+- T-011..T-015: reescritura por trabajo de los cinco archivos de más de 400 líneas (DEC-0008).
+- T-016: los cuatro símbolos de DEC-0007 que no llegaron a borrarse.
 
-Paralelo ahora: T-007, T-008, T-009, T-010. No comparten archivos.
+Paralelo ahora: T-011, T-012, T-013, T-014, T-015, T-016. No comparten archivos. La suite corre después del merge.

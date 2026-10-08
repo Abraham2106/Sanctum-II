@@ -358,6 +358,198 @@
         ]
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-011",
+      "title": "Sacar turno, sesión y diagnósticos de main",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-rewrite-main"
+      ],
+      "decisions": [
+        "DEC-0008"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "sendChatMessage y runMesh viven en src/plugin/turns.ts",
+        "setActiveProject y los hilos viven en src/plugin/session.ts",
+        "indexResearch, tests de ajustes, runOrchestrate y createNoteWithAI viven en src/plugin/diagnostics.ts",
+        "SanctumPlugin conserva esos métodos como una llamada",
+        "onload sigue en main.ts"
+      ],
+      "stop_when": [
+        "Hay que cambiar una firma que la UI ya llama",
+        "Hay que tocar un archivo fuera del seam"
+      ],
+      "notes": "Ponytail. Mismos nombres públicos. No restyles. No dependencias. No corras tests. Cita DEC-0008 en cada archivo nuevo.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-012",
+      "title": "Sacar confirmación y escritura del orquestador",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-rewrite-chat"
+      ],
+      "decisions": [
+        "DEC-0008"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "pendingAction vive en src/app/pending-turn.ts",
+        "la intención de nota vive en src/app/write-turn.ts",
+        "handleMessage sigue en chat-orchestrator.ts y los llama",
+        "ChatOrchestrator se importa desde la misma ruta"
+      ],
+      "stop_when": [
+        "Hay que editar executeTurn o services.ts",
+        "El comportamiento del turno cambia"
+      ],
+      "notes": "Ponytail. No corras tests. Cita DEC-0008.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-013",
+      "title": "Partir la vista de proyectos en tres trabajos",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-rewrite-projects"
+      ],
+      "decisions": [
+        "DEC-0008"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "la lista vive en src/ui/projects/list.ts",
+        "el centro vive en src/ui/projects/center.ts",
+        "hilos, memoria y archivos viven en src/ui/projects/detail.ts",
+        "ProjectsView y VIEW_TYPE_PROJECTS siguen exportándose desde projects-view.ts",
+        "las clases CSS no cambian"
+      ],
+      "stop_when": [
+        "Hay que cambiar el DOM para poder partir",
+        "Hay que tocar otra vista"
+      ],
+      "notes": "Ponytail. Mismo DOM y mismas clases CSS. No corras tests. Cita DEC-0008.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-014",
+      "title": "Sacar el lienzo de la vista de cadenas",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-rewrite-chain"
+      ],
+      "decisions": [
+        "DEC-0008"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "nodos, aristas, zoom y arrastre viven en src/ui/chain-canvas.ts",
+        "el modal de resultado, si está en chain-view.ts, vive en ese archivo de lienzo o en src/ui/chain-result.ts",
+        "ChainView sigue exportándose desde chain-view.ts"
+      ],
+      "stop_when": [
+        "Hay que editar chain-types.ts o chains/executor.ts",
+        "Cambia el DOM"
+      ],
+      "notes": "Ponytail. No corras tests. Cita DEC-0008.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-015",
+      "title": "Sacar escena e inspector del grafo",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-rewrite-kg"
+      ],
+      "decisions": [
+        "DEC-0008"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "layout, render y zoom viven en src/ui/kg-scene.ts",
+        "el inspector vive en src/ui/kg-inspector.ts",
+        "KgView y VIEW_TYPE_KG siguen en kg-view.ts"
+      ],
+      "stop_when": [
+        "Hay que editar src/kg",
+        "Cambia el DOM o las clases CSS"
+      ],
+      "notes": "Ponytail. No corras tests. Cita DEC-0008.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-016",
+      "title": "Borrar los cuatro símbolos que quedaron",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-prune-symbols"
+      ],
+      "decisions": [
+        "DEC-0007"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "shouldRegenerate no está",
+        "DEFAULT_KG_OPTIONS no está",
+        "AgentAuthoringOptions no está",
+        "previousOutput no está"
+      ],
+      "stop_when": [
+        "Un símbolo tiene un llamador",
+        "Hace falta borrar AgentAuthoringLLM todavía usado"
+      ],
+      "notes": "Ponytail. Rebusca. Archivos: src/shared/mesh/core.ts, src/kg/types.ts, src/agents/authoring/types.ts, src/chains/executor.ts. Quita imports huérfanos. No toques executeTurn ni KgOptions. No corras tests.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     }
   ]
 }
