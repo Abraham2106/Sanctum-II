@@ -99,6 +99,7 @@ export class ChatOrchestrator {
       catch (err: any) { console.warn("[Chain] Agent load failed:", err.message); return { id: "fallback", name: "Fallback", avatar: "🤖", model: DEFAULT_MODEL, description: "", triggers: [], tools: [], permissions: { read_paths: [], write_paths: [] }, system_prompt: "" }; }
             },
             chainMsg,
+            snap.pathFilter,
           );
           return { content: `⛓️ Cadena "${chain.name}" (${order.length} pasos):\n\n${result.finalOutput}` };
         } catch (err: any) {

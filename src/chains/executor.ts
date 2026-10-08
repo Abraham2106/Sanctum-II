@@ -40,7 +40,9 @@ export async function executeChain(
   baseDeps: TurnDeps,
   getAgent: (agentId: string) => Promise<AgentDefinition>,
   userInput: string,
+  pathFilter?: string[],
 ): Promise<{ order: string[]; results: ExecutionResult[]; finalOutput: string }> {
+  // DEC-0006: el tamaño de chunk y el filtro de carpeta tienen un solo camino
   const order = topologicalOrder(chain.nodes, chain.edges);
   const results: ExecutionResult[] = [];
   let previousOutput = "";
@@ -67,6 +69,7 @@ export async function executeChain(
       { ...baseDeps, agent },
       enrichedInput,
       false,
+      pathFilter,
     );
 
     results.push({ nodeId, agentId: node.agentId, output: result.content, usage: result.usage });
