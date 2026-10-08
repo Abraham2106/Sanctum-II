@@ -1,3 +1,4 @@
+import { RAG_DEFAULTS } from "../../constants"; // DEC-0003: un solo dueño para este valor
 import { loadAgentFromVault, renderSystemPrompt } from "../../agents/agent-loader";
 import type { AgentTool } from "../../agents/authoring/types";
 import { pathMatchesAny } from "../../utils";
@@ -149,7 +150,7 @@ export class SkillAuthoringMesh {
     const embedding = await this.options.geminiBalancer.embed(query);
     const project = projectContext.project;
     const topK = project.rag?.top_k || 5;
-    const minSimilarity = project.rag?.min_similarity ?? 0.65;
+    const minSimilarity = project.rag?.min_similarity ?? RAG_DEFAULTS.MIN_SIMILARITY;
     const searchK = Math.max(50, this.options.vectorStore.count);
     let results = this.options.vectorStore.search(embedding, searchK)
       .filter(result => result.score >= minSimilarity)
