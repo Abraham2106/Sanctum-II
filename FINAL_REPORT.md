@@ -4,16 +4,16 @@
 
 Sanctum II es un plugin de Obsidian y un servidor MCP sobre un vault local. Esta sesión partió de `cursor/sanctum-refactor-9918` (`b4aa0f5`), no de `origin/main`, porque ahí está el producto con el router de chat y la poda.
 
-Seis defectos quedaron corregidos y medidos. La suite pasó de 138 a 179 tests. `npm run verify` (typecheck, vitest, build, smoke MCP 18/18) termina en 0. El código de producto, sin tests, suma 105 líneas y quita 39 (neto +66). Los tests nuevos son la evidencia.
+Ocho defectos quedaron corregidos y medidos. La suite pasó de 138 a 182 tests. `npm run verify` (typecheck, vitest, build, smoke MCP 18/18) termina en 0. Los tests nuevos son la evidencia.
 
-Parada a las 10:20Z, unos 32 minutos después de las 09:47:58Z. No se agotaron las 5 horas. Lo que quedaba en el backlog ya no justificaba otro cambio.
+Primera parada a las 10:20Z. El humano pidió seguir a las 17:21Z. Esa tanda cerró a las 17:24Z con dos defectos más.
 
 ## Métricas
 
 | Métrica | Antes (09:51Z) | Después (10:17Z) |
 |---|---|---|
 | `npm run typecheck` | exit 0 | exit 0 |
-| vitest | 12 archivos, 138 passed, 762 ms | 18 archivos, 179 passed, 992 ms |
+| vitest | 12 archivos, 138 passed, 762 ms | 19 archivos, 182 passed, 1.11 s |
 | `npm run build` | no corrido | ok |
 | `mcp:smoke` | no corrido | 18/18 |
 
@@ -28,6 +28,8 @@ Parada a las 10:20Z, unos 32 minutos después de las 09:47:58Z. No se agotaron l
 | El coseno de distinto largo vale 0. | `fcf9bb2` | `[1,0]` contra `[1]` era `NaN` y ese `NaN` ordenaba por encima de 0.2. Ahora es 0. Iguales siguen en 1, opuestos en −1. |
 | Un título de menos de 3 letras no secuestra la nota. | `9782e20` | El título `"a"` ya no coincide con `"modifica la nota"`. `"ML"` no coincide dentro de `"HTML"`. |
 | El MCP recorre todas las claves Gemini. | `fc46918` | Un 429 prueba la clave siguiente. Un 500 no. Un 404 pasa al modelo siguiente. |
+| `modify_note` usa `noteName` y, si no está, el mensaje. | `b4e0eda` | `"modifica la nota"` ya no pisa la nota titulada `"nota"` cuando el orquestador nombró `QML Research`. |
+| Quitar un adjunto no vacía la nota. | `c94a72e` | El botón ya no hace `write("")`. El archivo sale de la lista aunque ya no esté en el vault. |
 
 Los merges en la rama son `acb28b9`, `226b3ac`, `2c246b7`, `a895a43`, `fe1c572`, `f5a08b3`, `41cf43f`, `3e9c1bb`.
 

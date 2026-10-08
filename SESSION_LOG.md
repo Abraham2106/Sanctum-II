@@ -76,7 +76,8 @@ Verificación 10:10Z: typecheck 0, 16 archivos, 171 passed.
 
 El humano pidió seguir a las 2026-10-08T17:21:51Z. Línea de esta tanda: 179 tests en verde.
 
-### C5 — en curso
+### C5 — nombre y adjunto
 
-- T-024: `modify_note` lee `decision.noteName` y no lo pasa. Con el mensaje `"modifica la nota"` y una nota titulada `"nota"`, esa gana aunque el JSON diga `noteName: "QML Research"`.
-- T-025: el botón "Quitar del proyecto" hace `adapter.write(path, "")` y vacía la nota. Si el archivo ya no existe, el `exists` impide quitarlo de la lista.
+- T-024 merge `b4e0eda`. `modify_note` resuelve primero `noteName`. `"modifica la nota"` con `noteName: "QML Research"` actualiza `QML.md`, no la nota titulada `"nota"`. Si el nombre no está, vuelve al mensaje.
+- T-025 merge `c94a72e`. Quitar un adjunto ya no hace `write("")`. Sale de `attachedFiles` y de `files` aunque el archivo no exista.
+- `npm run verify` 17:24Z: typecheck 0, 19 archivos, 182 passed (esta tanda partió de 179), build ok, mcp:smoke 18/18.

@@ -796,7 +796,7 @@
       "id": "T-024",
       "title": "modify_note usa noteName",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-modify-name"
@@ -828,7 +828,7 @@
       "id": "T-025",
       "title": "Quitar adjunto no vacía la nota",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-detach-file"
