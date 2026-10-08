@@ -20,3 +20,6 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-rewrite-chain | `src/ui/chain-view.ts`, `src/ui/chain-canvas.ts` | lienzo y modal de resultado | `chain-types.ts`, `chains/executor.ts` | accepted |
 | S-rewrite-kg | `src/ui/kg-view.ts`, `src/ui/kg-scene.ts`, `src/ui/kg-inspector.ts` | escena e inspector | `src/kg/**` | accepted |
 | S-verify | suite al cierre | `npm run typecheck` y `npm test` una vez | features nuevas | accepted |
+| S-glob | `src/utils.ts` (`globMatch`), `src/utils.glob.test.ts` | ancla y `**` de DEC-0009 | `pathMatchesAny`, `permissions.test.ts`, el resto de utils | accepted |
+| S-critic-parse | `src/shared/mesh/parse.ts`, `src/shared/mesh/parse.test.ts` | score ausente de DEC-0010 | umbrales del mesh, `chain-view.ts`, `permissions.test.ts` | accepted |
+| S-mcp-keys | `mcp-server/index.ts`, `mcp-server/src/embeddings/gemini-embed.ts`, `mcp-server/src/embeddings/gemini-embed.test.ts` | rotación de claves de DEC-0011 | `query-vault.ts`, balancer del plugin, `embed-contract.ts` | accepted |

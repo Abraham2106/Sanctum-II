@@ -550,6 +550,93 @@
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-017",
+      "title": "Anclar globMatch",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-glob"],
+      "decisions": ["DEC-0009"],
+      "max_review_loops": 2,
+      "done_when": [
+        "globMatch('Research/nota.md.exe', 'Research/*.md') es false",
+        "globMatch('Research/nota.md/secret', 'Research/*.md') es false",
+        "globMatch('Research/a.md.secret', 'Research/a.md') es false",
+        "globMatch('Research/sub/nota.md', 'Research/*.md') es false",
+        "globMatch('Research/a/b.md', 'Research/**') es true",
+        "globMatch('Docs/sub/a.md', 'Docs/**/*.md') es true",
+        "globMatch('Docs/sub/a.txt', 'Docs/**/*.md') es false",
+        "los casos ya cubiertos en permissions.test.ts siguen en true o false como estaban"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que editar pathMatchesAny, permissions.test.ts u otro archivo",
+        "Hace falta una dependencia"
+      ],
+      "notes": "Ponytail. Solo globMatch en src/utils.ts y el archivo nuevo src/utils.glob.test.ts. Cita DEC-0009. Implementación: recorta la barra inicial; ** o cadena vacía devuelven true; el resto sustituye ** por un marcador, * por otro, escapa .+^${}()|[]\\\\ , devuelve ** como .* y * como [^/]* , y prueba ^patrón$. No normalices .. y no añadas ?. No corras la suite entera. Un commit.",
+      "verification": {
+        "planned": ["npx vitest run src/utils.glob.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-018",
+      "title": "Score ausente del crítico vale 0",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-critic-parse"],
+      "decisions": ["DEC-0010"],
+      "max_review_loops": 2,
+      "done_when": [
+        "JSON sin total_score devuelve total_score 0",
+        "total_score string o NaN devuelve 0",
+        "total_score 80 numérico sigue en 80",
+        "texto sin JSON sigue en score 0 y verdict reject",
+        "threshold ausente sigue en 80"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que editar chain-view, mesh.ts, permissions.test.ts o los umbrales",
+        "Hace falta una dependencia"
+      ],
+      "notes": "Ponytail. Solo src/shared/mesh/parse.ts y src/shared/mesh/parse.test.ts. Cita DEC-0010. total_score se acepta solo si typeof number y Number.isFinite; si no, 0. No cambies el ?? 80 de threshold ni el verdict por defecto. No corras la suite entera. Un commit.",
+      "verification": {
+        "planned": ["npx vitest run src/shared/mesh/parse.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-019",
+      "title": "MCP recorre las claves Gemini",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-mcp-keys"],
+      "decisions": ["DEC-0011"],
+      "max_review_loops": 2,
+      "done_when": [
+        "index.ts pasa todas las claves recortadas de GEMINI_API_KEYS unidas por coma, no solo la primera",
+        "embedText con 'k1,k2' y fetch 429 luego 200 devuelve el vector de la segunda clave",
+        "404 o 400 saltan de modelo como hoy",
+        "un estado distinto de 429, 403, 404 y 400 se propaga sin probar otra clave",
+        "cadena vacía de claves no cuenta como configurada"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que editar query-vault, GeminiBalancer o embed-contract",
+        "Hace falta una dependencia o una llamada de red real"
+      ],
+      "notes": "Ponytail. Archivos: mcp-server/index.ts, mcp-server/src/embeddings/gemini-embed.ts, mcp-server/src/embeddings/gemini-embed.test.ts. Cita DEC-0011. Parte claves por coma. 429 y 403 prueban la siguiente clave del mismo modelo. 404 y 400 pasan al modelo siguiente. Otro error se lanza. El test sustituye globalThis.fetch y lo restaura; producción sigue usando fetch. No llames a Gemini. No corras la suite entera. Un commit.",
+      "verification": {
+        "planned": ["npx vitest run mcp-server/src/embeddings/gemini-embed.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     }
   ]
 }

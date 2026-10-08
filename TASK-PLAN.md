@@ -28,3 +28,11 @@ Rollback: revertir solo commits de la hoja; conservar worktrees, evidencia y cam
 - T-016: los cuatro símbolos de DEC-0007 que no llegaron a borrarse.
 
 Paralelo ahora: T-011, T-012, T-013, T-014, T-015, T-016. No comparten archivos. La suite corre después del merge.
+
+## Self-improve 2026-10-08
+
+- T-017: anclar `globMatch` (S-glob, DEC-0009) — ready.
+- T-018: score ausente del crítico = 0 (S-critic-parse, DEC-0010) — ready.
+- T-019: el MCP recorre las claves Gemini (S-mcp-keys, DEC-0011) — ready.
+
+Las tres no comparten archivos. La suite completa corre en la rama después del merge.
