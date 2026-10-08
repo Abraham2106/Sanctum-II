@@ -1,10 +1,20 @@
 import { log } from "../mcp/logger.js"
-
-const MODEL = "deepseek-v4-flash"
+import {
+  buildAnthropicWire,
+  buildOpenAiWire,
+  parseAnthropicWire,
+  parseOpenAiWire,
+  resolveChatModel,
+} from "../../../src/llm/chat-wire.js"
 
 export interface ChatResult {
   content: string
   usage: { prompt: number; completion: number }
+}
+
+function readProvider(): "openai" | "anthropic" {
+  const p = (process.env.LLM_PROVIDER ?? "openai").trim().toLowerCase()
+  return p === "anthropic" ? "anthropic" : "openai"
 }
 
 export async function opencodeChat(
@@ -13,26 +23,33 @@ export async function opencodeChat(
   baseUrl: string,
   apiKey: string,
 ): Promise<ChatResult> {
-  if (!apiKey) {
+  const provider = readProvider()
+  const model = resolveChatModel(process.env.LLM_MODEL)
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY ?? ""
+  const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"
+
+  const messages = [
+    { role: "system" as const, content: systemPrompt },
+    { role: "user" as const, content: userPrompt },
+  ]
+
+  if (provider === "anthropic") {
+    if (!anthropicApiKey) {
+      throw new Error("ANTHROPIC_API_KEY no configurada")
+    }
+  } else if (!apiKey) {
     throw new Error("OPENCODE_GO_API_KEY no configurada")
   }
 
-  const url = `${baseUrl.replace(/\/+$/, "")}/chat/completions`
-  const body = {
-    model: MODEL,
-    messages: [
-      { role: "system" as const, content: systemPrompt },
-      { role: "user" as const, content: userPrompt },
-    ],
-  }
+  const wire =
+    provider === "anthropic"
+      ? buildAnthropicWire(anthropicBaseUrl, anthropicApiKey, model, messages)
+      : buildOpenAiWire(baseUrl, apiKey, model, messages)
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
+  const response = await fetch(wire.url, {
+    method: wire.method,
+    headers: wire.headers,
+    body: wire.body,
   })
 
   if (!response.ok) {
@@ -41,21 +58,15 @@ export async function opencodeChat(
   }
 
   const data = await response.json()
-  if (!data.choices?.[0]?.message) {
-    throw new Error(`Respuesta sin choices: ${JSON.stringify(data).slice(0, 200)}`)
-  }
+  const parsed =
+    provider === "anthropic" ? parseAnthropicWire(data) : parseOpenAiWire(data)
 
-  const content = data.choices[0].message.content ?? ""
   log.debug("opencode chat ok", {
-    promptTokens: data.usage?.prompt_tokens,
-    completionTokens: data.usage?.completion_tokens,
+    provider,
+    model,
+    promptTokens: parsed.usage.prompt,
+    completionTokens: parsed.usage.completion,
   })
 
-  return {
-    content,
-    usage: {
-      prompt: data.usage?.prompt_tokens ?? 0,
-      completion: data.usage?.completion_tokens ?? 0,
-    },
-  }
+  return parsed
 }
