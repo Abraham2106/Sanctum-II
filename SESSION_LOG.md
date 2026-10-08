@@ -94,3 +94,7 @@ El humano pidió un bot mejor que el de Sanctum v1 y un gancho con Grok Bot. DEC
 ### C7 — Grok Bot el sistema
 
 El humano aclaró que Grok Bot es el sistema de xAI, no el modelo por `XAI_API_KEY`. DEC-0020. T-030. `POST /mcp` en 127.0.0.1, Streamable HTTP. El conector se pega en grok.com/connectors. El túnel HTTPS no está en el repo.
+
+### C8 — prácticas del MCP
+
+El humano pidió mejorar el MCP. DEC-0021. T-031 a T-034 en paralelo. `initialize` trae instructions. Seis tools, con annotations. `sanctum_list_notes` lista un nivel. `context` entra al prompt y no dispara otra búsqueda. El POST de más de 1 MiB responde 413. `npm run verify` 22:31Z: 25 archivos, 217 tests, smoke 18/18 y 6 tools. Un POST local al bundle devolvió el texto de instructions.

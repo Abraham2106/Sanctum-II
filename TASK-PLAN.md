@@ -50,9 +50,9 @@ Las tres no comparten archivos. La suite completa corre en la rama después del 
 
 ## MCP (DEC-0021)
 
-- T-031: instructions y annotations (S-mcp-guide) — ready.
-- T-032: listar notas (S-mcp-notes) — ready.
-- T-033: context en invocar y mesh (S-mcp-context) — ready.
-- T-034: corte de 1 MiB (S-mcp-limit) — ready.
+- T-031: instructions y annotations (S-mcp-guide) — done.
+- T-032: listar notas (S-mcp-notes) — done.
+- T-033: context en invocar y mesh (S-mcp-context) — done.
+- T-034: corte de 1 MiB (S-mcp-limit) — done.
 
 Las cuatro no comparten archivos. T-034 solo añade el tope en el HTTP que T-030 ya mergeó.

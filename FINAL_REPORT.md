@@ -72,6 +72,12 @@ Grok entra por el cable OpenAI que ya existía. `XAI_API_KEY` fija la base `http
 
 Grok Bot es el sistema de xAI. No tiene una API para enviarle un mensaje. El gancho publicado es un conector MCP custom en grok.com/connectors, con transporte Streamable HTTP. `npm run mcp:http` escucha en `127.0.0.1` (puerto 8787) y responde en `POST /mcp`. La URL que se pega en el conector es la de un túnel HTTPS hacia ese puerto, terminada en `/mcp`. `XAI_API_KEY` en Discord sigue eligiendo el modelo de chat; no abre Grok Bot.
 
+## MCP (DEC-0021)
+
+El servidor no anunciaba cómo usarlo, no listaba notas y las tools de modelo decían que reunían contexto con el vault vacío. `initialize` ahora trae `instructions`. `sanctum_list_notes` devuelve los `read_paths` o un nivel de `.md`. `context` en invocar y en el mesh entra al prompt y se corta a 8000 caracteres. Esas dos siguen sin buscar solas. Un POST de más de 1 MiB responde 413. `npm run verify` a las 22:31Z: 217 tests, smoke 18/18, seis tools.
+
+Quedó fuera: `resources/list`, una sesión `Mcp-Session-Id`, OAuth, y sacar el MCP a otro paquete.
+
 ## Cómo revertir
 
 La rama es `self-improve/2026-10-08`. No se hizo push a `main`. Para quitar la sesión, no merges esta rama. El padre es `b4aa0f5` en `cursor/sanctum-refactor-9918`.
