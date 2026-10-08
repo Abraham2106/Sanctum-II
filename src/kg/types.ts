@@ -21,12 +21,3 @@ export interface KgOptions {
   useExplicit: boolean;
   reinforceBoost: boolean;
 }
-
-export const DEFAULT_KG_OPTIONS: KgOptions = {
-  enabled: true,
-  minSimilarity: 0.75,
-  hops: 1,
-  maxNeighborsPerHop: 3,
-  useExplicit: true,
-  reinforceBoost: true,
-};
