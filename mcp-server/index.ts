@@ -23,7 +23,12 @@ async function main(): Promise<void> {
   server.registerTool(createGetNoteTool(vault))
 
   // ── RAG (VectorStore + Gemini embeddings) ──
-  const geminiApiKey = process.env.GEMINI_API_KEYS?.split(",")[0]?.trim()
+  const geminiApiKeyJoined = process.env.GEMINI_API_KEYS
+    ?.split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0)
+    .join(",")
+  const geminiApiKey = geminiApiKeyJoined || undefined
   const vectorStore = new VectorStore()
   await vectorStore.load(vault)
   log.info("vector store cargado", { chunks: vectorStore.count, hasKey: !!geminiApiKey })
