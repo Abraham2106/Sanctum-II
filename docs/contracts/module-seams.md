@@ -25,3 +25,4 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-mcp-keys | `mcp-server/index.ts`, `mcp-server/src/embeddings/gemini-embed.ts`, `mcp-server/src/embeddings/gemini-embed.test.ts` | rotación de claves de DEC-0011 | `query-vault.ts`, balancer del plugin, `embed-contract.ts` | accepted |
 | S-index-scope | `src/projects/indexer.ts`, `src/projects/indexer.test.ts` | el sentido de `isAllowedPath` de DEC-0013 | `chunk_words`, recursión, `main.ts` | accepted |
 | S-chain-critic | `src/chains/critic-decision.ts`, `src/chains/critic-decision.test.ts`, `src/ui/chain-view.ts` | la decisión del bucle de DEC-0014 | modal, DOM, CSS, umbral, intentos | accepted |
+| S-cosine | `src/rag/vector-store.ts` (`cosineSimilarity`), `src/rag/cosine.test.ts` | largos distintos de DEC-0015 | `search` ranking, umbral, formato jsonl, `permissions.test.ts` | accepted |
