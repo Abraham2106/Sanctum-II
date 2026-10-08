@@ -53,4 +53,46 @@ describe("project index coordination", () => {
     expect(result.errors[0]).toContain("fuera");
     expect(store.count).toBe(0);
   });
+
+  it("chunks notes with project.rag.chunk_words when set", async () => {
+    const adapter = indexingAdapter();
+    const words = Array.from({ length: 10 }, (_, i) => `w${i}`).join(" ");
+    adapter.write("Research/a.md", words);
+    const store = new VectorStore("sanctum-logs/index/project/vector-store.jsonl");
+    let embeddings = 0;
+    const gemini = { embed: async () => { embeddings++; return [1, 0]; } } as any;
+    const project = {
+      id: "project",
+      read_paths: ["Research"],
+      write_paths: [],
+      name: "Project",
+      rag: { chunk_words: 3 },
+    } as any;
+
+    await indexProject(adapter, gemini, project, store);
+
+    expect(embeddings).toBe(4);
+    expect(store.count).toBe(4);
+  });
+
+  it("falls back to default chunk_words when rag.chunk_words is invalid", async () => {
+    const adapter = indexingAdapter();
+    const words = Array.from({ length: 10 }, (_, i) => `w${i}`).join(" ");
+    adapter.write("Research/a.md", words);
+    const store = new VectorStore("sanctum-logs/index/project/vector-store.jsonl");
+    let embeddings = 0;
+    const gemini = { embed: async () => { embeddings++; return [1, 0]; } } as any;
+    const project = {
+      id: "project",
+      read_paths: ["Research"],
+      write_paths: [],
+      name: "Project",
+      rag: { chunk_words: 0 },
+    } as any;
+
+    await indexProject(adapter, gemini, project, store);
+
+    expect(embeddings).toBe(1);
+    expect(store.count).toBe(1);
+  });
 });
