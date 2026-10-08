@@ -1,15 +1,19 @@
 export function globMatch(path: string, pattern: string): boolean {
+  // DEC-0009: el glob compara el path completo; ** cruza segmentos
   const p = pattern.startsWith("/") ? pattern.slice(1) : pattern;
   if (p === "**" || p === "") return true;
-  const regex = new RegExp(
-    "^" + p
-      .replace(/\*\*/g, "___DS___")
-      .replace(/\*/g, "[^/]*")
-      .replace(/___DS___/g, ".*")
-      .replace(/\//g, "\\/")
-      .replace(/\./g, "\\.")
-  );
-  return regex.test(path);
+  const DS = "___DS___";
+  const SS = "___SS___";
+  const regexSource =
+    "^" +
+    p
+      .replace(/\*\*/g, DS)
+      .replace(/\*/g, SS)
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(new RegExp(DS, "g"), ".*")
+      .replace(new RegExp(SS, "g"), "[^/]*") +
+    "$";
+  return new RegExp(regexSource).test(path);
 }
 
 export function pathMatchesAny(filePath: string, patterns: string[] | undefined): boolean {
