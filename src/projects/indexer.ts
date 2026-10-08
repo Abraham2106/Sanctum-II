@@ -6,7 +6,7 @@ import { ensureVaultDirectory } from "../core/vault-fs";
 
 // DEC-0006: el tamaño de chunk y el filtro de carpeta tienen un solo camino
 function chunkWordsFor(project: Project): number {
-  const n = project.rag.chunk_words;
+  const n = project.rag?.chunk_words;
   return Number.isInteger(n) && n > 0 ? n : DEFAULT_PROJECT_RAG.chunk_words;
 }
 

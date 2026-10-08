@@ -206,7 +206,7 @@
       "id": "T-007",
       "title": "Borrar exports muertos de constants",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-prune-const"
@@ -235,7 +235,7 @@
       "id": "T-008",
       "title": "Borrar chain-inspector.ts",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-prune-ui"
@@ -263,7 +263,7 @@
       "id": "T-009",
       "title": "Borrar cuatro símbolos sin uso",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-prune-symbols"
@@ -282,7 +282,7 @@
         "Un símbolo tiene un llamador",
         "Hace falta borrar AgentAuthoringLLM todavía usado"
       ],
-      "notes": "Ponytail. Archivos: src/shared/mesh/core.ts, src/kg/types.ts, src/agents/authoring/types.ts, src/chains/executor.ts. Rebusca. Quita imports que queden sin uso. No toques executeTurn ni MESH_DEFAULTS ni la interfaz KgOptions. No corras tests.",
+      "notes": "No arrancó: el worker devolvió resource_exhausted dos veces. Siguen shouldRegenerate, DEFAULT_KG_OPTIONS, AgentAuthoringOptions y previousOutput.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -295,7 +295,7 @@
       "id": "T-010",
       "title": "Barrido de orquestador y core",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-prune-scan"
@@ -324,7 +324,7 @@
       "id": "T-006",
       "title": "Typecheck y vitest al cierre",
       "owner_role": "worker",
-      "status": "draft",
+      "status": "done",
       "deps": [
         "T-007",
         "T-008",
@@ -346,13 +346,16 @@
         "El arreglo exige un diseño nuevo",
         "Hay que cambiar comportamiento de producto para que el test pase"
       ],
-      "notes": "Solo después del merge de la poda. Arregla roturas mecánicas. No añadas features.",
+      "notes": "typecheck 0. vitest 138/138. El fixture sin rag cae al default de 400 vía optional chaining.",
       "verification": {
         "planned": [
           "npm run typecheck",
           "npm test"
         ],
-        "run": []
+        "run": [
+          "npm run typecheck",
+          "npm test: 12 files, 138 tests passed"
+        ]
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     }
