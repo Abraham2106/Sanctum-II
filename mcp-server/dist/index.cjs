@@ -7604,10 +7604,11 @@ var FsVaultAdapter = class {
 function globMatch(path3, pattern) {
   const p = pattern.startsWith("/") ? pattern.slice(1) : pattern;
   if (p === "**" || p === "") return true;
-  const regex = new RegExp(
-    "^" + p.replace(/\*\*/g, "___DS___").replace(/\*/g, "[^/]*").replace(/___DS___/g, ".*").replace(/\//g, "\\/").replace(/\./g, "\\.")
-  );
-  return regex.test(path3);
+  const DS = "___DS___";
+  const SS = "___SS___";
+  const body = p.replace(/\*\*/g, DS).replace(/\*/g, SS).replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(new RegExp(DS, "g"), ".*").replace(new RegExp(SS, "g"), "[^/]*");
+  const regexSource = p.endsWith("/") ? `^${body}` : `^${body}$`;
+  return new RegExp(regexSource).test(path3);
 }
 function pathMatchesAny(filePath, patterns) {
   if (!patterns) return true;
@@ -7626,8 +7627,10 @@ function isNotFoundError(error) {
 // src/rag/vector-store.ts
 var DEFAULT_STORE_PATH = "sanctum-logs/vector-store.jsonl";
 function cosineSimilarity(a, b) {
+  if (a.length !== b.length || a.length === 0) return 0;
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i++) {
+    if (!Number.isFinite(a[i]) || !Number.isFinite(b[i])) return 0;
     dot += a[i] * b[i];
     na += a[i] * a[i];
     nb += b[i] * b[i];
@@ -7983,21 +7986,29 @@ ${content}` }]
   };
 }
 
-// mcp-server/src/embeddings/gemini-embed.ts
-var GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-var PRIORITY_MODELS = ["gemini-embedding-2", "gemini-embedding-001"];
+// src/embeddings/embed-contract.ts
+var PRIORITY_MODELS = [
+  "gemini-embedding-2",
+  "gemini-embedding-001"
+];
 var OUTPUT_DIMS = 768;
 var MAX_TEXT_LENGTH = 3e3;
+function embedContentJsonBody(model, text) {
+  return {
+    model: `models/${model}`,
+    content: { parts: [{ text }] },
+    outputDimensionality: OUTPUT_DIMS
+  };
+}
+
+// mcp-server/src/embeddings/gemini-embed.ts
+var GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 async function callEmbed(key, model, text) {
   const url = `${GEMINI_BASE}/${model}:embedContent?key=${key}`;
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: `models/${model}`,
-      content: { parts: [{ text }] },
-      outputDimensionality: OUTPUT_DIMS
-    })
+    body: JSON.stringify(embedContentJsonBody(model, text))
   });
   if (!response.ok) {
     const err = new Error(`Gemini API error [${response.status}] modelo "${model}"`);
@@ -8011,28 +8022,42 @@ async function callEmbed(key, model, text) {
   return data.embedding.values;
 }
 async function embedText(text, apiKey) {
+  const keys = apiKey.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
   const truncated = text.slice(0, MAX_TEXT_LENGTH);
   let lastError = null;
   for (const model of PRIORITY_MODELS) {
-    try {
-      const result = await callEmbed(apiKey, model, truncated);
-      log.debug("gemini embed ok", { model, dims: result.length });
-      return result;
-    } catch (err) {
-      const status = err?.status;
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (status === 404 || status === 400) {
-        log.warn("gemini model no disponible, saltando", { model, status });
-        continue;
+    for (const key of keys) {
+      try {
+        const result = await callEmbed(key, model, truncated);
+        log.debug("gemini embed ok", { model, dims: result.length });
+        return result;
+      } catch (err) {
+        const status = err?.status;
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (status === 429 || status === 403) {
+          continue;
+        }
+        if (status === 404 || status === 400) {
+          log.warn("gemini model no disponible, saltando", { model, status });
+          break;
+        }
+        throw lastError;
       }
-      throw lastError;
     }
   }
   throw lastError ?? new Error("Todos los modelos de Gemini fallaron");
 }
 
+// src/constants.ts
+var AGENTS_DIR = "sanctum-agents";
+var TRACES_DIR = "sanctum-logs/traces";
+var DEFAULT_MODEL = "deepseek-v4-flash";
+var RAG_DEFAULTS = {
+  MIN_SIMILARITY: 0.65,
+  TOP_K: 5
+};
+
 // mcp-server/src/tools/query-vault.ts
-var MIN_SIMILARITY = 0.65;
 function createQueryVaultTool(vault, store, geminiApiKey) {
   return {
     name: "sanctum_query_vault",
@@ -8078,7 +8103,7 @@ function createQueryVaultTool(vault, store, geminiApiKey) {
       const perms = await resolvePermissions(vault, agentId);
       const embedding = await embedText(query, geminiApiKey);
       const rawResults = store.search(embedding, limit);
-      const filtered = rawResults.filter((r) => r.score >= MIN_SIMILARITY);
+      const filtered = rawResults.filter((r) => r.score >= RAG_DEFAULTS.MIN_SIMILARITY);
       const permitted = store.filterByPaths(filtered, perms.readPaths);
       log.info("sanctum_query_vault", {
         agentId,
@@ -8105,10 +8130,6 @@ ${excerpt}${r.chunk.chunk_text.length > 400 ? "..." : ""}`;
     }
   };
 }
-
-// src/constants.ts
-var AGENTS_DIR = "sanctum-agents";
-var DEFAULT_MODEL = "deepseek-v4-flash";
 
 // src/agents/agent-loader.ts
 function parseAgentMd(content) {
@@ -8143,48 +8164,113 @@ function renderSystemPrompt(agent, ragContext, userPrompt) {
   return agent.system_prompt.replace(/\{\{rag_context\}\}/g, ragContext).replace(/\{\{user_prompt\}\}/g, userPrompt);
 }
 
-// mcp-server/src/llm/opencode-chat.ts
-var MODEL = "deepseek-v4-flash";
-async function opencodeChat(systemPrompt, userPrompt, baseUrl, apiKey) {
-  if (!apiKey) {
-    throw new Error("OPENCODE_GO_API_KEY no configurada");
-  }
+// src/llm/chat-wire.ts
+function resolveChatModel(model) {
+  const trimmed = (model ?? "").trim();
+  return trimmed.length > 0 ? trimmed : DEFAULT_MODEL;
+}
+function buildOpenAiWire(baseUrl, apiKey, model, messages) {
   const url = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  const body = {
-    model: MODEL,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ]
-  };
-  const response = await fetch(url, {
+  return {
+    url,
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ model, messages })
+  };
+}
+function parseOpenAiWire(data) {
+  const d = data;
+  if (!d.choices?.[0]?.message) {
+    throw new Error(`Respuesta sin choices: ${JSON.stringify(data).slice(0, 200)}`);
+  }
+  const content = d.choices[0].message.content ?? "";
+  return {
+    content,
+    usage: {
+      prompt: d.usage?.prompt_tokens ?? 0,
+      completion: d.usage?.completion_tokens ?? 0
+    }
+  };
+}
+function buildAnthropicWire(anthropicBaseUrl, anthropicApiKey, model, messages) {
+  const url = `${anthropicBaseUrl.replace(/\/+$/, "")}/v1/messages`;
+  const systemParts = messages.filter((m) => m.role === "system").map((m) => m.content);
+  const apiMessages = messages.filter((m) => m.role === "user" || m.role === "assistant").map((m) => ({ role: m.role, content: m.content }));
+  const body = {
+    model,
+    max_tokens: 4096,
+    messages: apiMessages
+  };
+  if (systemParts.length > 0) {
+    body.system = systemParts.join("\n\n");
+  }
+  return {
+    url,
+    method: "POST",
+    headers: {
+      "x-api-key": anthropicApiKey,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json"
     },
     body: JSON.stringify(body)
+  };
+}
+function parseAnthropicWire(data) {
+  const d = data;
+  const block = d.content?.find((c) => c.type === "text") ?? d.content?.[0];
+  const content = block?.text ?? "";
+  return {
+    content,
+    usage: {
+      prompt: d.usage?.input_tokens ?? 0,
+      completion: d.usage?.output_tokens ?? 0
+    }
+  };
+}
+
+// mcp-server/src/llm/opencode-chat.ts
+function readProvider() {
+  const p = (process.env.LLM_PROVIDER ?? "openai").trim().toLowerCase();
+  return p === "anthropic" ? "anthropic" : "openai";
+}
+async function opencodeChat(systemPrompt, userPrompt, baseUrl, apiKey) {
+  const provider = readProvider();
+  const model = resolveChatModel(process.env.LLM_MODEL);
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY ?? "";
+  const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt }
+  ];
+  if (provider === "anthropic") {
+    if (!anthropicApiKey) {
+      throw new Error("ANTHROPIC_API_KEY no configurada");
+    }
+  } else if (!apiKey) {
+    throw new Error("OPENCODE_GO_API_KEY no configurada");
+  }
+  const wire = provider === "anthropic" ? buildAnthropicWire(anthropicBaseUrl, anthropicApiKey, model, messages) : buildOpenAiWire(baseUrl, apiKey, model, messages);
+  const response = await fetch(wire.url, {
+    method: wire.method,
+    headers: wire.headers,
+    body: wire.body
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "sin cuerpo");
     throw new Error(`OpenCode API error [${response.status}] \u2014 ${text.slice(0, 300)}`);
   }
   const data = await response.json();
-  if (!data.choices?.[0]?.message) {
-    throw new Error(`Respuesta sin choices: ${JSON.stringify(data).slice(0, 200)}`);
-  }
-  const content = data.choices[0].message.content ?? "";
+  const parsed = provider === "anthropic" ? parseAnthropicWire(data) : parseOpenAiWire(data);
   log.debug("opencode chat ok", {
-    promptTokens: data.usage?.prompt_tokens,
-    completionTokens: data.usage?.completion_tokens
+    provider,
+    model,
+    promptTokens: parsed.usage.prompt,
+    completionTokens: parsed.usage.completion
   });
-  return {
-    content,
-    usage: {
-      prompt: data.usage?.prompt_tokens ?? 0,
-      completion: data.usage?.completion_tokens ?? 0
-    }
-  };
+  return parsed;
 }
 
 // mcp-server/src/tools/invoke-agent.ts
@@ -8264,7 +8350,8 @@ function parseCriticJSON(raw) {
         });
       }
     }
-    const totalScore = ev.total_score ?? 80;
+    const rawTotal = ev.total_score;
+    const totalScore = typeof rawTotal === "number" && Number.isFinite(rawTotal) ? rawTotal : 0;
     const threshold2 = ev.threshold ?? 80;
     const verdict = ev.verdict === "reject" ? "reject" : "accept";
     const feedback = Array.isArray(ev.feedback_for_regeneration) ? ev.feedback_for_regeneration : [];
@@ -8440,7 +8527,6 @@ ${r.output}`);
 }
 
 // mcp-server/src/observability/trace-writer.ts
-var TRACES_DIR = "sanctum-logs/traces";
 function generateTraceId() {
   const now = /* @__PURE__ */ new Date();
   const ts = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -8477,7 +8563,8 @@ async function main() {
   const server = new McpServer({ name: "sanctum-mcp", version: "0.1.0" });
   server.registerTool(createListAgentsTool(vault));
   server.registerTool(createGetNoteTool(vault));
-  const geminiApiKey = process.env.GEMINI_API_KEYS?.split(",")[0]?.trim();
+  const geminiApiKeyJoined = process.env.GEMINI_API_KEYS?.split(",").map((k) => k.trim()).filter((k) => k.length > 0).join(",");
+  const geminiApiKey = geminiApiKeyJoined || void 0;
   const vectorStore = new VectorStore();
   await vectorStore.load(vault);
   log.info("vector store cargado", { chunks: vectorStore.count, hasKey: !!geminiApiKey });
