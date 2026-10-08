@@ -45,7 +45,6 @@ export async function executeChain(
   // DEC-0006: el tamaño de chunk y el filtro de carpeta tienen un solo camino
   const order = topologicalOrder(chain.nodes, chain.edges);
   const results: ExecutionResult[] = [];
-  let previousOutput = "";
   const scratchpad: Record<string, string> = {};
 
   for (const nodeId of order) {
@@ -73,7 +72,6 @@ export async function executeChain(
     );
 
     results.push({ nodeId, agentId: node.agentId, output: result.content, usage: result.usage });
-    previousOutput = result.content;
     scratchpad[nodeId] = result.content;
   }
 
