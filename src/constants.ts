@@ -67,12 +67,6 @@ export const BUILTIN_AGENTS = {
   ORCHESTRATOR: "orchestrator",
 } as const;
 
-export const MESH_THRESHOLDS = {
-  ACCEPT: 80,
-  ESCALATE: 40,
-  MAX_ATTEMPTS: 3,
-} as const;
-
 export const RAG_DEFAULTS = {
   MIN_SIMILARITY: 0.65,
   TOP_K: 5,
