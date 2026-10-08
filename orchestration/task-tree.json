@@ -855,6 +855,114 @@
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-026",
+      "title": "Nota Markdown del canal de Discord",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-discord-log"],
+      "decisions": ["DEC-0019"],
+      "max_review_loops": 2,
+      "done_when": [
+        "render y parse recuperan nombre, id, fecha, autor y texto",
+        "mergeLines no repite un id y tira !sync pero guarda !sanctum",
+        "shouldAnswer es true solo con mención o !sanctum",
+        "tailLines devuelve las últimas 40 como máximo y formatTail es autor: texto"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hace falta discord.js, red, o un archivo fuera de src/discord/channel-log.ts y su test"
+      ],
+      "notes": "Ponytail. Solo src/discord/channel-log.ts y src/discord/channel-log.test.ts. Cita // DEC-0019: Discord conversa; Grok solo si hay XAI_API_KEY. Exporta DiscordLine {id,at,author,content}, renderChannelNote, parseChannelNote, mergeLines, shouldAnswer, questionText, tailLines, formatTail. Forma exacta: primera línea '# nombre', luego '- {id} {at} **{autor}**: {texto}'. Id y at son un token sin espacios. Autor sin asteriscos. Texto con saltos colapsados a un espacio. parse ignora líneas que no cumplen. mergeLines conserva orden, descarta id vacío o repetido, descarta texto trim que empiece por ! salvo /^!sanctum\\b/i. shouldAnswer({content, mentionsBot}): true si /^!sanctum\\b/i, false si empieza por !, si no mentionsBot. questionText quita el prefijo !sanctum y los tokens <@!?dígitos>. tailLines(lines, n) últimas n; n<1 devuelve []. formatTail une 'autor: texto' con salto de línea. Un comentario ponytail: el texto guardado pierde los saltos de línea. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
+      "verification": {
+        "planned": ["npx vitest run src/discord/channel-log.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-027",
+      "title": "Destino Grok y cuerpos REST",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-discord-api"],
+      "decisions": ["DEC-0019"],
+      "max_review_loops": 2,
+      "done_when": [
+        "con XAI_API_KEY el wire es POST https://api.x.ai/v1/chat/completions, modelo grok-4.7 y Bearer de esa clave",
+        "XAI_MODEL sustituye el modelo y gana aunque exista OPENCODE_GO_API_KEY",
+        "sin XAI_API_KEY usa OPENCODE_GO_BASE_URL y OPENCODE_GO_API_KEY",
+        "sin ninguna clave lanza",
+        "el mensaje a Discord va a /api/v10/channels/{id}/messages, header Bot, content cortado a 1900, y un id no numérico lanza",
+        "ningún test llama a fetch"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que editar chat-wire.ts, package.json o el gateway",
+        "Hace falta una dependencia nueva"
+      ],
+      "notes": "Ponytail. Solo src/discord/discord-api.ts y src/discord/discord-api.test.ts. Cita // DEC-0019: Discord conversa; Grok solo si hay XAI_API_KEY. Importa buildOpenAiWire y resolveChatModel desde src/llm/chat-wire.ts; no lo edites. resolveDiscordChat(env) -> {baseUrl, apiKey, model, via}. Si XAI_API_KEY trim no vacío: baseUrl https://api.x.ai/v1, model XAI_MODEL trim o grok-4.7, via grok. Si no, y hay OPENCODE_GO_API_KEY: baseUrl OPENCODE_GO_BASE_URL trim o lanza si falta, model resolveChatModel(env.LLM_MODEL), via opencode. Si no hay ninguna clave: throw 'XAI_API_KEY o OPENCODE_GO_API_KEY'. No leas LLM_PROVIDER. buildDiscordChatWire(target, system, user) devuelve buildOpenAiWire con system y user. buildDiscordSend(channelId, content, token): channelId debe ser /^\\d+$/ o throw; url https://discord.com/api/v10/channels/{id}/messages; headers Authorization Bot {token} y Content-Type application/json; body {content} con content.slice(0, 1900). buildDiscordHistory(channelId, token, limit=50): mismo id, GET https://discord.com/api/v10/channels/{id}/messages?limit={n} con n entre 1 y 100. Comentario ponytail: chat completions es legacy; subir a /v1/responses cuando el cable lo tenga. No hagas fetch. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
+      "verification": {
+        "planned": ["npx vitest run src/discord/discord-api.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-028",
+      "title": "Agente Discord y variables",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-discord-agent"],
+      "decisions": ["DEC-0019"],
+      "max_review_loops": 2,
+      "done_when": [
+        "sanctum-agents/discord.md tiene id discord, read_paths /Discord-logs/** y los placeholders rag_context y user_prompt",
+        ".env.example gana al final DISCORD_TOKEN, DISCORD_GUILD_ID, DISCORD_CHANNEL_IDS, XAI_API_KEY y XAI_MODEL sin tocar las claves de arriba"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que escribir código o una dependencia",
+        "Hay que editar una clave LLM ya presente"
+      ],
+      "notes": "Ponytail. Solo sanctum-agents/discord.md y el bloque final de .env.example. No borres ni reordenes las líneas que ya existen. El markdown, exacto, es: frontmatter id discord, name Discord, avatar emoji de diálogo, model grok-4.7, description que dice que responde en el canal con el tramo reciente, tools lista vacía, permissions.read_paths ['/Discord-logs/**'], write_paths []. El cuerpo dice que responde en el idioma de la pregunta, en menos de 1800 caracteres, solo con el tramo, sin inventar notas del vault, y que el tramo es {{rag_context}} y la pregunta {{user_prompt}}. .env.example termina, tras una línea en blanco, con comentarios cortos: proceso npm run discord; Grok si hay XAI_API_KEY si no OPENCODE_GO_*; Grok Bot no tiene conector Discord y el vault se ofrece con node mcp-server/dist/index.cjs. Variables vacías salvo XAI_MODEL=grok-4.7: DISCORD_TOKEN, DISCORD_GUILD_ID, DISCORD_CHANNEL_IDS, XAI_API_KEY, XAI_MODEL. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
+      "verification": {
+        "planned": ["node -e \"const fs=require('fs'); const a=fs.readFileSync('sanctum-agents/discord.md','utf8'); const e=fs.readFileSync('.env.example','utf8'); if(!a.includes('{{rag_context}}')||!a.includes('{{user_prompt}}')||!a.includes('/Discord-logs/**')) process.exit(1); for (const k of ['DISCORD_TOKEN','DISCORD_GUILD_ID','DISCORD_CHANNEL_IDS','XAI_API_KEY','XAI_MODEL']) if(!e.includes(k)) process.exit(1);\""],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-029",
+      "title": "Proceso del bot de Discord",
+      "owner_role": "worker",
+      "status": "blocked",
+      "deps": ["T-026", "T-027", "T-028"],
+      "seams": ["S-discord-bot"],
+      "decisions": ["DEC-0019"],
+      "max_review_loops": 2,
+      "done_when": [
+        "npm run discord existe y discord.js está solo como dependencia de ese proceso",
+        "sin token, sin guild o sin DISCORD_CHANNEL_IDS el proceso sale",
+        "un mensaje de canal permitido se anexa a Discord-logs/{id}.md y solo se responde con mención o !sanctum",
+        "la respuesta usa buildDiscordChatWire y fetch, no opencodeChat",
+        "src/main.ts, mcp-server/index.ts y esbuild.config.mjs no importan discord.js"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que editar el cable de chat, el plugin o el entry del MCP",
+        "Hace falta un segundo paquete además de discord.js"
+      ],
+      "notes": "Ponytail. Archivos: discord-bot/index.ts, package.json (script discord = tsx discord-bot/index.ts, dependencia discord.js ^14.26.4, nada más), y en tsconfig.json include añade discord-bot/**/*.ts. Cita // DEC-0019: Discord conversa; Grok solo si hay XAI_API_KEY. dotenv/config. Intents Guilds, GuildMessages, MessageContent. Sale con código 1 si faltan DISCORD_TOKEN, DISCORD_GUILD_ID o si DISCORD_CHANNEL_IDS queda vacío tras partir por coma. Vault: SANCTUM_VAULT_PATH o ./notes. Al ready, por cada canal de la lista, si la nota no tiene líneas, GET buildDiscordHistory limit 50, invierte el orden (Discord manda lo nuevo primero), quédate con mensajes de humanos con texto, mergeLines, escribe, no contestes. En messageCreate ignora bots, otro guild y canales fuera de la lista. Serializa la escritura por channelId con una cadena de promesas. Guarda con mergeLines. Si shouldAnswer, lee sanctum-agents/discord.md con loadAgentFromVault sobre un adapter de fs del vault, renderSystemPrompt(agent, formatTail(tailLines(lines, 40)), questionText). POST buildDiscordChatWire + fetch + parseOpenAiWire. No llames opencodeChat. Respuesta slice 1900 vía buildDiscordSend. Si falla: content exacto 'No pude responder.' y el error en stderr, sin pegar el cuerpo HTTP. No abras otro Client para enviar. No edites esbuild ni los entries. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md. No llames a Discord ni a xAI.",
+      "verification": {
+        "planned": ["npx tsc --noEmit --pretty false"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     }
   ]
 }

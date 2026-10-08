@@ -28,3 +28,15 @@ status: ready
 - constraints: Ponytail. Un seam por hoja. Sin dependencias. Suite completa la corre el planner después del merge.
 - open_questions: ninguna
 - assumption: La rama sale de `cursor/sanctum-refactor-9918` (`b4aa0f5`), que es el producto actual. `origin/main` no tiene el router ni la poda.
+
+## Discord y Grok
+
+status: ready
+
+- rationale: El bot de Sanctum v1 no servía en este vault. El humano pidió esa pieza mejor y un gancho con Grok Bot.
+- goal: Un proceso de Discord que conversa sobre una nota Markdown del canal y, si hay `XAI_API_KEY`, habla con Grok por el cable OpenAI. El vault sigue ofreciéndose a Grok Bot por el MCP stdio que ya existe.
+- scope_in: DEC-0019.
+- scope_out: Conector oficial de Grok Bot (no hay uno de Discord), MCP remoto, RAG por mensaje, cambios de UI, llamadas vivas a xAI o a Discord.
+- constraints: Ponytail. `discord.js` solo en el proceso del bot. Suite completa después del merge de T-029.
+- open_questions: ninguna
+- risks: Sin `Message Content Intent` el gateway no entrega el texto. El token vive en el entorno del proceso, no en el vault.

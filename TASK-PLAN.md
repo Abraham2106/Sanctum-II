@@ -36,3 +36,12 @@ Paralelo ahora: T-011, T-012, T-013, T-014, T-015, T-016. No comparten archivos.
 - T-019: el MCP recorre las claves Gemini (S-mcp-keys, DEC-0011) — ready.
 
 Las tres no comparten archivos. La suite completa corre en la rama después del merge.
+
+## Discord (DEC-0019)
+
+- T-026: nota de canal (S-discord-log) — ready.
+- T-027: destino Grok y REST de Discord (S-discord-api) — ready.
+- T-028: agente y variables (S-discord-agent) — ready.
+- T-029: proceso del bot (S-discord-bot) — blocked hasta que las tres anteriores estén done.
+
+T-026, T-027 y T-028 no comparten archivos. T-029 espera al merge.

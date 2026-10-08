@@ -5,7 +5,7 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | id | path | owns | must not own | status |
 |---|---|---|---|---|
 | S-orch | orchestration/ y docs de gobierno | tareas, evidencia, handoffs | código de dominio | accepted |
-| S-llm | `src/llm/**`, `src/constants.ts`, `src/core/env-loader.ts`, `src/main.ts` (solo construcción del cliente), `src/ui/settings-tab.ts`, `.env.example`, `mcp-server/src/llm/opencode-chat.ts` | cable de chat y ajustes del proveedor | orquestador, tools MCP, `mcp-server/index.ts`, embeddings | accepted |
+| S-llm | `src/llm/**`, `src/constants.ts`, `src/core/env-loader.ts`, `src/main.ts` (solo construcción del cliente), `src/ui/settings-tab.ts`, `.env.example` (claves LLM), `mcp-server/src/llm/opencode-chat.ts` | cable de chat y ajustes del proveedor | orquestador, tools MCP, `mcp-server/index.ts`, embeddings, bloque Discord/XAI de `.env.example` | accepted |
 | S-embed | `src/embeddings/**`, `mcp-server/src/embeddings/gemini-embed.ts` | contrato y cuerpos de embedding | indexador, query-vault, `mcp-server/index.ts` | accepted |
 | S-defaults | `src/observability/tracer.ts`, `mcp-server/src/observability/trace-writer.ts`, `mcp-server/src/tools/query-vault.ts`, `src/projects/store.ts`, `src/projects/types.ts`, `src/skills/authoring/mesh.ts`, `src/core/tests.ts` | literales duplicados de RAG, chunk default y trazas | `src/constants.ts`, `src/llm/**`, indexador | accepted |
 | S-index | `src/projects/indexer.ts`, `src/projects/indexer.test.ts` | tamaño de chunk del proyecto | el default en `types.ts` | accepted |
@@ -29,3 +29,7 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-note-ref | `src/orchestrator/note-resolver.ts`, `src/orchestrator/note-resolver.test.ts` | el match de título de DEC-0016 | RAG 0.05, `chat-orchestrator.ts`, `permissions.test.ts` | accepted |
 | S-modify-name | `src/app/chat-orchestrator.ts` (solo `modify_note`), `src/note-flow.test.ts` | el uso de `noteName` de DEC-0017 | `create_note`, el resolver, otras vistas | accepted |
 | S-detach-file | `src/projects/detach-file.ts`, `src/projects/detach-file.test.ts`, el onclick de quitar en `src/ui/projects-view.ts` | DEC-0018 | dropzone, CSS, borrar el archivo del vault | accepted |
+| S-discord-log | `src/discord/channel-log.ts`, `src/discord/channel-log.test.ts` | nota de canal, merge, cuándo contestar | red, discord.js, el proceso del bot | accepted |
+| S-discord-api | `src/discord/discord-api.ts`, `src/discord/discord-api.test.ts` | destino Grok/OpenCode y cuerpos REST, sin red | `chat-wire.ts`, gateway, `.env.example` | accepted |
+| S-discord-agent | `sanctum-agents/discord.md`, el bloque Discord/XAI al final de `.env.example` | el prompt del canal y las variables | claves LLM ya existentes, código | accepted |
+| S-discord-bot | `discord-bot/index.ts`, `package.json` (script `discord` y dependencia `discord.js`), la línea `discord-bot` de `tsconfig.json` | gateway, allowlist, un fetch de historia, respuesta | esbuild, `src/main.ts`, `mcp-server/index.ts`, `chat-wire.ts` | accepted |
