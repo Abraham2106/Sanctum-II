@@ -60,6 +60,14 @@ No hubo un artículo externo que cambiara el diseño. Cada decisión salió de l
 2. Si `ChainStore.delete` llega a tener un botón, borrar con `adapter.remove`.
 3. Revisar los 7 avisos de `npm audit` a mano, sin `audit fix --force`.
 
+## Discord (DEC-0019)
+
+El bot de Sanctum v1 no servía en este vault: logs JSON, `!resumen`, sync de todo el servidor y un cliente nuevo por envío. El proceso nuevo escribe `Discord-logs/{channelId}.md`, escucha solo los canales de `DISCORD_CHANNEL_IDS`, y contesta si lo mencionan o el mensaje empieza por `!sanctum`. Al arrancar, si la nota está vacía, baja 50 mensajes y no responde. La respuesta entra en la misma nota.
+
+Grok entra por el cable OpenAI que ya existía. `XAI_API_KEY` fija la base `https://api.x.ai/v1` y el modelo `grok-4.7` (o `XAI_MODEL`). Grok Bot, el producto de xAI, publica Slack y no Discord. El vault llega a ese producto con el MCP stdio de siempre, no con un servidor nuevo.
+
+`npm run verify` a las 20:01Z: typecheck 0, 21 archivos, 201 tests, build ok, smoke MCP 18/18. Sin token el proceso sale con código 1. No se llamó a Discord ni a xAI. Hace falta el Message Content Intent en el portal de Discord. El token queda en el entorno del proceso.
+
 ## Cómo revertir
 
 La rama es `self-improve/2026-10-08`. No se hizo push a `main`. Para quitar la sesión, no merges esta rama. El padre es `b4aa0f5` en `cursor/sanctum-refactor-9918`.

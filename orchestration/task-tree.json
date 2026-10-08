@@ -958,7 +958,7 @@
       "id": "T-029",
       "title": "Proceso del bot de Discord",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [
         "T-026",
         "T-027",

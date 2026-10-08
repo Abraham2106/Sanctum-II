@@ -81,3 +81,12 @@ El humano pidió seguir a las 2026-10-08T17:21:51Z. Línea de esta tanda: 179 te
 - T-024 merge `b4e0eda`. `modify_note` resuelve primero `noteName`. `"modifica la nota"` con `noteName: "QML Research"` actualiza `QML.md`, no la nota titulada `"nota"`. Si el nombre no está, vuelve al mensaje.
 - T-025 merge `c94a72e`. Quitar un adjunto ya no hace `write("")`. Sale de `attachedFiles` y de `files` aunque el archivo no exista.
 - `npm run verify` 17:24Z: typecheck 0, 19 archivos, 182 passed (esta tanda partió de 179), build ok, mcp:smoke 18/18.
+
+### C6 — Discord y Grok
+
+El humano pidió un bot mejor que el de Sanctum v1 y un gancho con Grok Bot. DEC-0019. T-026, T-027 y T-028 en paralelo; T-029 después. `discord.js` 14.27.0 (Apache-2.0) solo en `discord-bot/index.ts`.
+
+- La nota del canal es Markdown. `!sync` no se guarda. `!sanctum` y una mención sí contestan.
+- Con `XAI_API_KEY` el POST es `https://api.x.ai/v1/chat/completions`, modelo `grok-4.7`. Sin esa clave, `OPENCODE_GO_*`.
+- Grok Bot oficial no tiene conector Discord. El vault se le ofrece con el MCP que ya existe: `node mcp-server/dist/index.cjs`.
+- `npm run verify` 20:01Z: typecheck 0, 21 archivos, 201 passed, build ok, mcp:smoke 18/18. Sin token el proceso sale 1. No hubo llamada viva a Discord ni a xAI.
