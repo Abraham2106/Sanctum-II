@@ -18,6 +18,11 @@ Rollback: revertir solo commits de la hoja; conservar worktrees, evidencia y cam
 - T-003: Un solo dueño de los literales RAG y de trazas — ready (S-defaults, DEC-0003).
 - T-004: El indexador usa `chunk_words` — ready (S-index, DEC-0006).
 - T-005: La cadena reenvía `pathFilter` — ready (S-chain, DEC-0006).
-- T-006: Typecheck y vitest una vez — espera a T-001..T-005 (S-verify).
+- T-001..T-005: hechas y mergeadas.
+- T-007: Borrar exports muertos de `constants.ts` — ready (S-prune-const, DEC-0007).
+- T-008: Borrar `chain-inspector.ts` — ready (S-prune-ui, DEC-0007).
+- T-009: Borrar cuatro símbolos sin uso — ready (S-prune-symbols, DEC-0007).
+- T-010: Barrido de orquestador y core — ready (S-prune-scan, DEC-0007).
+- T-006: Typecheck y vitest una vez — espera a la poda.
 
-Paralelo ahora: T-001, T-002, T-003, T-004, T-005. No comparten archivos.
+Paralelo ahora: T-007, T-008, T-009, T-010. No comparten archivos.

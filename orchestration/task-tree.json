@@ -41,7 +41,7 @@
       "id": "T-001",
       "title": "Router de chat de dos cables",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-llm"
@@ -76,7 +76,7 @@
       "id": "T-002",
       "title": "Contrato de embedding compartido",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-embed"
@@ -109,7 +109,7 @@
       "id": "T-003",
       "title": "Literales RAG y trazas con un dueño",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-defaults"
@@ -142,7 +142,7 @@
       "id": "T-004",
       "title": "Indexador usa chunk_words del proyecto",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-index"
@@ -174,7 +174,7 @@
       "id": "T-005",
       "title": "La cadena reenvía pathFilter",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-chain"
@@ -203,16 +203,133 @@
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
     {
+      "id": "T-007",
+      "title": "Borrar exports muertos de constants",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-prune-const"
+      ],
+      "decisions": [
+        "DEC-0007"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "KG_DIR, MESH_THRESHOLDS, INDEX_DIR_BASE, MEMORY_DIR_BASE y THREADS_DIR_BASE ya no están si siguen sin llamadores"
+      ],
+      "stop_when": [
+        "Un símbolo de la lista tiene un uso",
+        "Hay que tocar otro archivo"
+      ],
+      "notes": "Ponytail. Solo src/constants.ts. Rebusca cada nombre. Si aparece un uso, no lo borres. No reemplaces literales. No corras tests. Cita DEC-0007.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-008",
+      "title": "Borrar chain-inspector.ts",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-prune-ui"
+      ],
+      "decisions": [
+        "DEC-0007"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "src/ui/chain-inspector.ts no existe y nadie lo importaba"
+      ],
+      "stop_when": [
+        "Algún archivo importa chain-inspector"
+      ],
+      "notes": "Ponytail. Borra solo ese archivo. No edites el resto de src/ui. No corras tests.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-009",
+      "title": "Borrar cuatro símbolos sin uso",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-prune-symbols"
+      ],
+      "decisions": [
+        "DEC-0007"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "shouldRegenerate y su import huérfano no están",
+        "DEFAULT_KG_OPTIONS no está",
+        "AgentAuthoringOptions no está",
+        "previousOutput no está en executeChain"
+      ],
+      "stop_when": [
+        "Un símbolo tiene un llamador",
+        "Hace falta borrar AgentAuthoringLLM todavía usado"
+      ],
+      "notes": "Ponytail. Archivos: src/shared/mesh/core.ts, src/kg/types.ts, src/agents/authoring/types.ts, src/chains/executor.ts. Rebusca. Quita imports que queden sin uso. No toques executeTurn ni MESH_DEFAULTS ni la interfaz KgOptions. No corras tests.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-010",
+      "title": "Barrido de orquestador y core",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-prune-scan"
+      ],
+      "decisions": [
+        "DEC-0007"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "Cada borrado de este seam tiene cero referencias fuera de su definición, anotado en el handoff"
+      ],
+      "stop_when": [
+        "La duda no se resuelve con una búsqueda",
+        "El cambio altera una firma que alguien llama"
+      ],
+      "notes": "Ponytail. Directorios: src/orchestrator, y los archivos src/core/commands.ts, note-writer.ts, vault-fs.ts, vault-adapter.ts. Borra solo funciones, constantes o imports sin ningún uso en el worktree. Si no hay nada, no inventes un diff: dilo en HANDOFF y no hagas commit de código. No edites tests.ts ni env-loader.ts. No corras tests.",
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
       "id": "T-006",
       "title": "Typecheck y vitest al cierre",
       "owner_role": "worker",
       "status": "draft",
       "deps": [
-        "T-001",
-        "T-002",
-        "T-003",
-        "T-004",
-        "T-005"
+        "T-007",
+        "T-008",
+        "T-009",
+        "T-010"
       ],
       "seams": [
         "S-verify"
@@ -229,7 +346,7 @@
         "El arreglo exige un diseño nuevo",
         "Hay que cambiar comportamiento de producto para que el test pase"
       ],
-      "notes": "Solo después del merge de las cinco hojas. Arregla roturas mecánicas del refactor. No añadas features.",
+      "notes": "Solo después del merge de la poda. Arregla roturas mecánicas. No añadas features.",
       "verification": {
         "planned": [
           "npm run typecheck",
