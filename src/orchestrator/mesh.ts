@@ -10,16 +10,13 @@ import type { ProjectContext } from "../projects/context";
 import type { Skill } from "../skills/types";
 import { BUILTIN_AGENTS } from "../constants";
 
-// ── Shared module types and functions (imported for local use, re-exported for consumers) ──
 import { MESH_DEFAULTS } from "../shared/mesh/types";
-import type { CriteriaScore, CriticEvaluation, AttemptRecord, HistoryEntry, LoopState, OrchestratorAction, OrchestratorDecision } from "../shared/mesh/types";
-export type { CriteriaScore, CriticEvaluation, AttemptRecord, HistoryEntry, LoopState, OrchestratorAction, OrchestratorDecision } from "../shared/mesh/types";
+import type { CriticEvaluation, AttemptRecord, LoopState } from "../shared/mesh/types";
 
 import { parseCriticJSON, parseOrchestratorDecision } from "../shared/mesh/parse";
-export { parseCriticJSON, parseOrchestratorDecision } from "../shared/mesh/parse";
+export { parseCriticJSON } from "../shared/mesh/parse";
 
 import { buildResearcherInput, buildCriticInput, buildOrchestratorInput, pickBestAttempt, buildAttemptHistory } from "../shared/mesh/core";
-export { buildResearcherInput, buildCriticInput, buildOrchestratorInput, pickBestAttempt, buildAttemptHistory } from "../shared/mesh/core";
 
 import type { MeshResultFull } from "./mesh-types";
 export type { MeshResultFull } from "./mesh-types";
