@@ -791,6 +791,70 @@
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-024",
+      "title": "modify_note usa noteName",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-modify-name"
+      ],
+      "decisions": [
+        "DEC-0017"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "mensaje 'modifica la nota' con noteName 'QML Research' actualiza QML.md y no nota.md",
+        "noteName 'ausente' cae al mensaje y sigue encontrando QML Research",
+        "un modify_note sin noteName sigue como hoy"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que partir chat-orchestrator o tocar el resolver",
+        "Hace falta una dependencia"
+      ],
+      "notes": "Ponytail. Solo el bloque modify_note de src/app/chat-orchestrator.ts y casos nuevos en src/note-flow.test.ts. Cita DEC-0017. Si noteName es string no vacío, resuelve con ese texto. Si el método es not_found, resuelve otra vez con el mensaje. No cambies create_note. No partas el archivo. No corras la suite entera. Un commit.",
+      "verification": {
+        "planned": [
+          "npx vitest run src/note-flow.test.ts"
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-025",
+      "title": "Quitar adjunto no vacía la nota",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-detach-file"
+      ],
+      "decisions": [
+        "DEC-0018"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "detachAttachedFile saca el path de attachedFiles y de files y no muta el resto",
+        "el onclick de quitar ya no llama a adapter.write",
+        "se puede quitar aunque el archivo no exista"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que borrar el archivo del vault, partir projects-view o tocar CSS",
+        "Hace falta una dependencia"
+      ],
+      "notes": "Ponytail. Crea src/projects/detach-file.ts y su test. En src/ui/projects-view.ts borra el write('') del botón quitar y el exists que lo precede. Cita DEC-0018. No partas la vista. No cambies el confirm ni el dropzone. No corras la suite entera. Un commit.",
+      "verification": {
+        "planned": [
+          "npx vitest run src/projects/detach-file.test.ts"
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     }
   ]
 }

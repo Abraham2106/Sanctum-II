@@ -27,3 +27,5 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-chain-critic | `src/chains/critic-decision.ts`, `src/chains/critic-decision.test.ts`, `src/ui/chain-view.ts` | la decisión del bucle de DEC-0014 | modal, DOM, CSS, umbral, intentos | accepted |
 | S-cosine | `src/rag/vector-store.ts` (`cosineSimilarity`), `src/rag/cosine.test.ts` | largos distintos de DEC-0015 | `search` ranking, umbral, formato jsonl, `permissions.test.ts` | accepted |
 | S-note-ref | `src/orchestrator/note-resolver.ts`, `src/orchestrator/note-resolver.test.ts` | el match de título de DEC-0016 | RAG 0.05, `chat-orchestrator.ts`, `permissions.test.ts` | accepted |
+| S-modify-name | `src/app/chat-orchestrator.ts` (solo `modify_note`), `src/note-flow.test.ts` | el uso de `noteName` de DEC-0017 | `create_note`, el resolver, otras vistas | accepted |
+| S-detach-file | `src/projects/detach-file.ts`, `src/projects/detach-file.test.ts`, el onclick de quitar en `src/ui/projects-view.ts` | DEC-0018 | dropzone, CSS, borrar el archivo del vault | accepted |

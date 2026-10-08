@@ -72,6 +72,11 @@ Verificación 10:10Z: typecheck 0, 16 archivos, 171 passed.
 - T-019: dos spawn murieron con `resource_exhausted` sin editar. El tercero implementó la rotación. Merge. 429 pasa a la siguiente clave; 500 no; 404 pasa de modelo. Fetch de prueba, sin red.
 - `npm run verify` 10:17Z: typecheck 0, 18 archivos, 179 passed (antes 138), build ok, mcp:smoke 18/18.
 
-## Parada
+## Continuación
 
-10:20Z, unos 32 minutos después del inicio. La suite está en verde y lo que queda es de poco valor o no se puede probar sin la UI de Obsidian: `ChainStore.delete` no tiene llamadores; `decision.noteName` no se pasa al resolver; el modal de la cadena sigue mostrando el score crudo; `npm audit` no se aplicó a ciegas. No hubo tres ciclos vacíos. No se llegó a las 4 h 45 min.
+El humano pidió seguir a las 2026-10-08T17:21:51Z. Línea de esta tanda: 179 tests en verde.
+
+### C5 — en curso
+
+- T-024: `modify_note` lee `decision.noteName` y no lo pasa. Con el mensaje `"modifica la nota"` y una nota titulada `"nota"`, esa gana aunque el JSON diga `noteName: "QML Research"`.
+- T-025: el botón "Quitar del proyecto" hace `adapter.write(path, "")` y vacía la nota. Si el archivo ya no existe, el `exists` impide quitarlo de la lista.

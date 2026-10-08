@@ -20,5 +20,7 @@ Fuente compacta para inyectar en workers. Detalle en `DEC-*.md`.
 | DEC-0014 | la cadena no acepta un crítico sin score ni accept explícito | accepted |
 | DEC-0015 | coseno con largos distintos o no finitos vale 0 | accepted |
 | DEC-0016 | un título de menos de 3 letras no secuestra la nota | accepted |
+| DEC-0017 | modify_note resuelve primero decision.noteName | accepted |
+| DEC-0018 | quitar un adjunto no escribe el archivo | accepted |
 
 Si dos planners contradicen una fila, no se mergea código. Se abre reconciliación de docs y se incrementa el id. No se agregan sufijos al id. Decisiones de producto empiezan en DEC-0003.
