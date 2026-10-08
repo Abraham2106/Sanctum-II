@@ -365,6 +365,78 @@ describe("Integration — modify_note (leer → regenerar → sobrescribir)", ()
     expect(response.content).toContain("Permiso denegado");
     expect(mockNoteWriter.update).not.toHaveBeenCalled();
   });
+
+  it("DEC-0017: noteName explícito resuelve la nota correcta aunque el mensaje sea genérico", async () => {
+    mockProjectStore.loadThreadData.mockResolvedValue({
+      thread: { thread_id: "test", project_id: "test-proj", title: "Test", created_at: 0, updated_at: 0, starred: false },
+      messages: [],
+      pendingAction: undefined,
+      createdNotes: [
+        { path: "Projects/test-proj/nota.md", title: "nota", created_at: Date.now() },
+        { path: "Projects/test-proj/QML.md", title: "QML Research", created_at: Date.now() },
+      ],
+    });
+    mockAdapter.read.mockImplementation((path: string) => {
+      if (path === "sanctum-agents/orchestrator.md") {
+        return Promise.resolve(`---\nid: orchestrator\ninternal: true\n---\nEres el orquestador.\n{{user_prompt}}`);
+      }
+      if (path === "Projects/test-proj/QML.md") {
+        return Promise.resolve("# QML Research\n\n## Teoría\n\ncontenido existente\n\n## Desafíos\n\npendientes");
+      }
+      return Promise.reject(new Error("not found"));
+    });
+    mockAdapter.exists.mockResolvedValue(true);
+    mockNoteWriter.update.mockResolvedValue({ success: true, message: "Nota actualizada", path: "Projects/test-proj/QML.md" });
+
+    mockOpenCodeClient.chat.mockResolvedValue({
+      content: JSON.stringify({ mode: "implicit", action: "modify_note", reason: "test", noteName: "QML Research" }),
+      usage: { prompt: 5, completion: 5 },
+    });
+
+    const svc = makeServices();
+    const orch = new ChatOrchestrator(svc);
+    const response = await orch.handleMessage("modifica la nota");
+
+    expect(mockNoteWriter.update).toHaveBeenCalled();
+    const updateCall = mockNoteWriter.update.mock.calls[0];
+    expect(updateCall[0]).toBe("Projects/test-proj/QML.md");
+    expect(updateCall[0]).not.toBe("Projects/test-proj/nota.md");
+    expect(response.content).toContain("Nota actualizada");
+  });
+
+  it("DEC-0017: noteName no encontrado cae al mensaje del usuario", async () => {
+    mockProjectStore.loadThreadData.mockResolvedValue({
+      thread: { thread_id: "test", project_id: "test-proj", title: "Test", created_at: 0, updated_at: 0, starred: false },
+      messages: [],
+      pendingAction: undefined,
+      createdNotes: [{ path: "Projects/test-proj/QML.md", title: "QML Research", created_at: Date.now() }],
+    });
+    mockAdapter.read.mockImplementation((path: string) => {
+      if (path === "sanctum-agents/orchestrator.md") {
+        return Promise.resolve(`---\nid: orchestrator\ninternal: true\n---\nEres el orquestador.\n{{user_prompt}}`);
+      }
+      if (path === "Projects/test-proj/QML.md") {
+        return Promise.resolve("# QML Research\n\n## Teoría\n\ncontenido existente\n\n## Desafíos\n\npendientes");
+      }
+      return Promise.reject(new Error("not found"));
+    });
+    mockAdapter.exists.mockResolvedValue(true);
+    mockNoteWriter.update.mockResolvedValue({ success: true, message: "Nota actualizada", path: "Projects/test-proj/QML.md" });
+
+    mockOpenCodeClient.chat.mockResolvedValue({
+      content: JSON.stringify({ mode: "implicit", action: "modify_note", reason: "test", noteName: "ausente" }),
+      usage: { prompt: 5, completion: 5 },
+    });
+
+    const svc = makeServices();
+    const orch = new ChatOrchestrator(svc);
+    const response = await orch.handleMessage("en la nota QML Research que creaste, profundizá");
+
+    expect(mockNoteWriter.update).toHaveBeenCalled();
+    const updateCall = mockNoteWriter.update.mock.calls[0];
+    expect(updateCall[0]).toBe("Projects/test-proj/QML.md");
+    expect(response.content).toContain("Nota actualizada");
+  });
 });
 
 // ============================================================
