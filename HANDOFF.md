@@ -21,6 +21,8 @@ stop_when:
 - Hay que editar chat-orchestrator, agent-turn, services o las tools MCP
 verification:
   planned: ["No correr vitest, tsc ni npm. Dejar src/llm/chat-wire.test.ts en el árbol."]
-  run: []
+  run:
+    - "Seam-only diff: chat-wire.ts (+ DEC-0004/ponytail header), chat-wire.test.ts, opencode-client.ts, constants.ts, env-loader.ts, main.ts (client opts), settings-tab.ts, .env.example, mcp-server/src/llm/opencode-chat.ts"
+    - "vitest/tsc/npm no ejecutados (per HANDOFF planned)"
 goldens_exposed: false
 alarms: []
