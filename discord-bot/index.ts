@@ -66,8 +66,15 @@ async function readNote(
   try {
     const md = await fs.readFile(p, "utf8");
     return parseChannelNote(md);
-  } catch {
-    return { channelName: defaultName, lines: [] };
+  } catch (err: unknown) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? (err as { code: unknown }).code
+        : undefined;
+    if (code === "ENOENT") {
+      return { channelName: defaultName, lines: [] };
+    }
+    throw err;
   }
 }
 
@@ -157,7 +164,7 @@ client.once("ready", async () => {
       if (!Array.isArray(raw)) return;
 
       type HistRow = {
-        id: string;
+        id?: unknown;
         timestamp: string;
         author?: { bot?: boolean; username?: string };
         content?: string;
@@ -167,12 +174,13 @@ client.once("ready", async () => {
         .reverse()
         .filter(
           (m) =>
+            typeof m.id === "string" &&
             m.author?.bot !== true &&
             typeof m.content === "string" &&
             m.content.trim().length > 0,
         )
         .map((m) => ({
-          id: m.id,
+          id: m.id as string,
           at: m.timestamp,
           author: m.author?.username ?? "user",
           content: m.content!,
@@ -217,7 +225,9 @@ client.on("messageCreate", async (message) => {
     if (
       !shouldAnswer({
         content: message.content,
-        mentionsBot: message.mentions.has(client.user!),
+        mentionsBot: client.user
+          ? message.mentions.has(client.user)
+          : false,
       })
     ) {
       return;
