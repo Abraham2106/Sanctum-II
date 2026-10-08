@@ -12,23 +12,43 @@
       "owner_role": "planner",
       "status": "done",
       "deps": [],
-      "seams": ["S-orch"],
-      "decisions": ["DEC-0001", "DEC-0003", "DEC-0004", "DEC-0005", "DEC-0006"],
+      "seams": [
+        "S-orch"
+      ],
+      "decisions": [
+        "DEC-0001",
+        "DEC-0003",
+        "DEC-0004",
+        "DEC-0005",
+        "DEC-0006"
+      ],
       "max_review_loops": 2,
-      "done_when": ["REQ-0001 sin UNANSWERED y preflight exit 0"],
-      "stop_when": ["Hecho de producto ausente", "Decisión sin DEC"],
+      "done_when": [
+        "REQ-0001 sin UNANSWERED y preflight exit 0"
+      ],
+      "stop_when": [
+        "Hecho de producto ausente",
+        "Decisión sin DEC"
+      ],
       "notes": "Cerrado por el planner el 2026-10-08.",
-      "verification": { "planned": [], "run": [] },
+      "verification": {
+        "planned": [],
+        "run": []
+      },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
     {
       "id": "T-001",
       "title": "Router de chat de dos cables",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
-      "seams": ["S-llm"],
-      "decisions": ["DEC-0004"],
+      "seams": [
+        "S-llm"
+      ],
+      "decisions": [
+        "DEC-0004"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "src/llm/chat-wire.ts arma y parsea openai y anthropic sin red y sin dependencias",
@@ -45,7 +65,9 @@
       ],
       "notes": "Ponytail. El diff más corto. No corras vitest ni npm. Cita DEC-0004 y el comentario ponytail del techo de Cursor en chat-wire.ts. Transporte del plugin: requestUrl. Transporte MCP: fetch. No añadas /v1 a la base OpenAI. max_tokens Anthropic = 4096. Modelo vacío usa DEFAULT_MODEL; no cambies deepseek-v4-flash por un Claude en silencio. configured es true solo si el cable activo tiene clave.",
       "verification": {
-        "planned": ["No correr vitest, tsc ni npm. Dejar src/llm/chat-wire.test.ts en el árbol."],
+        "planned": [
+          "No correr vitest, tsc ni npm. Dejar src/llm/chat-wire.test.ts en el árbol."
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -54,10 +76,14 @@
       "id": "T-002",
       "title": "Contrato de embedding compartido",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
-      "seams": ["S-embed"],
-      "decisions": ["DEC-0005"],
+      "seams": [
+        "S-embed"
+      ],
+      "decisions": [
+        "DEC-0005"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "src/embeddings/embed-contract.ts es el único sitio de modelos, 768, corte 3000 y cuerpo JSON",
@@ -71,17 +97,26 @@
         "Cambio de rotación de claves o de la primera clave del MCP"
       ],
       "notes": "Ponytail. No unifiques requestUrl y fetch. No edites indexer, query-vault ni mcp-server/index.ts. No corras tests.",
-      "verification": { "planned": ["No correr vitest, tsc ni npm."], "run": [] },
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
     {
       "id": "T-003",
       "title": "Literales RAG y trazas con un dueño",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
-      "seams": ["S-defaults"],
-      "decisions": ["DEC-0003"],
+      "seams": [
+        "S-defaults"
+      ],
+      "decisions": [
+        "DEC-0003"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "tracer.ts y trace-writer.ts usan TRACES_DIR de src/constants.ts",
@@ -95,17 +130,26 @@
         "Editar indexer.ts"
       ],
       "notes": "Ponytail. Importa lo que ya existe. No muevas ni borres exports de constants.ts (otra hoja es dueña de ese archivo). No corras tests. Cita DEC-0003 en el import que sustituye un literal.",
-      "verification": { "planned": ["No correr vitest, tsc ni npm."], "run": [] },
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
     {
       "id": "T-004",
       "title": "Indexador usa chunk_words del proyecto",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
-      "seams": ["S-index"],
-      "decisions": ["DEC-0006"],
+      "seams": [
+        "S-index"
+      ],
+      "decisions": [
+        "DEC-0006"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "chunkText usa project.rag.chunk_words",
@@ -118,17 +162,26 @@
         "Editar projects/types.ts"
       ],
       "notes": "Ponytail. No corras vitest. El test queda escrito para T-006. Cita DEC-0006.",
-      "verification": { "planned": ["No correr vitest, tsc ni npm. Dejar el test nuevo en indexer.test.ts."], "run": [] },
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm. Dejar el test nuevo en indexer.test.ts."
+        ],
+        "run": []
+      },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
     {
       "id": "T-005",
       "title": "La cadena reenvía pathFilter",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
-      "seams": ["S-chain"],
-      "decisions": ["DEC-0006"],
+      "seams": [
+        "S-chain"
+      ],
+      "decisions": [
+        "DEC-0006"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "executeChain acepta pathFilter opcional y lo pasa como cuarto argumento de executeTurn",
@@ -141,7 +194,12 @@
         "Seam extra"
       ],
       "notes": "Ponytail. Dos archivos. No corras tests. Cita DEC-0006 en executeChain.",
-      "verification": { "planned": ["No correr vitest, tsc ni npm."], "run": [] },
+      "verification": {
+        "planned": [
+          "No correr vitest, tsc ni npm."
+        ],
+        "run": []
+      },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
     {
@@ -149,9 +207,19 @@
       "title": "Typecheck y vitest al cierre",
       "owner_role": "worker",
       "status": "draft",
-      "deps": ["T-001", "T-002", "T-003", "T-004", "T-005"],
-      "seams": ["S-verify"],
-      "decisions": ["DEC-0003"],
+      "deps": [
+        "T-001",
+        "T-002",
+        "T-003",
+        "T-004",
+        "T-005"
+      ],
+      "seams": [
+        "S-verify"
+      ],
+      "decisions": [
+        "DEC-0003"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "npm run typecheck sale 0",
@@ -163,7 +231,10 @@
       ],
       "notes": "Solo después del merge de las cinco hojas. Arregla roturas mecánicas del refactor. No añadas features.",
       "verification": {
-        "planned": ["npm run typecheck", "npm test"],
+        "planned": [
+          "npm run typecheck",
+          "npm test"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
