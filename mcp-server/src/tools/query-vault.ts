@@ -33,6 +33,7 @@ export function createQueryVaultTool(
       },
       required: ["agent_id", "query"],
     },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     async handler(args) {
       const agentId = String(args.agent_id ?? "").trim()
       if (!agentId) throw new Error("'agent_id' es obligatorio")
