@@ -3,7 +3,10 @@ import { log } from "./logger.js"
 import type { JsonRpcRequest, JsonRpcResponse, ToolDef } from "./types.js"
 
 // DEC-0020: Grok Bot usa el MCP por POST /mcp
+// DEC-0021: el MCP anuncia el uso y lista notas
 const SUPPORTED_PROTOCOL_VERSIONS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"])
+const INITIALIZE_INSTRUCTIONS =
+  "Sanctum es un vault local de notas Markdown. Para verlo: sanctum_list_notes, sanctum_get_note y sanctum_query_vault. La búsqueda exige índice y GEMINI_API_KEYS. sanctum_list_agents enumera agentes. sanctum_invoke_agent y sanctum_run_mesh no leen el vault: pasan context a {{rag_context}} y gastan OPENCODE_GO_API_KEY."
 const DEFAULT_PROTOCOL_VERSION = "2025-03-26"
 
 class RpcError extends Error {
@@ -107,6 +110,7 @@ export class McpServer {
           protocolVersion,
           capabilities: { tools: { listChanged: false } },
           serverInfo: this.info,
+          instructions: INITIALIZE_INSTRUCTIONS,
         }
       }
       case "notifications/initialized":
@@ -115,11 +119,15 @@ export class McpServer {
         return {}
       case "tools/list":
         return {
-          tools: [...this.tools.values()].map((t) => ({
-            name: t.name,
-            description: t.description,
-            inputSchema: t.inputSchema,
-          })),
+          tools: [...this.tools.values()].map((t) => {
+            const entry: Record<string, unknown> = {
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema,
+            }
+            if (t.annotations !== undefined) entry.annotations = t.annotations
+            return entry
+          }),
         }
       case "tools/call": {
         const params = (req.params ?? {}) as {
