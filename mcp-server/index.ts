@@ -8,6 +8,7 @@ import { createGetNoteTool } from "./src/tools/get-note.js"
 import { createQueryVaultTool } from "./src/tools/query-vault.js"
 import { createInvokeAgentTool } from "./src/tools/invoke-agent.js"
 import { createRunMeshTool } from "./src/tools/run-mesh.js"
+import { createListNotesTool } from "./src/tools/list-notes.js"
 import { TraceWriter } from "./src/observability/trace-writer.js"
 import { log } from "./src/mcp/logger.js"
 import { startMcpHttp } from "./src/mcp/http.js"
@@ -42,6 +43,7 @@ async function main(): Promise<void> {
   log.info("opencode config", { hasKey: !!opencodeApiKey, baseUrl: opencodeBaseUrl })
   server.registerTool(createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer))
   server.registerTool(createRunMeshTool(vault, opencodeBaseUrl, opencodeApiKey, tracer))
+  server.registerTool(createListNotesTool(vault))
 
   if (process.env.SANCTUM_MCP_HTTP === "1") {
     await startMcpHttp(server, {
