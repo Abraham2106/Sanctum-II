@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, Notice, setIcon } from "obsidian";
 import type { Project, Thread, MemoryEntry, ProjectFile } from "../projects/types";
 import { ProjectStore } from "../projects/store";
 import { indexProject } from "../projects/indexer";
+import { detachAttachedFile } from "../projects/detach-file";
 import { ensureVaultDirectory } from "../core/vault-fs";
 import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import type { VectorStore } from "../rag/vector-store";
@@ -413,11 +414,9 @@ export class ProjectsView extends ItemView {
         const delBtn = fRow.createEl("button", { cls: "s-proj-file-del-btn", text: "✕", attr: { title: "Quitar archivo" } });
         delBtn.onclick = async (ev) => {
           ev.stopPropagation();
-          if (!this.activeProject || !await this.app.vault.adapter.exists(f.path).catch(() => false)) return;
           if (!confirm(`¿Quitar "${f.name}" del proyecto?`)) return;
-          try { await this.app.vault.adapter.write(f.path, ""); } catch {}
-          this.activeProject.attachedFiles = attached.filter(x => x.path !== f.path);
-          this.activeProject.files = (this.activeProject.files || []).filter(fp => fp !== f.path);
+          if (!this.activeProject) return;
+          this.activeProject = detachAttachedFile(this.activeProject, f.path);
           await this.deps.saveProject(this.activeProject);
           this.renderRight();
         };
