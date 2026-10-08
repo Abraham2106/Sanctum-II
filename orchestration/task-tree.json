@@ -626,7 +626,7 @@
       "id": "T-019",
       "title": "MCP recorre las claves Gemini",
       "owner_role": "worker",
-      "status": "killed",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-mcp-keys"
@@ -762,7 +762,7 @@
       "id": "T-023",
       "title": "Un título corto no secuestra la nota",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-note-ref"

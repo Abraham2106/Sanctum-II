@@ -66,6 +66,12 @@ typecheck 0. vitest 138/138. Sonda de glob (node, antes del fix): `Research/*.md
 Sonda: `cosineSimilarity([1,0],[1])` es `NaN`, y `[NaN, 0.2].sort((a,b)=>b-a)` deja el `NaN` primero. T-022 merge. Largos distintos o no finitos devuelven 0. Vectores iguales siguen en 1 y los opuestos en −1.
 Verificación 10:10Z: typecheck 0, 16 archivos, 171 passed.
 
-### C4 — en curso
+### C4 — título y claves
 
-`resolveNoteReference("modifica la nota", [{ title: "a" }])` hoy es exacto porque `query.includes("a")`. DEC-0016: el título tiene que contener la consulta, o tener ≥ 3 caracteres y un borde de palabra. No se toca el orquestador.
+- T-023 merge. Título `"a"` contra `"modifica la nota"` ya no es exacto. `"ML"` no coincide dentro de `"HTML"`. `"QML"` y `"quantum"` siguen. Un título de 4 letras que sea una palabra del mensaje, como `"nota"`, todavía coincide. Límite anotado.
+- T-019: dos spawn murieron con `resource_exhausted` sin editar. El tercero implementó la rotación. Merge. 429 pasa a la siguiente clave; 500 no; 404 pasa de modelo. Fetch de prueba, sin red.
+- `npm run verify` 10:17Z: typecheck 0, 18 archivos, 179 passed (antes 138), build ok, mcp:smoke 18/18.
+
+## Parada
+
+10:20Z, unos 32 minutos después del inicio. La suite está en verde y lo que queda es de poco valor o no se puede probar sin la UI de Obsidian: `ChainStore.delete` no tiene llamadores; `decision.noteName` no se pasa al resolver; el modal de la cadena sigue mostrando el score crudo; `npm audit` no se aplicó a ciegas. No hubo tres ciclos vacíos. No se llegó a las 4 h 45 min.
