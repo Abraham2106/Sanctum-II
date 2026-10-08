@@ -52,3 +52,13 @@ status: ready
 - constraints: Ponytail. Sin dependencia nueva. Bind en 127.0.0.1.
 - open_questions: ninguna
 - risks: Sin un túnel HTTPS, la nube de Grok Bot no llega a localhost.
+
+## MCP usable
+
+status: ready
+
+- rationale: El humano pidió mejorar el MCP. Hay prácticas del protocolo que no cumple y el vault no se puede listar.
+- goal: DEC-0021.
+- scope_out: resources MCP, sesión, OAuth, otro paquete, búsqueda dentro de invoke o del mesh.
+- constraints: Ponytail. Cuatro hojas disjuntas. Suite después del merge.
+- open_questions: ninguna

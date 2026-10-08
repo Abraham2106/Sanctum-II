@@ -24,5 +24,6 @@ Fuente compacta para inyectar en workers. Detalle en `DEC-*.md`.
 | DEC-0018 | quitar un adjunto no escribe el archivo | accepted |
 | DEC-0019 | Discord conversa en Markdown; el modelo Grok solo con XAI_API_KEY | accepted |
 | DEC-0020 | Grok Bot entra al vault por POST /mcp en 127.0.0.1 | accepted |
+| DEC-0021 | el MCP anuncia el uso, lista notas y corta el POST a 1 MiB | accepted |
 
 Si dos planners contradicen una fila, no se mergea código. Se abre reconciliación de docs y se incrementa el id. No se agregan sufijos al id. Decisiones de producto empiezan en DEC-0003.

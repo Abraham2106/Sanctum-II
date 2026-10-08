@@ -1020,6 +1020,109 @@
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-031",
+      "title": "El MCP anuncia cómo se usa",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-mcp-guide"],
+      "decisions": ["DEC-0021"],
+      "max_review_loops": 2,
+      "done_when": [
+        "initialize devuelve instructions con sanctum_list_notes y OPENCODE_GO_API_KEY",
+        "tools/list incluye annotations cuando la tool las tiene",
+        "list_agents y get_note son readOnly y no openWorld",
+        "query_vault es readOnly y openWorld"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que cambiar un handler, index.ts o el HTTP"
+      ],
+      "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Solo mcp-server/src/mcp/server.ts, types.ts, server.test.ts, y el campo annotations de list-agents.ts, get-note.ts y query-vault.ts. No cambies handlers. En el result de initialize añade instructions con este texto exacto: Sanctum es un vault local de notas Markdown. Para verlo: sanctum_list_notes, sanctum_get_note y sanctum_query_vault. La búsqueda exige índice y GEMINI_API_KEYS. sanctum_list_agents enumera agentes. sanctum_invoke_agent y sanctum_run_mesh no leen el vault: pasan context a {{rag_context}} y gastan OPENCODE_GO_API_KEY. En types.ts, ToolDef gana annotations opcional con readOnlyHint y openWorldHint boolean. tools/list copia annotations solo si está definida. list_agents y get_note: readOnlyHint true, openWorldHint false. query_vault: readOnlyHint true, openWorldHint true. Test con handleMessage, sin red: initialize trae ese texto y tools/list devuelve las annotations de una tool de prueba. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
+      "verification": {
+        "planned": ["npx vitest run mcp-server/src/mcp/server.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-032",
+      "title": "Listar un nivel de notas",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-mcp-notes"],
+      "decisions": ["DEC-0021"],
+      "max_review_loops": 2,
+      "done_when": [
+        "sin folder devuelve los read_paths y no llama a list",
+        "con folder permitido devuelve .md y carpetas de un nivel, sin .txt ni sanctum-",
+        "un folder fuera de read_paths es PERMISSION_DENIED",
+        "sanctum_list_agents sigue siendo la primera tool registrada"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que recursar, tocar el índice, o editar otra tool"
+      ],
+      "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Crea mcp-server/src/tools/list-notes.ts y su test. En mcp-server/index.ts solo añade el import y server.registerTool(createListNotesTool(vault)) después de createRunMeshTool, para no cambiar la primera tool. Nombre sanctum_list_notes. annotations readOnlyHint true, openWorldHint false. Args agent_id obligatorio y folder opcional. Sin folder o folder vacío: resuelve permisos y devuelve los read_paths, uno por línea, sin llamar a vault.list. Con folder: si incluye .., empieza por / o tiene barra invertida, isError PATH_DENIED y no listes. Permitido si checkPathPermission del folder o de folder/a.md. Si no, isError PERMISSION_DENIED. vault.list de un nivel. Archivos que terminen en .md y no isInternalPath. Carpetas que no sean isInternalPath, mostradas con barra final. Orden alfabético. Máximo 200 entradas; si hay más, la última línea es hay más; afina el folder. Si list lanza, isError PATH_DENIED sin pegar el mensaje. El test usa un adaptador en memoria, sin disco. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
+      "verification": {
+        "planned": ["npx vitest run mcp-server/src/tools/list-notes.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-033",
+      "title": "context entra al prompt y no al índice",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-mcp-context"],
+      "decisions": ["DEC-0021"],
+      "max_review_loops": 2,
+      "done_when": [
+        "readToolContext devuelve vacío si context no es string y corta a 8000",
+        "invoke pasa ese texto a renderSystemPrompt como rag",
+        "el mesh lo pasa solo al prompt de Forager",
+        "las dos tools declaran readOnlyHint false y openWorldHint true"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que buscar en el índice o cambiar el bucle del crítico"
+      ],
+      "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Crea mcp-server/src/tools/tool-context.ts con readToolContext(args): si context no es string, vacío; si pasa de 8000 caracteres, slice(0, 8000). Comentario ponytail: el contexto se corta a 8000; subir cuando haga falta el texto entero. Test de esa función. En invoke-agent.ts usa readToolContext como rag de renderSystemPrompt. En run-mesh.ts úsalo solo en el renderSystemPrompt de Forager. Añade context opcional string al inputSchema de las dos, descripción corta: texto ya recuperado del vault. Cambia la description de invoke a: Llama al agente con su prompt. No busca en el vault. context entra como contexto. Gasta OPENCODE_GO_API_KEY. La de mesh a: Corre Forager, Researcher y Critic. No lee el vault. context es el contexto de Forager. Gasta OPENCODE_GO_API_KEY. annotations en las dos: readOnlyHint false, openWorldHint true. No cambies el bucle ni los umbrales. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
+      "verification": {
+        "planned": ["npx vitest run mcp-server/src/tools/tool-context.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-034",
+      "title": "El POST del MCP corta a 1 MiB",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-mcp-limit"],
+      "decisions": ["DEC-0021"],
+      "max_review_loops": 2,
+      "done_when": [
+        "un POST /mcp de más de 1048576 bytes responde 413",
+        "un POST chico de initialize sigue en 200",
+        "al pasar el tope deja de acumular el cuerpo"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que cambiar el bind, el token o las rutas"
+      ],
+      "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Solo mcp-server/src/mcp/http.ts y un caso en mcp-server/src/mcp/http.test.ts. Si el cuerpo pasa de 1048576 bytes, responde 413 y destruye el request sin seguir concatenando. Un POST pequeño existente sigue en 200. No cambies auth, rutas ni el formato SSE. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
+      "verification": {
+        "planned": ["npx vitest run mcp-server/src/mcp/http.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     }
   ]
 }
