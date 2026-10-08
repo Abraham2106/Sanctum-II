@@ -28,7 +28,7 @@
       ],
       "stop_when": [
         "Hecho de producto ausente",
-        "Decisión sin DEC"
+        "Decisi\u00f3n sin DEC"
       ],
       "notes": "Cerrado por el planner el 2026-10-08.",
       "verification": {
@@ -58,15 +58,15 @@
         "src/llm/chat-wire.test.ts cubre build y parse de los dos cables"
       ],
       "stop_when": [
-        "Decisión sin DEC",
+        "Decisi\u00f3n sin DEC",
         "Seam extra",
         "Hace falta @cursor/sdk o una dependencia",
         "Hay que editar chat-orchestrator, agent-turn, services o las tools MCP"
       ],
-      "notes": "Ponytail. El diff más corto. No corras vitest ni npm. Cita DEC-0004 y el comentario ponytail del techo de Cursor en chat-wire.ts. Transporte del plugin: requestUrl. Transporte MCP: fetch. No añadas /v1 a la base OpenAI. max_tokens Anthropic = 4096. Modelo vacío usa DEFAULT_MODEL; no cambies deepseek-v4-flash por un Claude en silencio. configured es true solo si el cable activo tiene clave.",
+      "notes": "Ponytail. El diff m\u00e1s corto. No corras vitest ni npm. Cita DEC-0004 y el comentario ponytail del techo de Cursor en chat-wire.ts. Transporte del plugin: requestUrl. Transporte MCP: fetch. No a\u00f1adas /v1 a la base OpenAI. max_tokens Anthropic = 4096. Modelo vac\u00edo usa DEFAULT_MODEL; no cambies deepseek-v4-flash por un Claude en silencio. configured es true solo si el cable activo tiene clave.",
       "verification": {
         "planned": [
-          "No correr vitest, tsc ni npm. Dejar src/llm/chat-wire.test.ts en el árbol."
+          "No correr vitest, tsc ni npm. Dejar src/llm/chat-wire.test.ts en el \u00e1rbol."
         ],
         "run": []
       },
@@ -86,15 +86,15 @@
       ],
       "max_review_loops": 2,
       "done_when": [
-        "src/embeddings/embed-contract.ts es el único sitio de modelos, 768, corte 3000 y cuerpo JSON",
+        "src/embeddings/embed-contract.ts es el \u00fanico sitio de modelos, 768, corte 3000 y cuerpo JSON",
         "GeminiBalancer y mcp embedText importan ese contrato y conservan su transporte",
         "El comentario ponytail nombra EmbeddingGemma 2 y el reindexado"
       ],
       "stop_when": [
-        "Decisión sin DEC",
+        "Decisi\u00f3n sin DEC",
         "Seam extra",
         "Dependencia nueva o descarga del modelo",
-        "Cambio de rotación de claves o de la primera clave del MCP"
+        "Cambio de rotaci\u00f3n de claves o de la primera clave del MCP"
       ],
       "notes": "Ponytail. No unifiques requestUrl y fetch. No edites indexer, query-vault ni mcp-server/index.ts. No corras tests.",
       "verification": {
@@ -107,7 +107,7 @@
     },
     {
       "id": "T-003",
-      "title": "Literales RAG y trazas con un dueño",
+      "title": "Literales RAG y trazas con un due\u00f1o",
       "owner_role": "worker",
       "status": "done",
       "deps": [],
@@ -122,14 +122,14 @@
         "tracer.ts y trace-writer.ts usan TRACES_DIR de src/constants.ts",
         "query-vault, mesh de skills y core/tests usan RAG_DEFAULTS.MIN_SIMILARITY",
         "projects/store.ts usa DEFAULT_PROJECT_RAG para 400 y 0.65 en vez de literales propios",
-        "MESH_DEFAULTS en shared/mesh sigue siendo el dueño de los umbrales del mesh"
+        "MESH_DEFAULTS en shared/mesh sigue siendo el due\u00f1o de los umbrales del mesh"
       ],
       "stop_when": [
-        "Decisión sin DEC",
+        "Decisi\u00f3n sin DEC",
         "Editar src/constants.ts o src/llm",
         "Editar indexer.ts"
       ],
-      "notes": "Ponytail. Importa lo que ya existe. No muevas ni borres exports de constants.ts (otra hoja es dueña de ese archivo). No corras tests. Cita DEC-0003 en el import que sustituye un literal.",
+      "notes": "Ponytail. Importa lo que ya existe. No muevas ni borres exports de constants.ts (otra hoja es due\u00f1a de ese archivo). No corras tests. Cita DEC-0003 en el import que sustituye un literal.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -154,10 +154,10 @@
       "done_when": [
         "chunkText usa project.rag.chunk_words",
         "Un entero menor que 1 cae a DEFAULT_PROJECT_RAG.chunk_words",
-        "indexer.test.ts cubre un tamaño distinto de 400 y el fallback"
+        "indexer.test.ts cubre un tama\u00f1o distinto de 400 y el fallback"
       ],
       "stop_when": [
-        "Decisión sin DEC",
+        "Decisi\u00f3n sin DEC",
         "Recorrer subcarpetas",
         "Editar projects/types.ts"
       ],
@@ -172,7 +172,7 @@
     },
     {
       "id": "T-005",
-      "title": "La cadena reenvía pathFilter",
+      "title": "La cadena reenv\u00eda pathFilter",
       "owner_role": "worker",
       "status": "done",
       "deps": [],
@@ -189,7 +189,7 @@
         "undefined sigue significando el fallback de executeTurn"
       ],
       "stop_when": [
-        "Decisión sin DEC",
+        "Decisi\u00f3n sin DEC",
         "Editar TurnDeps o el cuerpo de executeTurn",
         "Seam extra"
       ],
@@ -216,10 +216,10 @@
       ],
       "max_review_loops": 2,
       "done_when": [
-        "KG_DIR, MESH_THRESHOLDS, INDEX_DIR_BASE, MEMORY_DIR_BASE y THREADS_DIR_BASE ya no están si siguen sin llamadores"
+        "KG_DIR, MESH_THRESHOLDS, INDEX_DIR_BASE, MEMORY_DIR_BASE y THREADS_DIR_BASE ya no est\u00e1n si siguen sin llamadores"
       ],
       "stop_when": [
-        "Un símbolo de la lista tiene un uso",
+        "Un s\u00edmbolo de la lista tiene un uso",
         "Hay que tocar otro archivo"
       ],
       "notes": "Ponytail. Solo src/constants.ts. Rebusca cada nombre. Si aparece un uso, no lo borres. No reemplaces literales. No corras tests. Cita DEC-0007.",
@@ -248,7 +248,7 @@
         "src/ui/chain-inspector.ts no existe y nadie lo importaba"
       ],
       "stop_when": [
-        "Algún archivo importa chain-inspector"
+        "Alg\u00fan archivo importa chain-inspector"
       ],
       "notes": "Ponytail. Borra solo ese archivo. No edites el resto de src/ui. No corras tests.",
       "verification": {
@@ -261,7 +261,7 @@
     },
     {
       "id": "T-009",
-      "title": "Borrar cuatro símbolos sin uso",
+      "title": "Borrar cuatro s\u00edmbolos sin uso",
       "owner_role": "worker",
       "status": "blocked",
       "deps": [],
@@ -273,16 +273,16 @@
       ],
       "max_review_loops": 2,
       "done_when": [
-        "shouldRegenerate y su import huérfano no están",
-        "DEFAULT_KG_OPTIONS no está",
-        "AgentAuthoringOptions no está",
-        "previousOutput no está en executeChain"
+        "shouldRegenerate y su import hu\u00e9rfano no est\u00e1n",
+        "DEFAULT_KG_OPTIONS no est\u00e1",
+        "AgentAuthoringOptions no est\u00e1",
+        "previousOutput no est\u00e1 en executeChain"
       ],
       "stop_when": [
-        "Un símbolo tiene un llamador",
-        "Hace falta borrar AgentAuthoringLLM todavía usado"
+        "Un s\u00edmbolo tiene un llamador",
+        "Hace falta borrar AgentAuthoringLLM todav\u00eda usado"
       ],
-      "notes": "No arrancó: el worker devolvió resource_exhausted dos veces. Siguen shouldRegenerate, DEFAULT_KG_OPTIONS, AgentAuthoringOptions y previousOutput.",
+      "notes": "No arranc\u00f3: el worker devolvi\u00f3 resource_exhausted dos veces. Siguen shouldRegenerate, DEFAULT_KG_OPTIONS, AgentAuthoringOptions y previousOutput.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -305,13 +305,13 @@
       ],
       "max_review_loops": 2,
       "done_when": [
-        "Cada borrado de este seam tiene cero referencias fuera de su definición, anotado en el handoff"
+        "Cada borrado de este seam tiene cero referencias fuera de su definici\u00f3n, anotado en el handoff"
       ],
       "stop_when": [
-        "La duda no se resuelve con una búsqueda",
+        "La duda no se resuelve con una b\u00fasqueda",
         "El cambio altera una firma que alguien llama"
       ],
-      "notes": "Ponytail. Directorios: src/orchestrator, y los archivos src/core/commands.ts, note-writer.ts, vault-fs.ts, vault-adapter.ts. Borra solo funciones, constantes o imports sin ningún uso en el worktree. Si no hay nada, no inventes un diff: dilo en HANDOFF y no hagas commit de código. No edites tests.ts ni env-loader.ts. No corras tests.",
+      "notes": "Ponytail. Directorios: src/orchestrator, y los archivos src/core/commands.ts, note-writer.ts, vault-fs.ts, vault-adapter.ts. Borra solo funciones, constantes o imports sin ning\u00fan uso en el worktree. Si no hay nada, no inventes un diff: dilo en HANDOFF y no hagas commit de c\u00f3digo. No edites tests.ts ni env-loader.ts. No corras tests.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -343,10 +343,10 @@
         "npm test sale 0"
       ],
       "stop_when": [
-        "El arreglo exige un diseño nuevo",
+        "El arreglo exige un dise\u00f1o nuevo",
         "Hay que cambiar comportamiento de producto para que el test pase"
       ],
-      "notes": "typecheck 0. vitest 138/138. El fixture sin rag cae al default de 400 vía optional chaining.",
+      "notes": "typecheck 0. vitest 138/138. El fixture sin rag cae al default de 400 v\u00eda optional chaining.",
       "verification": {
         "planned": [
           "npm run typecheck",
@@ -361,7 +361,7 @@
     },
     {
       "id": "T-011",
-      "title": "Sacar turno, sesión y diagnósticos de main",
+      "title": "Sacar turno, sesi\u00f3n y diagn\u00f3sticos de main",
       "owner_role": "worker",
       "status": "ready",
       "deps": [],
@@ -376,14 +376,14 @@
         "sendChatMessage y runMesh viven en src/plugin/turns.ts",
         "setActiveProject y los hilos viven en src/plugin/session.ts",
         "indexResearch, tests de ajustes, runOrchestrate y createNoteWithAI viven en src/plugin/diagnostics.ts",
-        "SanctumPlugin conserva esos métodos como una llamada",
+        "SanctumPlugin conserva esos m\u00e9todos como una llamada",
         "onload sigue en main.ts"
       ],
       "stop_when": [
         "Hay que cambiar una firma que la UI ya llama",
         "Hay que tocar un archivo fuera del seam"
       ],
-      "notes": "Ponytail. Mismos nombres públicos. No restyles. No dependencias. No corras tests. Cita DEC-0008 en cada archivo nuevo.",
+      "notes": "Ponytail. Mismos nombres p\u00fablicos. No restyles. No dependencias. No corras tests. Cita DEC-0008 en cada archivo nuevo.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -394,7 +394,7 @@
     },
     {
       "id": "T-012",
-      "title": "Sacar confirmación y escritura del orquestador",
+      "title": "Sacar confirmaci\u00f3n y escritura del orquestador",
       "owner_role": "worker",
       "status": "ready",
       "deps": [],
@@ -407,7 +407,7 @@
       "max_review_loops": 2,
       "done_when": [
         "pendingAction vive en src/app/pending-turn.ts",
-        "la intención de nota vive en src/app/write-turn.ts",
+        "la intenci\u00f3n de nota vive en src/app/write-turn.ts",
         "handleMessage sigue en chat-orchestrator.ts y los llama",
         "ChatOrchestrator se importa desde la misma ruta"
       ],
@@ -441,7 +441,7 @@
         "la lista vive en src/ui/projects/list.ts",
         "el centro vive en src/ui/projects/center.ts",
         "hilos, memoria y archivos viven en src/ui/projects/detail.ts",
-        "ProjectsView y VIEW_TYPE_PROJECTS siguen exportándose desde projects-view.ts",
+        "ProjectsView y VIEW_TYPE_PROJECTS siguen export\u00e1ndose desde projects-view.ts",
         "las clases CSS no cambian"
       ],
       "stop_when": [
@@ -472,8 +472,8 @@
       "max_review_loops": 2,
       "done_when": [
         "nodos, aristas, zoom y arrastre viven en src/ui/chain-canvas.ts",
-        "el modal de resultado, si está en chain-view.ts, vive en ese archivo de lienzo o en src/ui/chain-result.ts",
-        "ChainView sigue exportándose desde chain-view.ts"
+        "el modal de resultado, si est\u00e1 en chain-view.ts, vive en ese archivo de lienzo o en src/ui/chain-result.ts",
+        "ChainView sigue export\u00e1ndose desde chain-view.ts"
       ],
       "stop_when": [
         "Hay que editar chain-types.ts o chains/executor.ts",
@@ -521,7 +521,7 @@
     },
     {
       "id": "T-016",
-      "title": "Borrar los cuatro símbolos que quedaron",
+      "title": "Borrar los cuatro s\u00edmbolos que quedaron",
       "owner_role": "worker",
       "status": "ready",
       "deps": [],
@@ -533,16 +533,16 @@
       ],
       "max_review_loops": 2,
       "done_when": [
-        "shouldRegenerate no está",
-        "DEFAULT_KG_OPTIONS no está",
-        "AgentAuthoringOptions no está",
-        "previousOutput no está"
+        "shouldRegenerate no est\u00e1",
+        "DEFAULT_KG_OPTIONS no est\u00e1",
+        "AgentAuthoringOptions no est\u00e1",
+        "previousOutput no est\u00e1"
       ],
       "stop_when": [
-        "Un símbolo tiene un llamador",
-        "Hace falta borrar AgentAuthoringLLM todavía usado"
+        "Un s\u00edmbolo tiene un llamador",
+        "Hace falta borrar AgentAuthoringLLM todav\u00eda usado"
       ],
-      "notes": "Ponytail. Rebusca. Archivos: src/shared/mesh/core.ts, src/kg/types.ts, src/agents/authoring/types.ts, src/chains/executor.ts. Quita imports huérfanos. No toques executeTurn ni KgOptions. No corras tests.",
+      "notes": "Ponytail. Rebusca. Archivos: src/shared/mesh/core.ts, src/kg/types.ts, src/agents/authoring/types.ts, src/chains/executor.ts. Quita imports hu\u00e9rfanos. No toques executeTurn ni KgOptions. No corras tests.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -555,10 +555,14 @@
       "id": "T-017",
       "title": "Anclar globMatch",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
-      "seams": ["S-glob"],
-      "decisions": ["DEC-0009"],
+      "seams": [
+        "S-glob"
+      ],
+      "decisions": [
+        "DEC-0009"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "globMatch('Research/nota.md.exe', 'Research/*.md') es false",
@@ -571,41 +575,49 @@
         "los casos ya cubiertos en permissions.test.ts siguen en true o false como estaban"
       ],
       "stop_when": [
-        "Decisión sin DEC",
+        "Decisi\u00f3n sin DEC",
         "Hay que editar pathMatchesAny, permissions.test.ts u otro archivo",
         "Hace falta una dependencia"
       ],
-      "notes": "Ponytail. Solo globMatch en src/utils.ts y el archivo nuevo src/utils.glob.test.ts. Cita DEC-0009. Implementación: recorta la barra inicial; ** o cadena vacía devuelven true; el resto sustituye ** por un marcador, * por otro, escapa .+^${}()|[]\\\\ , devuelve ** como .* y * como [^/]* , y prueba ^patrón$. No normalices .. y no añadas ?. No corras la suite entera. Un commit.",
+      "notes": "Ponytail. Solo globMatch en src/utils.ts y el archivo nuevo src/utils.glob.test.ts. Cita DEC-0009. Implementaci\u00f3n: recorta la barra inicial; ** o cadena vac\u00eda devuelven true; el resto sustituye ** por un marcador, * por otro, escapa .+^${}()|[]\\\\ , devuelve ** como .* y * como [^/]* , y prueba ^patr\u00f3n$. No normalices .. y no a\u00f1adas ?. No corras la suite entera. Un commit.",
       "verification": {
-        "planned": ["npx vitest run src/utils.glob.test.ts"],
+        "planned": [
+          "npx vitest run src/utils.glob.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
     {
       "id": "T-018",
-      "title": "Score ausente del crítico vale 0",
+      "title": "Score ausente del cr\u00edtico vale 0",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
-      "seams": ["S-critic-parse"],
-      "decisions": ["DEC-0010"],
+      "seams": [
+        "S-critic-parse"
+      ],
+      "decisions": [
+        "DEC-0010"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "JSON sin total_score devuelve total_score 0",
         "total_score string o NaN devuelve 0",
-        "total_score 80 numérico sigue en 80",
+        "total_score 80 num\u00e9rico sigue en 80",
         "texto sin JSON sigue en score 0 y verdict reject",
         "threshold ausente sigue en 80"
       ],
       "stop_when": [
-        "Decisión sin DEC",
+        "Decisi\u00f3n sin DEC",
         "Hay que editar chain-view, mesh.ts, permissions.test.ts o los umbrales",
         "Hace falta una dependencia"
       ],
       "notes": "Ponytail. Solo src/shared/mesh/parse.ts y src/shared/mesh/parse.test.ts. Cita DEC-0010. total_score se acepta solo si typeof number y Number.isFinite; si no, 0. No cambies el ?? 80 de threshold ni el verdict por defecto. No corras la suite entera. Un commit.",
       "verification": {
-        "planned": ["npx vitest run src/shared/mesh/parse.test.ts"],
+        "planned": [
+          "npx vitest run src/shared/mesh/parse.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -614,26 +626,99 @@
       "id": "T-019",
       "title": "MCP recorre las claves Gemini",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "killed",
       "deps": [],
-      "seams": ["S-mcp-keys"],
-      "decisions": ["DEC-0011"],
+      "seams": [
+        "S-mcp-keys"
+      ],
+      "decisions": [
+        "DEC-0011"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "index.ts pasa todas las claves recortadas de GEMINI_API_KEYS unidas por coma, no solo la primera",
         "embedText con 'k1,k2' y fetch 429 luego 200 devuelve el vector de la segunda clave",
         "404 o 400 saltan de modelo como hoy",
         "un estado distinto de 429, 403, 404 y 400 se propaga sin probar otra clave",
-        "cadena vacía de claves no cuenta como configurada"
+        "cadena vac\u00eda de claves no cuenta como configurada"
       ],
       "stop_when": [
-        "Decisión sin DEC",
+        "Decisi\u00f3n sin DEC",
         "Hay que editar query-vault, GeminiBalancer o embed-contract",
         "Hace falta una dependencia o una llamada de red real"
       ],
-      "notes": "Ponytail. Archivos: mcp-server/index.ts, mcp-server/src/embeddings/gemini-embed.ts, mcp-server/src/embeddings/gemini-embed.test.ts. Cita DEC-0011. Parte claves por coma. 429 y 403 prueban la siguiente clave del mismo modelo. 404 y 400 pasan al modelo siguiente. Otro error se lanza. El test sustituye globalThis.fetch y lo restaura; producción sigue usando fetch. No llames a Gemini. No corras la suite entera. Un commit.",
+      "notes": "Ponytail. Archivos: mcp-server/index.ts, mcp-server/src/embeddings/gemini-embed.ts, mcp-server/src/embeddings/gemini-embed.test.ts. Cita DEC-0011. Parte claves por coma. 429 y 403 prueban la siguiente clave del mismo modelo. 404 y 400 pasan al modelo siguiente. Otro error se lanza. El test sustituye globalThis.fetch y lo restaura; producci\u00f3n sigue usando fetch. No llames a Gemini. No corras la suite entera. Un commit. Spawn agot\u00f3 capacidad dos veces (resource_exhausted). No reintentar en esta sesi\u00f3n.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/embeddings/gemini-embed.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/embeddings/gemini-embed.test.ts"
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-020",
+      "title": "El \u00edndice parcial no sube al padre",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-index-scope"
+      ],
+      "decisions": [
+        "DEC-0013"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "paths ['Vault'] con read_paths ['Vault/Research'] devuelve el error de fuera y no indexa",
+        "paths ['Research/notes'] con read_paths ['Research'] sigue permitido",
+        "el test de Projects/other sigue rechazando"
+      ],
+      "stop_when": [
+        "Decisi\u00f3n sin DEC",
+        "Hay que hacer el indexador recursivo o editar main.ts",
+        "Hace falta una dependencia"
+      ],
+      "notes": "Ponytail. Solo isAllowedPath en src/projects/indexer.ts y casos en src/projects/indexer.test.ts. Cita DEC-0013. Quita la direcci\u00f3n inversa isWithinPath(root, candidate). No cambies chunk_words. No corras la suite entera. Un commit.",
+      "verification": {
+        "planned": [
+          "npx vitest run src/projects/indexer.test.ts"
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-021",
+      "title": "La cadena no acepta un cr\u00edtico mudo",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-chain-critic"
+      ],
+      "decisions": [
+        "DEC-0014"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "JSON sin score ni verdict no se acepta y el score es 0",
+        "total_score 90 sin verdict se acepta",
+        "verdict accept con score 10 se acepta",
+        "verdict reject con score 90 se acepta por el score",
+        "texto sin JSON no se acepta",
+        "chain-view usa esa funci\u00f3n y ya no inicializa score 80 ni verdict accept"
+      ],
+      "stop_when": [
+        "Decisi\u00f3n sin DEC",
+        "Hay que partir chain-view, tocar el modal, el DOM o el CSS",
+        "Hace falta una dependencia"
+      ],
+      "notes": "Ponytail. Crea src/chains/critic-decision.ts y su test. En chain-view.ts sustituye el parseo inline del bucle por esa funci\u00f3n. Cita DEC-0014. No partas el archivo. No cambies 3 intentos ni el umbral 80. No corras la suite entera. Un commit.",
+      "verification": {
+        "planned": [
+          "npx vitest run src/chains/critic-decision.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."

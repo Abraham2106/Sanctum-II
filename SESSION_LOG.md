@@ -47,3 +47,15 @@ UI/CSS, partir archivos (DEC-0008 quedó revertido), recursión del indexador, `
 ### C0 — línea base
 
 typecheck 0. vitest 138/138. Sonda de glob (node, antes del fix): `Research/*.md` contra `Research/nota.md.exe` = true; regex `^Research\/[^\/]*\.md` sin `$`. `Research/**` compila a `^Research\/\.*`.
+
+### C1 — glob y score del crítico
+
+- T-017 merge `dafa4c5` y corrección `1ba3077`. `globMatch` ancla el patrón. Un patrón que termina en `/` sigue siendo la carpeta: el primer merge dejó en rojo `canWriteToPath("Projects/test/nota.md", ["/Projects/test/"])` porque los proyectos nacen con `/Research/` y `/Projects/{id}/`. DEC-0012. Segundo intento en verde.
+- T-018 merge `92a28d5`. `total_score` no finito vale 0. El test llamado NaN pasa `null` porque `JSON.stringify(NaN)` es null; el código igual usa `Number.isFinite`.
+- T-019 killed. Dos spawn devolvieron `resource_exhausted`. No se implementó la rotación de claves.
+- Verificación 10:04Z: typecheck 0, 14 archivos, 160 passed, 833 ms. Antes: 138. Delta: +22 tests, 0 fallos.
+
+### C2 — en curso
+
+- T-020: `isAllowedPath` acepta al padre de un `read_path`. Hipótesis: `paths: ["Vault"]` con `read_paths: ["Vault/Research"]` indexa `Vault` entero. El error ya dice que la carpeta está fuera.
+- T-021: el bucle de la cadena inicializa score 80 y verdict accept. Hipótesis: un JSON vacío se acepta. La función pura tiene que devolver no-aceptado.

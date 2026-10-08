@@ -23,3 +23,5 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-glob | `src/utils.ts` (`globMatch`), `src/utils.glob.test.ts` | ancla y `**` de DEC-0009 | `pathMatchesAny`, `permissions.test.ts`, el resto de utils | accepted |
 | S-critic-parse | `src/shared/mesh/parse.ts`, `src/shared/mesh/parse.test.ts` | score ausente de DEC-0010 | umbrales del mesh, `chain-view.ts`, `permissions.test.ts` | accepted |
 | S-mcp-keys | `mcp-server/index.ts`, `mcp-server/src/embeddings/gemini-embed.ts`, `mcp-server/src/embeddings/gemini-embed.test.ts` | rotación de claves de DEC-0011 | `query-vault.ts`, balancer del plugin, `embed-contract.ts` | accepted |
+| S-index-scope | `src/projects/indexer.ts`, `src/projects/indexer.test.ts` | el sentido de `isAllowedPath` de DEC-0013 | `chunk_words`, recursión, `main.ts` | accepted |
+| S-chain-critic | `src/chains/critic-decision.ts`, `src/chains/critic-decision.test.ts`, `src/ui/chain-view.ts` | la decisión del bucle de DEC-0014 | modal, DOM, CSS, umbral, intentos | accepted |

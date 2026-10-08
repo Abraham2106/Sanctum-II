@@ -16,5 +16,7 @@ Fuente compacta para inyectar en workers. Detalle en `DEC-*.md`.
 | DEC-0010 | total_score ausente o no numérico del crítico vale 0 | accepted |
 | DEC-0011 | el MCP recorre todas las claves Gemini ante 429/403 | accepted |
 | DEC-0012 | un patrón que termina en / es la carpeta y lo que cuelga | accepted |
+| DEC-0013 | un índice parcial no puede subir a la carpeta padre | accepted |
+| DEC-0014 | la cadena no acepta un crítico sin score ni accept explícito | accepted |
 
 Si dos planners contradicen una fila, no se mergea código. Se abre reconciliación de docs y se incrementa el id. No se agregan sufijos al id. Decisiones de producto empiezan en DEC-0003.
