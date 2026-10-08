@@ -54,6 +54,31 @@ describe("project index coordination", () => {
     expect(store.count).toBe(0);
   });
 
+  it("rejects a parent folder when read_paths only allow a child path", async () => {
+    const adapter = indexingAdapter();
+    await adapter.mkdir("Vault");
+    await adapter.mkdir("Vault/Research");
+    await adapter.write("Vault/secret.md", "secret");
+    const store = new VectorStore("sanctum-logs/index/project/vector-store.jsonl");
+    const result = await indexProject(adapter, { embed: async () => [1] } as any,
+      { id: "project", read_paths: ["Vault/Research"], write_paths: [], name: "Project" } as any,
+      store, { paths: ["Vault"] });
+    expect(result.errors[0]).toContain("fuera");
+    expect(store.count).toBe(0);
+  });
+
+  it("allows a subfolder inside a configured read_path", async () => {
+    const adapter = indexingAdapter();
+    await adapter.mkdir("Research/notes");
+    await adapter.write("Research/notes/a.md", "nota");
+    const store = new VectorStore("sanctum-logs/index/project/vector-store.jsonl");
+    const result = await indexProject(adapter, { embed: async () => [1] } as any,
+      { id: "project", read_paths: ["Research"], write_paths: [], name: "Project" } as any,
+      store, { paths: ["Research/notes"] });
+    expect(result.errors.some(e => e.includes("fuera"))).toBe(false);
+    expect(store.count).toBeGreaterThan(0);
+  });
+
   it("chunks notes with project.rag.chunk_words when set", async () => {
     const adapter = indexingAdapter();
     const words = Array.from({ length: 10 }, (_, i) => `w${i}`).join(" ");

@@ -55,7 +55,8 @@ function isWithinPath(filePath: string, directory: string): boolean {
 }
 
 function isAllowedPath(candidate: string, allowed: string[]): boolean {
-  return allowed.some(root => isWithinPath(candidate, root) || isWithinPath(root, candidate));
+  // DEC-0013: la carpeta pedida tiene que caber en un read_path
+  return allowed.some(root => isWithinPath(candidate, root));
 }
 
 async function loadManifest(adapter: { read: (p: string) => Promise<string>; exists: (p: string) => Promise<boolean> }, projectId: string): Promise<Record<string, string>> {
