@@ -363,7 +363,7 @@
       "id": "T-011",
       "title": "Sacar turno, sesión y diagnósticos de main",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-rewrite-main"
@@ -388,7 +388,10 @@
         "planned": [
           "No correr vitest, tsc ni npm."
         ],
-        "run": []
+        "run": [
+          "npm run typecheck",
+          "npm test: 138 passed after merge"
+        ]
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
@@ -396,7 +399,7 @@
       "id": "T-012",
       "title": "Sacar confirmación y escritura del orquestador",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-rewrite-chat"
@@ -420,7 +423,10 @@
         "planned": [
           "No correr vitest, tsc ni npm."
         ],
-        "run": []
+        "run": [
+          "npm run typecheck",
+          "npm test: 138 passed after merge"
+        ]
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
@@ -428,7 +434,7 @@
       "id": "T-013",
       "title": "Partir la vista de proyectos en tres trabajos",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-rewrite-projects"
@@ -453,7 +459,10 @@
         "planned": [
           "No correr vitest, tsc ni npm."
         ],
-        "run": []
+        "run": [
+          "npm run typecheck",
+          "npm test: 138 passed after merge"
+        ]
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
@@ -461,7 +470,7 @@
       "id": "T-014",
       "title": "Sacar el lienzo de la vista de cadenas",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-rewrite-chain"
@@ -484,7 +493,10 @@
         "planned": [
           "No correr vitest, tsc ni npm."
         ],
-        "run": []
+        "run": [
+          "npm run typecheck",
+          "npm test: 138 passed after merge"
+        ]
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
@@ -492,7 +504,7 @@
       "id": "T-015",
       "title": "Sacar escena e inspector del grafo",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-rewrite-kg"
@@ -515,7 +527,10 @@
         "planned": [
           "No correr vitest, tsc ni npm."
         ],
-        "run": []
+        "run": [
+          "npm run typecheck",
+          "npm test: 138 passed after merge"
+        ]
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     },
@@ -523,7 +538,7 @@
       "id": "T-016",
       "title": "Borrar los cuatro símbolos que quedaron",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-prune-symbols"
@@ -547,7 +562,10 @@
         "planned": [
           "No correr vitest, tsc ni npm."
         ],
-        "run": []
+        "run": [
+          "npm run typecheck",
+          "npm test: 138 passed after merge"
+        ]
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     }

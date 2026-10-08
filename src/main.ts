@@ -208,7 +208,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     this.syncServices();
   }
 
-  private syncServices(): void {
+  syncServices(): void {
     if (!this.services) return;
     this.services.opencodeClient = this.opencodeClient;
     this.services.geminiBalancer = this.geminiBalancer;
@@ -237,7 +237,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     return sendChatMessageBody(this, userMessage, convMessages, convSummary, onSkillProgress);
   }
 
-  private async createSkillFromChat(request: SkillGenerationRequest, onProgress?: (progress: SkillAuthoringProgress) => void): Promise<string> {
+  async createSkillFromChat(request: SkillGenerationRequest, onProgress?: (progress: SkillAuthoringProgress) => void): Promise<string> {
     if (!request.description) {
       return request.mode === "update"
         ? "Uso: `/skill-creator --update <id> describe cómo mejorar la skill`"
@@ -278,7 +278,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     }
   }
 
-  private async openAgentGenerator(initialDescription = ""): Promise<string> {
+  async openAgentGenerator(initialDescription = ""): Promise<string> {
     const { AgentGeneratorModal } = await import("./ui/agent-generator-modal");
     const service = new AgentAuthoringService({ llm: this.opencodeClient, adapter: this.app.vault.adapter });
     const modal = new AgentGeneratorModal(this.app, service, initialDescription);
@@ -313,7 +313,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
   // ── Project management ──
 
-  private async ensureProjectDirectories(projectId: string): Promise<void> {
+  async ensureProjectDirectories(projectId: string): Promise<void> {
     await Promise.all([
       ensureVaultDirectory(this.app.vault.adapter, "sanctum-projects"),
       ensureVaultDirectory(this.app.vault.adapter, `sanctum-memory/${projectId}`),
@@ -347,13 +347,13 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     return setActiveProjectBody(this, projectId, newThread);
   }
 
-  private getVectorStoreForProject(projectId: string): { store: VectorStore; load: () => Promise<void>; save: () => Promise<void> } {
+  getVectorStoreForProject(projectId: string): { store: VectorStore; load: () => Promise<void>; save: () => Promise<void> } {
     let store = this.vectorStores.get(projectId);
     if (!store) { store = new VectorStore(`sanctum-logs/index/${projectId}/vector-store.jsonl`); this.vectorStores.set(projectId, store); }
     return { store, load: async () => { await store!.load(this.app.vault.adapter); }, save: async () => { await store!.save(this.app.vault.adapter); } };
   }
 
-  private getKgEdgeStoreForProject(projectId: string): { store: KgEdgeStore; load: () => Promise<void>; save: () => Promise<void> } {
+  getKgEdgeStoreForProject(projectId: string): { store: KgEdgeStore; load: () => Promise<void>; save: () => Promise<void> } {
     let store = this.kgEdgeStores.get(projectId);
     if (!store) {
       store = new KgEdgeStore(`sanctum-logs/index/${projectId}/kg-edges.jsonl`);
@@ -382,7 +382,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
   // ── KG management ──
 
-  private async rebuildKgEdges(): Promise<void> {
+  async rebuildKgEdges(): Promise<void> {
     if (!this.settings.kgEnabled || this.vectorStore.count === 0) return;
     recomputeAllEdges(this.vectorStore, this.kgEdgeStore, { getResolvedLinks: () => this.app.metadataCache.resolvedLinks }, {
       enabled: this.settings.kgEnabled, minSimilarity: this.settings.kgMinSimilarity, hops: this.settings.kgHops, maxNeighborsPerHop: 3,
@@ -402,7 +402,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
   // ── Threads ──
 
-  private generateThreadId(): string { return `thread_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
+  generateThreadId(): string { return `thread_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
 
   getActiveThreadId(): string { return this.services.activeThreadId; }
   getActiveProjectId(): string | null { return this.services.activeProject?.id || null; }
@@ -431,7 +431,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
   // ── Other legacy methods ──
 
-  private async runProjectIndex(project: Project, folder?: string): Promise<Awaited<ReturnType<typeof indexProject>>> {
+  async runProjectIndex(project: Project, folder?: string): Promise<Awaited<ReturnType<typeof indexProject>>> {
     return indexProject(this.app.vault.adapter, this.geminiBalancer, project, this.vectorStore, {
       paths: folder ? [folder] : undefined,
     });
@@ -487,7 +487,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
   async activateProjectsView(): Promise<void> { return this.activateView(VIEW_TYPE_PROJECTS); }
   async activateChainsView(): Promise<void> { return this.activateView(VIEW_TYPE_CHAINS); }
 
-  private refreshChatViews(): void {
+  refreshChatViews(): void {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_SANCTUM);
     for (const leaf of leaves) {
       const view = leaf.view as unknown as ChatViewHandle;
@@ -495,7 +495,7 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
     }
   }
 
-  private refreshKgViews(): void {
+  refreshKgViews(): void {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_KG);
     for (const leaf of leaves) {
       const view = leaf.view as unknown as { setEdgeStore?: (store: KgEdgeStore) => void };
