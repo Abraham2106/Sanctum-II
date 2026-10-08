@@ -49,8 +49,35 @@ export class SanctumSettingTab extends PluginSettingTab {
     }
 
     new Setting(containerEl)
+      .setName("Proveedor LLM")
+      .setDesc("openai: OpenCode / compatible con OpenAI. anthropic: Claude Messages API.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("openai", "OpenAI-compatible (OpenCode)")
+          .addOption("anthropic", "Anthropic (Claude)")
+          .setValue(this.plugin.settings.llmProvider)
+          .onChange(async (val) => {
+            this.plugin.settings.llmProvider = val as "openai" | "anthropic";
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Modelo de chat")
+      .setDesc(`Vacío = ${DEFAULT_MODEL} (OpenAI-compatible). Con Anthropic, indica el id del modelo Claude.`)
+      .addText((text) =>
+        text
+          .setPlaceholder(DEFAULT_MODEL)
+          .setValue(this.plugin.settings.llmModel)
+          .onChange(async (val) => {
+            this.plugin.settings.llmModel = val;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("OpenCode Go — API Key")
-      .setDesc(`API key de OpenCode para ${DEFAULT_MODEL}`)
+      .setDesc(`API key para el cable OpenAI-compatible (${DEFAULT_MODEL} por defecto)`)
       .addText((text) =>
         text
           .setPlaceholder("sk-...")
@@ -70,6 +97,32 @@ export class SanctumSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.opencodeBaseUrl)
           .onChange(async (val) => {
             this.plugin.settings.opencodeBaseUrl = val;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Anthropic — API Key")
+      .setDesc("Clave para el cable anthropic (x-api-key)")
+      .addText((text) =>
+        text
+          .setPlaceholder("sk-ant-...")
+          .setValue(this.plugin.settings.anthropicApiKey)
+          .onChange(async (val) => {
+            this.plugin.settings.anthropicApiKey = val;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Anthropic — Base URL")
+      .setDesc("Por defecto https://api.anthropic.com")
+      .addText((text) =>
+        text
+          .setPlaceholder("https://api.anthropic.com")
+          .setValue(this.plugin.settings.anthropicBaseUrl)
+          .onChange(async (val) => {
+            this.plugin.settings.anthropicBaseUrl = val;
             await this.plugin.saveSettings();
           })
       );

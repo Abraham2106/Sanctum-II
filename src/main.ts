@@ -183,9 +183,18 @@ export default class SanctumPlugin extends Plugin implements ChatViewPlugin, Set
 
   rebuildClients(): void {
     const env = getEnv();
+    const provider =
+      this.settings.llmProvider ||
+      (env.LLM_PROVIDER === "anthropic" ? "anthropic" : "openai");
     this.opencodeClient = new OpenCodeClient(
       this.settings.opencodeBaseUrl || env.OPENCODE_GO_BASE_URL,
       this.settings.opencodeApiKey || env.OPENCODE_GO_API_KEY,
+      {
+        provider,
+        model: this.settings.llmModel || env.LLM_MODEL,
+        anthropicApiKey: this.settings.anthropicApiKey || env.ANTHROPIC_API_KEY,
+        anthropicBaseUrl: this.settings.anthropicBaseUrl || env.ANTHROPIC_BASE_URL,
+      },
     );
     this.geminiBalancer = new GeminiBalancer(this.settings.geminiApiKeys || env.GEMINI_API_KEYS);
     if (!this.settings.tavilyApiKey) this.settings.tavilyApiKey = env.TAVILY_API_KEY;

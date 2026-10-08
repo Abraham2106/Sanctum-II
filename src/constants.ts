@@ -1,9 +1,15 @@
 export const VIEW_TYPE_SANCTUM = "sanctum-ii-chat";
 export const RESEARCH_PATH = "Research";
 
+export type LlmProvider = "openai" | "anthropic";
+
 export interface SanctumSettings {
   opencodeApiKey: string;
   opencodeBaseUrl: string;
+  llmProvider: LlmProvider;
+  llmModel: string;
+  anthropicApiKey: string;
+  anthropicBaseUrl: string;
   geminiApiKeys: string;
   tavilyApiKey: string;
   kgEnabled: boolean;
@@ -24,6 +30,10 @@ export interface SanctumSettings {
 export const DEFAULT_SETTINGS: SanctumSettings = {
   opencodeApiKey: "",
   opencodeBaseUrl: "https://api.opencode.ai",
+  llmProvider: "openai",
+  llmModel: "",
+  anthropicApiKey: "",
+  anthropicBaseUrl: "https://api.anthropic.com",
   geminiApiKeys: "",
   tavilyApiKey: "",
   kgEnabled: true,
