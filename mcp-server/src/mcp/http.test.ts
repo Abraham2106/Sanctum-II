@@ -37,6 +37,39 @@ function post(
   })
 }
 
+function postRaw(
+  port: number,
+  path: string,
+  body: Buffer,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": body.length,
+          ...headers,
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = []
+        res.on("data", (c) => chunks.push(c))
+        res.on("end", () =>
+          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }),
+        )
+      },
+    )
+    req.on("error", reject)
+    req.write(body)
+    req.end()
+  })
+}
+
 function get(port: number, path: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     http
@@ -160,5 +193,11 @@ describe("startMcpHttp", () => {
     })
     expect(res.status).toBe(202)
     expect(res.body).toBe("")
+  })
+
+  it("POST /mcp con cuerpo mayor a 1 MiB responde 413", async () => {
+    await start()
+    const res = await postRaw(port, "/mcp", Buffer.alloc(1048577))
+    expect(res.status).toBe(413)
   })
 })
