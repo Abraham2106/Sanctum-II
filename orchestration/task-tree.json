@@ -727,7 +727,7 @@
       "id": "T-022",
       "title": "Coseno de distinto largo vale 0",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-cosine"
@@ -753,6 +753,40 @@
       "verification": {
         "planned": [
           "npx vitest run src/rag/cosine.test.ts"
+        ],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-023",
+      "title": "Un título corto no secuestra la nota",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-note-ref"
+      ],
+      "decisions": [
+        "DEC-0016"
+      ],
+      "max_review_loops": 2,
+      "done_when": [
+        "título 'a' y consulta 'modifica la nota' no es exact",
+        "título 'ML' y consulta 'revisa el HTML' no es exact",
+        "título 'QML Research' y consulta 'QML' sigue exact",
+        "título 'Quantum ML Research' y consulta 'quantum' sigue exact",
+        "título 'QML' y consulta 'revisa el QML ahora' es exact"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hay que editar chat-orchestrator o permissions.test.ts",
+        "Hace falta una dependencia"
+      ],
+      "notes": "Ponytail. Solo src/orchestrator/note-resolver.ts y src/orchestrator/note-resolver.test.ts. Cita DEC-0016. El título contiene la consulta: coincide. La consulta contiene el título solo si el título recortado tiene al menos 3 caracteres y cae entre caracteres que no son letra ni dígito. Título vacío no coincide. No cambies el umbral 0.05. No corras la suite entera. Un commit.",
+      "verification": {
+        "planned": [
+          "npx vitest run src/orchestrator/note-resolver.test.ts src/permissions.test.ts"
         ],
         "run": []
       },

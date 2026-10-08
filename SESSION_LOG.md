@@ -55,7 +55,17 @@ typecheck 0. vitest 138/138. Sonda de glob (node, antes del fix): `Research/*.md
 - T-019 killed. Dos spawn devolvieron `resource_exhausted`. No se implementó la rotación de claves.
 - Verificación 10:04Z: typecheck 0, 14 archivos, 160 passed, 833 ms. Antes: 138. Delta: +22 tests, 0 fallos.
 
-### C2 — en curso
+### C2 — índice y cadena
 
-- T-020: `isAllowedPath` acepta al padre de un `read_path`. Hipótesis: `paths: ["Vault"]` con `read_paths: ["Vault/Research"]` indexa `Vault` entero. El error ya dice que la carpeta está fuera.
-- T-021: el bucle de la cadena inicializa score 80 y verdict accept. Hipótesis: un JSON vacío se acepta. La función pura tiene que devolver no-aceptado.
+- T-020 merge. `isAllowedPath` ya no trata al padre como permitido. Test: `Vault` con `read_paths` `Vault/Research` devuelve "fuera" y no indexa.
+- T-021 merge. `criticAttemptDecision`. `chain-view.ts` bajó 9 líneas netas. Un JSON sin score ni verdict no se acepta.
+- `npm run verify` 10:08Z: typecheck 0, 167 tests, build ok, mcp:smoke 18/18.
+
+### C3 — coseno
+
+Sonda: `cosineSimilarity([1,0],[1])` es `NaN`, y `[NaN, 0.2].sort((a,b)=>b-a)` deja el `NaN` primero. T-022 merge. Largos distintos o no finitos devuelven 0. Vectores iguales siguen en 1 y los opuestos en −1.
+Verificación 10:10Z: typecheck 0, 16 archivos, 171 passed.
+
+### C4 — en curso
+
+`resolveNoteReference("modifica la nota", [{ title: "a" }])` hoy es exacto porque `query.includes("a")`. DEC-0016: el título tiene que contener la consulta, o tener ≥ 3 caracteres y un borde de palabra. No se toca el orquestador.
