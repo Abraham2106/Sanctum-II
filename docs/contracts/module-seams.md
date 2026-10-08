@@ -22,7 +22,7 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-verify | suite al cierre | `npm run typecheck` y `npm test` una vez | features nuevas | accepted |
 | S-glob | `src/utils.ts` (`globMatch`), `src/utils.glob.test.ts` | ancla y `**` de DEC-0009 | `pathMatchesAny`, `permissions.test.ts`, el resto de utils | accepted |
 | S-critic-parse | `src/shared/mesh/parse.ts`, `src/shared/mesh/parse.test.ts` | score ausente de DEC-0010 | umbrales del mesh, `chain-view.ts`, `permissions.test.ts` | accepted |
-| S-mcp-keys | `mcp-server/index.ts`, `mcp-server/src/embeddings/gemini-embed.ts`, `mcp-server/src/embeddings/gemini-embed.test.ts` | rotación de claves de DEC-0011 | `query-vault.ts`, balancer del plugin, `embed-contract.ts` | accepted |
+| S-mcp-keys | `mcp-server/index.ts` (claves Gemini), `mcp-server/src/embeddings/gemini-embed.ts`, `mcp-server/src/embeddings/gemini-embed.test.ts` | rotación de claves de DEC-0011 | `query-vault.ts`, balancer del plugin, `embed-contract.ts`, el arranque HTTP | accepted |
 | S-index-scope | `src/projects/indexer.ts`, `src/projects/indexer.test.ts` | el sentido de `isAllowedPath` de DEC-0013 | `chunk_words`, recursión, `main.ts` | accepted |
 | S-chain-critic | `src/chains/critic-decision.ts`, `src/chains/critic-decision.test.ts`, `src/ui/chain-view.ts` | la decisión del bucle de DEC-0014 | modal, DOM, CSS, umbral, intentos | accepted |
 | S-cosine | `src/rag/vector-store.ts` (`cosineSimilarity`), `src/rag/cosine.test.ts` | largos distintos de DEC-0015 | `search` ranking, umbral, formato jsonl, `permissions.test.ts` | accepted |
@@ -33,3 +33,4 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-discord-api | `src/discord/discord-api.ts`, `src/discord/discord-api.test.ts` | destino Grok/OpenCode y cuerpos REST, sin red | `chat-wire.ts`, gateway, `.env.example` | accepted |
 | S-discord-agent | `sanctum-agents/discord.md`, el bloque Discord/XAI al final de `.env.example` | el prompt del canal y las variables | claves LLM ya existentes, código | accepted |
 | S-discord-bot | `discord-bot/index.ts`, `package.json` (script `discord` y dependencia `discord.js`), la línea `discord-bot` de `tsconfig.json` | gateway, allowlist, un fetch de historia, respuesta | esbuild, `src/main.ts`, `mcp-server/index.ts`, `chat-wire.ts` | accepted |
+| S-mcp-http | `mcp-server/src/mcp/http.ts`, `mcp-server/src/mcp/http.test.ts`, `handleMessage` y la versión de `initialize` en `mcp-server/src/mcp/server.ts`, el arranque `SANCTUM_MCP_HTTP` en `mcp-server/index.ts`, el script `mcp:http` de `package.json`, las líneas `SANCTUM_MCP_*` de `.env.example` | DEC-0020 | claves Gemini, Discord, esbuild, OAuth, un túnel | accepted |

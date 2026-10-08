@@ -991,6 +991,35 @@
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-030",
+      "title": "MCP HTTP para el conector de Grok Bot",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": ["S-mcp-http"],
+      "decisions": ["DEC-0020"],
+      "max_review_loops": 2,
+      "done_when": [
+        "POST /mcp initialize con protocolVersion 2025-03-26 devuelve esa versión en un evento SSE message",
+        "POST /mcp tools/list devuelve las tools registradas",
+        "GET /mcp responde 405 y otra ruta 404",
+        "con SANCTUM_MCP_TOKEN un POST sin Bearer responde 401",
+        "initialize con 2024-11-05 sigue devolviendo 2024-11-05",
+        "el stdio no arranca el HTTP"
+      ],
+      "stop_when": [
+        "Decisión sin DEC",
+        "Hace falta un SDK, OAuth, un túnel, o escuchar en 0.0.0.0",
+        "Hay que editar Discord o las claves Gemini"
+      ],
+      "notes": "Ponytail. Cita // DEC-0020: Grok Bot usa el MCP por POST /mcp. Archivos: mcp-server/src/mcp/http.ts, mcp-server/src/mcp/http.test.ts, el handleMessage y el echo de versión en mcp-server/src/mcp/server.ts, el if de arranque en mcp-server/index.ts, el script mcp:http en package.json, y las líneas SANCTUM_MCP_* en .env.example. No toques el bloque Discord salvo la frase que dice que el vault se ofrece con node mcp-server/dist/index.cjs: cámbiala a npm run mcp:http y la URL local. handleMessage(req) público devuelve JsonRpcResponse o null si es notificación. initialize: si params.protocolVersion es 2024-11-05, 2025-03-26 o 2025-06-18, devuelve esa; si no, 2025-03-26. startMcpHttp(server, {port, host, token}) escucha solo en 127.0.0.1. Puerto 0 permitido para el test; devuelve {port, close}. POST /mcp: JSON inválido o array es 400. Notificación 202 vacío. Si Accept incluye text/event-stream o falta, responde text/event-stream con event: message y data el JSON más una línea en blanco. Si Accept es solo application/json, el cuerpo es el JSON. GET /mcp 405. Otra ruta 404. Si token no vacío, Authorization debe ser Bearer más ese token o 401. No loguees el token. Comentario ponytail: sin allowlist de Origin; el bind es localhost. Subir cuando escuche en una interfaz pública. index.ts: si SANCTUM_MCP_HTTP=1, startMcpHttp con SANCTUM_MCP_PORT o 8787 y el token trim; si no, server.start() como hoy. Script mcp:http = SANCTUM_MCP_HTTP=1 tsx mcp-server/index.ts. .env.example comenta grok.com/connectors, New Connector, Custom, y que la URL pública es un túnel hacia 127.0.0.1. Variables comentadas: SANCTUM_MCP_HTTP=1, SANCTUM_MCP_PORT=8787, SANCTUM_MCP_TOKEN vacío. El test usa node:http contra port 0, sin red externa, con un McpServer y una tool de prueba. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
+      "verification": {
+        "planned": ["npx vitest run mcp-server/src/mcp/http.test.ts"],
+        "run": []
+      },
+      "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
     }
   ]
 }

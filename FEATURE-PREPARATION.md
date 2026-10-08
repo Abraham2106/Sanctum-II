@@ -40,3 +40,15 @@ status: ready
 - constraints: Ponytail. `discord.js` solo en el proceso del bot. Suite completa después del merge de T-029.
 - open_questions: ninguna
 - risks: Sin `Message Content Intent` el gateway no entrega el texto. El token vive en el entorno del proceso, no en el vault.
+
+## Grok Bot
+
+status: ready
+
+- rationale: El humano corrigió el gancho. Grok Bot es el sistema de xAI, no la API de chat.
+- goal: El MCP de Sanctum responde en `POST /mcp` para pegarlo como conector custom.
+- scope_in: DEC-0020.
+- scope_out: OAuth, túnel, llamar a xAI, cambiar el gateway de Discord.
+- constraints: Ponytail. Sin dependencia nueva. Bind en 127.0.0.1.
+- open_questions: ninguna
+- risks: Sin un túnel HTTPS, la nube de Grok Bot no llega a localhost.

@@ -11,7 +11,7 @@ El proceso de Discord escribe cada canal permitido en `Discord-logs/{channelId}.
 
 ## Why
 
-El bot de Sanctum v1 no servía: logs JSON que este indexador no lee, `!sync` / `!resumen`, sincronizar todo el servidor cada hora, y un cliente nuevo por cada envío. Grok Bot (docs.x.ai/grok-bot) habla con el equipo por su app y por Slack. No publica un conector ni un webhook de Discord. El vault ya entra a ese producto como MCP por comando (`node mcp-server/dist/index.cjs`). Esta hoja no crea otro servidor.
+El bot de Sanctum v1 no servía: logs JSON que este indexador no lee, `!sync` / `!resumen`, sincronizar todo el servidor cada hora, y un cliente nuevo por cada envío. Grok Bot no publica un conector de Discord. Cómo se le ofrece el vault lo decide DEC-0020.
 
 El cable de chat hace `POST {base}/chat/completions`. La base de xAI documentada es `https://api.x.ai/v1` y el modelo de los ejemplos vigentes es `grok-4.7`. Chat completions figura como legacy; no se añade `/v1/responses` porque el cable de DEC-0004 no lo habla.
 

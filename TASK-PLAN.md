@@ -43,3 +43,7 @@ Las tres no comparten archivos. La suite completa corre en la rama después del 
 - T-027: destino Grok y REST de Discord (S-discord-api) — done.
 - T-028: agente y variables (S-discord-agent) — done.
 - T-029: proceso del bot (S-discord-bot) — done.
+
+## Grok Bot (DEC-0020)
+
+- T-030: MCP por HTTP para el conector de Grok Bot (S-mcp-http) — ready.
