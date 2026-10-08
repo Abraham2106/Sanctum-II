@@ -4,7 +4,7 @@ import { ensureVaultDirectory } from "./vault-fs";
 export interface WriteResult {
   success: boolean;
   path: string;
-  action: "created" | "updated" | "appended" | "error";
+  action: "created" | "updated" | "error";
   message: string;
 }
 
@@ -56,53 +56,4 @@ export class NoteWriter {
     };
   }
 
-  async append(path: string, content: string): Promise<WriteResult> {
-    let existing = "";
-    try {
-      existing = await this.adapter.read(path);
-    } catch {
-      // la nota no existe, se crea
-    }
-    const newContent = existing ? `${existing}\n\n${content}` : content;
-    await this.ensureDir(path);
-    await this.adapter.write(path, newContent);
-    return {
-      success: true,
-      path,
-      action: existing ? "appended" : "created",
-      message: existing
-        ? `Contenido agregado a: ${path}`
-        : `Nota creada: ${path}`,
-    };
-  }
-
-  async replace(path: string, search: string, replacement: string): Promise<WriteResult> {
-    try {
-      const content = await this.adapter.read(path);
-      if (!content.includes(search)) {
-        return {
-          success: false,
-          path,
-          action: "error",
-          message: `Texto no encontrado en ${path}`,
-        };
-      }
-      const newContent = content.replace(search, replacement);
-      await this.ensureDir(path);
-      await this.adapter.write(path, newContent);
-      return {
-        success: true,
-        path,
-        action: "updated",
-        message: `Texto reemplazado en: ${path}`,
-      };
-    } catch {
-      return {
-        success: false,
-        path,
-        action: "error",
-        message: `No se pudo leer: ${path}`,
-      };
-    }
-  }
 }
