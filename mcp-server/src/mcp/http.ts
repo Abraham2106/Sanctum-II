@@ -5,12 +5,36 @@ import type { JsonRpcRequest } from "./types.js"
 
 // ponytail: sin allowlist de Origin; el bind es localhost. Subir cuando escuche en una interfaz pública.
 
+// DEC-0021: el MCP anuncia el uso y lista notas
+const MAX_POST_BODY_BYTES = 1048576
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    req.on("data", (chunk) => chunks.push(chunk))
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))
-    req.on("error", reject)
+    let total = 0
+    let stopped = false
+
+    const onData = (chunk: Buffer) => {
+      if (stopped) return
+      total += chunk.length
+      if (total > MAX_POST_BODY_BYTES) {
+        stopped = true
+        req.removeListener("data", onData)
+        req.on("data", () => {})
+        req.resume()
+        reject(new Error("BODY_TOO_LARGE"))
+        return
+      }
+      chunks.push(chunk)
+    }
+
+    req.on("data", onData)
+    req.on("end", () => {
+      if (!stopped) resolve(Buffer.concat(chunks).toString("utf8"))
+    })
+    req.on("error", (err) => {
+      if (!stopped) reject(err)
+    })
   })
 }
 
@@ -37,7 +61,14 @@ async function handlePostMcp(
   let raw: string
   try {
     raw = await readBody(req)
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message === "BODY_TOO_LARGE") {
+      res.statusCode = 413
+      res.end(() => {
+        req.destroy()
+      })
+      return
+    }
     res.statusCode = 400
     res.end()
     return
