@@ -1,20 +1,18 @@
 import { log } from "../mcp/logger.js"
+import {
+  embedContentJsonBody,
+  MAX_TEXT_LENGTH,
+  PRIORITY_MODELS,
+} from "../../../src/embeddings/embed-contract.js"
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-const PRIORITY_MODELS = ["gemini-embedding-2", "gemini-embedding-001"]
-const OUTPUT_DIMS = 768
-const MAX_TEXT_LENGTH = 3000
 
 async function callEmbed(key: string, model: string, text: string): Promise<number[]> {
   const url = `${GEMINI_BASE}/${model}:embedContent?key=${key}`
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: `models/${model}`,
-      content: { parts: [{ text }] },
-      outputDimensionality: OUTPUT_DIMS,
-    }),
+    body: JSON.stringify(embedContentJsonBody(model, text)),
   })
   if (!response.ok) {
     const err = new Error(`Gemini API error [${response.status}] modelo "${model}"`)

@@ -1,13 +1,7 @@
 import { requestUrl } from "obsidian";
+import { embedContentJsonBody, PRIORITY_MODELS } from "./embed-contract";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-
-const PRIORITY_MODELS = [
-  "gemini-embedding-2",
-  "gemini-embedding-001",
-];
-
-const OUTPUT_DIMS = 768;
 
 export class GeminiBalancer {
   private keys: string[];
@@ -77,11 +71,7 @@ export class GeminiBalancer {
       url,
       method: "POST",
       contentType: "application/json; charset=utf-8",
-      body: JSON.stringify({
-        model: `models/${model}`,
-        content: { parts: [{ text }] },
-        outputDimensionality: OUTPUT_DIMS,
-      }),
+      body: JSON.stringify(embedContentJsonBody(model, text)),
     });
 
     const decoder = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8") : null;
