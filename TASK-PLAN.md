@@ -39,9 +39,7 @@ Las tres no comparten archivos. La suite completa corre en la rama después del 
 
 ## Discord (DEC-0019)
 
-- T-026: nota de canal (S-discord-log) — ready.
-- T-027: destino Grok y REST de Discord (S-discord-api) — ready.
-- T-028: agente y variables (S-discord-agent) — ready.
-- T-029: proceso del bot (S-discord-bot) — blocked hasta que las tres anteriores estén done.
-
-T-026, T-027 y T-028 no comparten archivos. T-029 espera al merge.
+- T-026: nota de canal (S-discord-log) — done.
+- T-027: destino Grok y REST de Discord (S-discord-api) — done.
+- T-028: agente y variables (S-discord-agent) — done.
+- T-029: proceso del bot (S-discord-bot) — ready.

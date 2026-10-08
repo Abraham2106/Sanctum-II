@@ -860,7 +860,7 @@
       "id": "T-026",
       "title": "Nota Markdown del canal de Discord",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-discord-log"
@@ -892,7 +892,7 @@
       "id": "T-027",
       "title": "Destino Grok y cuerpos REST",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-discord-api"
@@ -927,7 +927,7 @@
       "id": "T-028",
       "title": "Agente Discord y variables",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-discord-agent"
@@ -958,7 +958,7 @@
       "id": "T-029",
       "title": "Proceso del bot de Discord",
       "owner_role": "worker",
-      "status": "blocked",
+      "status": "ready",
       "deps": [
         "T-026",
         "T-027",
@@ -983,7 +983,7 @@
         "Hay que editar el cable de chat, el plugin o el entry del MCP",
         "Hace falta un segundo paquete además de discord.js"
       ],
-      "notes": "Ponytail. Archivos: discord-bot/index.ts, package.json (script discord = tsx discord-bot/index.ts, dependencia discord.js ^14.26.4, nada más), y en tsconfig.json include añade discord-bot/**/*.ts. Cita // DEC-0019: Discord conversa; Grok solo si hay XAI_API_KEY. dotenv/config. Intents Guilds, GuildMessages, MessageContent. Sale con código 1 si faltan DISCORD_TOKEN, DISCORD_GUILD_ID o si DISCORD_CHANNEL_IDS queda vacío tras partir por coma. Vault: SANCTUM_VAULT_PATH o ./notes. Al ready, por cada canal de la lista, si la nota no tiene líneas, GET buildDiscordHistory limit 50, invierte el orden (Discord manda lo nuevo primero), quédate con mensajes de humanos con texto, mergeLines, escribe, no contestes. En messageCreate ignora bots, otro guild y canales fuera de la lista. Serializa la escritura por channelId con una cadena de promesas. Guarda con mergeLines. Si shouldAnswer, lee sanctum-agents/discord.md con loadAgentFromVault sobre un adapter de fs del vault, renderSystemPrompt(agent, formatTail(tailLines(lines, 40)), questionText). POST buildDiscordChatWire + fetch + parseOpenAiWire. No llames opencodeChat. Respuesta slice 1900 vía buildDiscordSend. Si falla: content exacto 'No pude responder.' y el error en stderr, sin pegar el cuerpo HTTP. No abras otro Client para enviar. No edites esbuild ni los entries. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md. No llames a Discord ni a xAI.",
+      "notes": "Ponytail. Archivos: discord-bot/index.ts, package.json (script discord = tsx discord-bot/index.ts, dependencia discord.js ^14.26.4, nada más), y en tsconfig.json include añade discord-bot/**/*.ts. Cita // DEC-0019: Discord conversa; Grok solo si hay XAI_API_KEY. dotenv/config. Intents Guilds, GuildMessages, MessageContent. Sale con código 1 si faltan DISCORD_TOKEN, DISCORD_GUILD_ID o si DISCORD_CHANNEL_IDS queda vacío tras partir por coma. Vault: SANCTUM_VAULT_PATH o ./notes. Al ready, por cada canal de la lista, si la nota no tiene líneas, GET buildDiscordHistory limit 50, invierte el orden (Discord manda lo nuevo primero), quédate con mensajes de humanos con texto, mergeLines, escribe, no contestes. En messageCreate ignora bots, otro guild y canales fuera de la lista. Serializa la escritura por channelId con una cadena de promesas. Guarda con mergeLines. Si shouldAnswer, lee sanctum-agents/discord.md con loadAgentFromVault sobre un adapter de fs del vault, renderSystemPrompt(agent, formatTail(tailLines(lines, 40)), questionText). POST buildDiscordChatWire + fetch + parseOpenAiWire. No llames opencodeChat. Respuesta slice 1900 vía buildDiscordSend. Si falla: content exacto 'No pude responder.' y el error en stderr, sin pegar el cuerpo HTTP. No abras otro Client para enviar. Tras un POST de respuesta con HTTP ok, si el JSON trae id, anexa esa línea a la nota con autor sanctum y el texto enviado; si no trae id, usa out- más el id del mensaje humano. No contestes esa línea. No edites esbuild ni los entries. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md. No llames a Discord ni a xAI.",
       "verification": {
         "planned": [
           "npx tsc --noEmit --pretty false"

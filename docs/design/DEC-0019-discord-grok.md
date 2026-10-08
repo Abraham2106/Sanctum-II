@@ -27,7 +27,7 @@ Forma del log, una línea por mensaje, saltos de línea del texto colapsados a e
 - {id} {at} **{author}**: {content}
 ```
 
-`mergeLines` descarta un id repetido y cualquier texto que empiece por `!` salvo `!sanctum`. `shouldAnswer` es verdadero con mención o con `!sanctum`. El system prompt sale de `sanctum-agents/discord.md`: `{{rag_context}}` es el tramo (40 líneas, `autor: texto`) y `{{user_prompt}}` es la pregunta ya sin el comando. La respuesta se corta a 1900 caracteres. Si el modelo falla, el canal recibe `No pude responder.` y el cuerpo del error se queda en stderr.
+`mergeLines` descarta un id repetido y cualquier texto que empiece por `!` salvo `!sanctum`. `shouldAnswer` es verdadero con mención o con `!sanctum`. El system prompt sale de `sanctum-agents/discord.md`: `{{rag_context}}` es el tramo (40 líneas, `autor: texto`) y `{{user_prompt}}` es la pregunta ya sin el comando. La respuesta se corta a 1900 caracteres y se anexa a la misma nota con autor `sanctum`. Si el modelo falla, el canal recibe `No pude responder.` y el cuerpo del error se queda en stderr.
 
 Al conectar, si la nota del canal no existe o no tiene líneas, se bajan los últimos 50 mensajes una vez y no se contesta. Escrituras del mismo canal en serie. Canales fuera de `DISCORD_CHANNEL_IDS` no se leen. Lista vacía, sin token o sin guild: el proceso sale.
 
