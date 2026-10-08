@@ -56,11 +56,7 @@ export const DEFAULT_SETTINGS: SanctumSettings = {
 export const AGENTS_DIR = "sanctum-agents";
 export const PROJECTS_DIR = "sanctum-projects";
 export const TRACES_DIR = "sanctum-logs/traces";
-export const THREADS_DIR_BASE = "sanctum-logs/threads";
-export const INDEX_DIR_BASE = "sanctum-logs/index";
-export const MEMORY_DIR_BASE = "sanctum-memory";
 export const CHAINS_DIR = "sanctum-chains";
-export const KG_DIR = "sanctum-logs/kg";
 
 export const DEFAULT_MODEL = "deepseek-v4-flash";
 
