@@ -68,6 +68,10 @@ Grok entra por el cable OpenAI que ya existía. `XAI_API_KEY` fija la base `http
 
 `npm run verify` a las 20:01Z: typecheck 0, 21 archivos, 201 tests, build ok, smoke MCP 18/18. Sin token el proceso sale con código 1. No se llamó a Discord ni a xAI. Hace falta el Message Content Intent en el portal de Discord. El token queda en el entorno del proceso.
 
+## Grok Bot (DEC-0020)
+
+Grok Bot es el sistema de xAI. No tiene una API para enviarle un mensaje. El gancho publicado es un conector MCP custom en grok.com/connectors, con transporte Streamable HTTP. `npm run mcp:http` escucha en `127.0.0.1` (puerto 8787) y responde en `POST /mcp`. La URL que se pega en el conector es la de un túnel HTTPS hacia ese puerto, terminada en `/mcp`. `XAI_API_KEY` en Discord sigue eligiendo el modelo de chat; no abre Grok Bot.
+
 ## Cómo revertir
 
 La rama es `self-improve/2026-10-08`. No se hizo push a `main`. Para quitar la sesión, no merges esta rama. El padre es `b4aa0f5` en `cursor/sanctum-refactor-9918`.

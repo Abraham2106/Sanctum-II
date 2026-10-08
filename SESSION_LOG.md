@@ -90,3 +90,7 @@ El humano pidió un bot mejor que el de Sanctum v1 y un gancho con Grok Bot. DEC
 - Con `XAI_API_KEY` el POST es `https://api.x.ai/v1/chat/completions`, modelo `grok-4.7`. Sin esa clave, `OPENCODE_GO_*`.
 - Grok Bot oficial no tiene conector Discord. El vault se le ofrece con el MCP que ya existe: `node mcp-server/dist/index.cjs`.
 - `npm run verify` 20:01Z: typecheck 0, 21 archivos, 201 passed, build ok, mcp:smoke 18/18. Sin token el proceso sale 1. No hubo llamada viva a Discord ni a xAI.
+
+### C7 — Grok Bot el sistema
+
+El humano aclaró que Grok Bot es el sistema de xAI, no el modelo por `XAI_API_KEY`. DEC-0020. T-030. `POST /mcp` en 127.0.0.1, Streamable HTTP. El conector se pega en grok.com/connectors. El túnel HTTPS no está en el repo.

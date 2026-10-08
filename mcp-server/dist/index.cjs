@@ -7380,7 +7380,8 @@ var log = {
 };
 
 // mcp-server/src/mcp/server.ts
-var PROTOCOL_VERSION = "2024-11-05";
+var SUPPORTED_PROTOCOL_VERSIONS = /* @__PURE__ */ new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
+var DEFAULT_PROTOCOL_VERSION = "2025-03-26";
 var RpcError = class extends Error {
   constructor(code, message) {
     super(message);
@@ -7416,6 +7417,21 @@ var McpServer = class {
   send(res) {
     process.stdout.write(JSON.stringify(res) + "\n");
   }
+  async handleMessage(req) {
+    const id = req.id ?? null;
+    const isNotification = req.id === void 0 || req.id === null;
+    try {
+      const result = await this.dispatch(req);
+      if (isNotification) return null;
+      return { jsonrpc: "2.0", id, result };
+    } catch (err) {
+      const code = err instanceof RpcError ? err.code : -32e3;
+      const message = err instanceof Error ? err.message : String(err);
+      log.error("fallo en request", { method: req.method, code, message });
+      if (isNotification) return null;
+      return { jsonrpc: "2.0", id, error: { code, message } };
+    }
+  }
   async handleLine(line) {
     let req;
     try {
@@ -7424,17 +7440,10 @@ var McpServer = class {
       log.error("linea json-rpc invalida", { line });
       return;
     }
-    const id = req.id ?? null;
-    const isNotification = req.id === void 0 || req.id === null;
     this.pending++;
     try {
-      const result = await this.dispatch(req);
-      if (!isNotification) this.send({ jsonrpc: "2.0", id, result });
-    } catch (err) {
-      const code = err instanceof RpcError ? err.code : -32e3;
-      const message = err instanceof Error ? err.message : String(err);
-      log.error("fallo en request", { method: req.method, code, message });
-      if (!isNotification) this.send({ jsonrpc: "2.0", id, error: { code, message } });
+      const res = await this.handleMessage(req);
+      if (res) this.send(res);
     } finally {
       this.pending--;
       if (this.closing && this.pending === 0) process.exit(0);
@@ -7446,8 +7455,10 @@ var McpServer = class {
       case "initialize": {
         const params = req.params ?? {};
         this.clientInfo = params.clientInfo ?? null;
+        const pv = params.protocolVersion;
+        const protocolVersion = pv && SUPPORTED_PROTOCOL_VERSIONS.has(pv) ? pv : DEFAULT_PROTOCOL_VERSION;
         return {
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion,
           capabilities: { tools: { listChanged: false } },
           serverInfo: this.info
         };
@@ -8555,6 +8566,117 @@ var TraceWriter = class {
   }
 };
 
+// mcp-server/src/mcp/http.ts
+var import_node_http = require("node:http");
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+function wantsEventStream(accept) {
+  if (!accept) return true;
+  return accept.includes("text/event-stream");
+}
+async function handlePostMcp(server, req, res, token) {
+  if (token) {
+    const auth = req.headers.authorization;
+    if (auth !== `Bearer ${token}`) {
+      res.statusCode = 401;
+      res.end();
+      return;
+    }
+  }
+  let raw;
+  try {
+    raw = await readBody(req);
+  } catch {
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  const obj = parsed;
+  if (typeof obj.method !== "string") {
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  const rpcReq = parsed;
+  const response = await server.handleMessage(rpcReq);
+  if (response === null) {
+    res.statusCode = 202;
+    res.end();
+    return;
+  }
+  if (wantsEventStream(req.headers.accept)) {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.end(`event: message
+data: ${JSON.stringify(response)}
+
+`);
+    return;
+  }
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(response));
+}
+function startMcpHttp(server, opts) {
+  const host = opts.host ?? "127.0.0.1";
+  if (host === "0.0.0.0") {
+    return Promise.reject(new Error("bind en 0.0.0.0 no permitido"));
+  }
+  return new Promise((resolve, reject) => {
+    const httpServer = (0, import_node_http.createServer)((req, res) => {
+      void (async () => {
+        const path3 = (req.url ?? "").split("?")[0];
+        if (path3 === "/mcp" && req.method === "GET") {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+        if (path3 === "/mcp" && req.method === "POST") {
+          await handlePostMcp(server, req, res, opts.token);
+          return;
+        }
+        res.statusCode = 404;
+        res.end();
+      })().catch(() => {
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.end();
+        }
+      });
+    });
+    httpServer.once("error", reject);
+    httpServer.listen(opts.port, host, () => {
+      const addr = httpServer.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : opts.port;
+      resolve({
+        port,
+        close: () => new Promise((res, rej) => {
+          httpServer.close((err) => err ? rej(err) : res());
+        })
+      });
+    });
+  });
+}
+
 // mcp-server/index.ts
 async function main() {
   const vaultRoot = process.env.SANCTUM_VAULT_PATH ?? import_node_path2.default.resolve(process.cwd(), "notes");
@@ -8575,7 +8697,16 @@ async function main() {
   log.info("opencode config", { hasKey: !!opencodeApiKey, baseUrl: opencodeBaseUrl });
   server.registerTool(createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer));
   server.registerTool(createRunMeshTool(vault, opencodeBaseUrl, opencodeApiKey, tracer));
-  server.start();
+  if (process.env.SANCTUM_MCP_HTTP === "1") {
+    await startMcpHttp(server, {
+      port: Number(process.env.SANCTUM_MCP_PORT || 8787) || 8787,
+      host: "127.0.0.1",
+      token: (process.env.SANCTUM_MCP_TOKEN ?? "").trim() || void 0
+    });
+    log.info("sanctum mcp listo (http)", { port: process.env.SANCTUM_MCP_PORT || 8787 });
+  } else {
+    server.start();
+  }
 }
 main().catch((err) => {
   log.error("error fatal en main", { error: String(err) });

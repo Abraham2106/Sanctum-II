@@ -996,7 +996,7 @@
       "id": "T-030",
       "title": "MCP HTTP para el conector de Grok Bot",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": ["S-mcp-http"],
       "decisions": ["DEC-0020"],

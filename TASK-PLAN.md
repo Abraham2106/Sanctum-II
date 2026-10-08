@@ -46,4 +46,4 @@ Las tres no comparten archivos. La suite completa corre en la rama después del 
 
 ## Grok Bot (DEC-0020)
 
-- T-030: MCP por HTTP para el conector de Grok Bot (S-mcp-http) — ready.
+- T-030: MCP por HTTP para el conector de Grok Bot (S-mcp-http) — done.
