@@ -4,15 +4,14 @@ export function globMatch(path: string, pattern: string): boolean {
   if (p === "**" || p === "") return true;
   const DS = "___DS___";
   const SS = "___SS___";
-  const regexSource =
-    "^" +
-    p
-      .replace(/\*\*/g, DS)
-      .replace(/\*/g, SS)
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(new RegExp(DS, "g"), ".*")
-      .replace(new RegExp(SS, "g"), "[^/]*") +
-    "$";
+  const body = p
+    .replace(/\*\*/g, DS)
+    .replace(/\*/g, SS)
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(new RegExp(DS, "g"), ".*")
+    .replace(new RegExp(SS, "g"), "[^/]*");
+  // DEC-0012: la barra final es la carpeta, no un path exacto
+  const regexSource = p.endsWith("/") ? `^${body}` : `^${body}$`;
   return new RegExp(regexSource).test(path);
 }
 

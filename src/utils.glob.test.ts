@@ -50,3 +50,21 @@ describe("globMatch (DEC-0009)", () => {
     expect(globMatch("Docs/sub/a.txt", "Docs/**/*.md")).toBe(false);
   });
 });
+
+describe("globMatch directory prefix (DEC-0012)", () => {
+  it("matches file directly under project folder", () => {
+    expect(globMatch("Projects/test/nota.md", "/Projects/test/")).toBe(true);
+  });
+
+  it("matches nested file under project folder", () => {
+    expect(globMatch("Projects/test/sub/a.md", "/Projects/test/")).toBe(true);
+  });
+
+  it("rejects similar prefix that is not the folder", () => {
+    expect(globMatch("Projects/test-extra/a.md", "/Projects/test/")).toBe(false);
+  });
+
+  it("matches research file under trailing-slash pattern", () => {
+    expect(globMatch("Research/nota.md", "/Research/")).toBe(true);
+  });
+});
