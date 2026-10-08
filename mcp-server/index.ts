@@ -10,6 +10,7 @@ import { createInvokeAgentTool } from "./src/tools/invoke-agent.js"
 import { createRunMeshTool } from "./src/tools/run-mesh.js"
 import { TraceWriter } from "./src/observability/trace-writer.js"
 import { log } from "./src/mcp/logger.js"
+import { startMcpHttp } from "./src/mcp/http.js"
 
 async function main(): Promise<void> {
   const vaultRoot = process.env.SANCTUM_VAULT_PATH ?? path.resolve(process.cwd(), "notes")
@@ -42,7 +43,16 @@ async function main(): Promise<void> {
   server.registerTool(createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer))
   server.registerTool(createRunMeshTool(vault, opencodeBaseUrl, opencodeApiKey, tracer))
 
-  server.start()
+  if (process.env.SANCTUM_MCP_HTTP === "1") {
+    await startMcpHttp(server, {
+      port: Number(process.env.SANCTUM_MCP_PORT || 8787) || 8787,
+      host: "127.0.0.1",
+      token: (process.env.SANCTUM_MCP_TOKEN ?? "").trim() || undefined,
+    })
+    log.info("sanctum mcp listo (http)", { port: process.env.SANCTUM_MCP_PORT || 8787 })
+  } else {
+    server.start()
+  }
 }
 
 main().catch((err) => {

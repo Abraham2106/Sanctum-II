@@ -2,7 +2,9 @@ import { createInterface } from "node:readline"
 import { log } from "./logger.js"
 import type { JsonRpcRequest, JsonRpcResponse, ToolDef } from "./types.js"
 
-const PROTOCOL_VERSION = "2024-11-05"
+// DEC-0020: Grok Bot usa el MCP por POST /mcp
+const SUPPORTED_PROTOCOL_VERSIONS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"])
+const DEFAULT_PROTOCOL_VERSION = "2025-03-26"
 
 class RpcError extends Error {
   constructor(
@@ -55,6 +57,22 @@ export class McpServer {
     process.stdout.write(JSON.stringify(res) + "\n")
   }
 
+  async handleMessage(req: JsonRpcRequest): Promise<JsonRpcResponse | null> {
+    const id = req.id ?? null
+    const isNotification = req.id === undefined || req.id === null
+    try {
+      const result = await this.dispatch(req)
+      if (isNotification) return null
+      return { jsonrpc: "2.0", id, result }
+    } catch (err) {
+      const code = err instanceof RpcError ? err.code : -32000
+      const message = err instanceof Error ? err.message : String(err)
+      log.error("fallo en request", { method: req.method, code, message })
+      if (isNotification) return null
+      return { jsonrpc: "2.0", id, error: { code, message } }
+    }
+  }
+
   private async handleLine(line: string): Promise<void> {
     let req: JsonRpcRequest
     try {
@@ -63,17 +81,10 @@ export class McpServer {
       log.error("linea json-rpc invalida", { line })
       return
     }
-    const id = req.id ?? null
-    const isNotification = req.id === undefined || req.id === null
     this.pending++
     try {
-      const result = await this.dispatch(req)
-      if (!isNotification) this.send({ jsonrpc: "2.0", id, result })
-    } catch (err) {
-      const code = err instanceof RpcError ? err.code : -32000
-      const message = err instanceof Error ? err.message : String(err)
-      log.error("fallo en request", { method: req.method, code, message })
-      if (!isNotification) this.send({ jsonrpc: "2.0", id, error: { code, message } })
+      const res = await this.handleMessage(req)
+      if (res) this.send(res)
     } finally {
       this.pending--
       if (this.closing && this.pending === 0) process.exit(0)
@@ -84,10 +95,16 @@ export class McpServer {
     log.debug("dispatch", { method: req.method, id: req.id })
     switch (req.method) {
       case "initialize": {
-        const params = (req.params ?? {}) as { clientInfo?: ClientInfo }
+        const params = (req.params ?? {}) as {
+          clientInfo?: ClientInfo
+          protocolVersion?: string
+        }
         this.clientInfo = params.clientInfo ?? null
+        const pv = params.protocolVersion
+        const protocolVersion =
+          pv && SUPPORTED_PROTOCOL_VERSIONS.has(pv) ? pv : DEFAULT_PROTOCOL_VERSION
         return {
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion,
           capabilities: { tools: { listChanged: false } },
           serverInfo: this.info,
         }
