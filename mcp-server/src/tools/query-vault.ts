@@ -4,8 +4,7 @@ import type { VectorStore } from "../../../src/rag/vector-store.js"
 import { log } from "../mcp/logger.js"
 import { resolvePermissions, checkPathPermission } from "../mcp/permission-resolver.js"
 import { embedText } from "../embeddings/gemini-embed.js"
-
-const MIN_SIMILARITY = 0.65
+import { RAG_DEFAULTS } from "../../../src/constants.js" // DEC-0003: un solo dueño para este valor
 
 export function createQueryVaultTool(
   vault: VaultAdapter,
@@ -63,7 +62,7 @@ export function createQueryVaultTool(
 
       const rawResults = store.search(embedding, limit)
 
-      const filtered = rawResults.filter((r) => r.score >= MIN_SIMILARITY)
+      const filtered = rawResults.filter((r) => r.score >= RAG_DEFAULTS.MIN_SIMILARITY)
 
       const permitted = store.filterByPaths(filtered, perms.readPaths)
 

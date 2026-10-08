@@ -1,7 +1,6 @@
 import type { VaultAdapter } from "../../../src/core/vault-adapter.js"
+import { TRACES_DIR } from "../../../src/constants.js" // DEC-0003: un solo dueño para este valor
 import { log } from "../mcp/logger.js"
-
-const TRACES_DIR = "sanctum-logs/traces"
 
 function generateTraceId(): string {
   const now = new Date()

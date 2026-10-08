@@ -1,5 +1,5 @@
 import type { MemoryEntry, Project, Thread, ThreadData, PendingAction, CreatedNote } from "./types";
-import { defaultProject } from "./types";
+import { defaultProject, DEFAULT_PROJECT_RAG } from "./types"; // DEC-0003: un solo dueño para este valor
 import { PROJECTS_DIR, DEFAULT_MODEL } from "../constants";
 import { parseScalar } from "../shared/agents/frontmatter";
 import type { VaultAdapter } from "../core/vault-adapter";
@@ -93,9 +93,9 @@ function parseProjectMd(content: string): Project {
     rag: {
       embed_model: data.rag?.embed_model || "gemini-embedding-2",
       dims: data.rag?.dims || 768,
-      chunk_words: data.rag?.chunk_words || 400,
+      chunk_words: data.rag?.chunk_words || DEFAULT_PROJECT_RAG.chunk_words,
       top_k: data.rag?.top_k || 5,
-      min_similarity: data.rag?.min_similarity || 0.65,
+      min_similarity: data.rag?.min_similarity || DEFAULT_PROJECT_RAG.min_similarity,
     },
     files: data.files || [],
     attachedFiles,
