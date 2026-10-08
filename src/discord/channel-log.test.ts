@@ -37,6 +37,24 @@ describe("renderChannelNote / parseChannelNote", () => {
     });
   });
 
+  it("roundtrips author a*b as ab after stripping asterisks on render", () => {
+    const lines: DiscordLine[] = [
+      { id: "m", at: "2026-01-01T00:00:00Z", author: "a*b", content: "hi" },
+    ];
+    const md = renderChannelNote("ch", lines);
+    expect(parseChannelNote(md)).toEqual({
+      channelName: "ch",
+      lines: [
+        {
+          id: "m",
+          at: "2026-01-01T00:00:00Z",
+          author: "ab",
+          content: "hi",
+        },
+      ],
+    });
+  });
+
   it("uses canal when name is empty and ignores non-matching lines", () => {
     const md = "# canal\nnot a line\n- x y **z**: ok\n";
     expect(parseChannelNote(md).lines).toHaveLength(1);

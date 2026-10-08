@@ -14,6 +14,11 @@ function collapseContent(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+function renderAuthor(author: string): string {
+  const stripped = author.replace(/\*/g, "");
+  return stripped || "user";
+}
+
 export function renderChannelNote(
   channelName: string,
   lines: DiscordLine[],
@@ -22,7 +27,9 @@ export function renderChannelNote(
   const parts = [`# ${title}`];
   for (const line of lines) {
     const content = collapseContent(line.content);
-    parts.push(`- ${line.id} ${line.at} **${line.author}**: ${content}`);
+    parts.push(
+      `- ${line.id} ${line.at} **${renderAuthor(line.author)}**: ${content}`,
+    );
   }
   return `${parts.join("\n")}\n`;
 }
