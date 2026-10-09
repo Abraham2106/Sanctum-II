@@ -79,3 +79,5 @@ DEC-0022 gobierna el nuevo alcance. JSON canónico. Coordinator escribe gobierno
 Cada hoja: planner→worker→reviewer/verificador→judge. Entry ready+deps done+worktree; output commit owned+tests+handoff; stop nueva DEC/seam/hecho; DONE exige review sin P1/P2, commands_run reales, evidencia y docs sincronizadas. Live Obsidian unavailable bloquea declaración de producción, no entrega automatizada.
 
 - T-046: Skills/notas permisos y proveedores — ready; deps T036,T040,T045. T042 waits for T046. T036 includes portable turn/ports; T043 includes all mesh state labels.
+
+T-039 incluye los parsers de evaluación compartidos y de cadenas: aceptación exige score válido y veredicto explícito. T-045 depende también de T-036 para reutilizar sus puertos sin duplicarlos. Tras integrar cada hoja se conserva su commit/evidencia y se retira y poda su worktree (instrucción del usuario).

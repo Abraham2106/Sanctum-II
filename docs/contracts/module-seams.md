@@ -60,3 +60,5 @@ Un seam agrupa una frontera explícita; las dependencias serializan sus adaptado
 | S-runtime-046 | src/skills/authoring/mesh.ts, src/orchestrator/note-resolver.ts, src/orchestrator/note-generator.ts, src/core/note-writer.ts and owned tests | accepted |
 
 T036 additionally owns runtime/turn.ts and ports.ts; T043 owns chat-right/composer index-state to present all statuses. T042 consumes scoped note resolver. No overlapping writers.
+
+S-runtime-039 incluye src/shared/mesh/parse.ts y src/chains/critic-decision.ts, con sus regresiones. S-runtime-045 consume runtime/ports.ts de T-036 sin modificarlo.

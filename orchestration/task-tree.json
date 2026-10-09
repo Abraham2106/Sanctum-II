@@ -1308,7 +1308,7 @@
         "DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/runtime/dag.ts, src/runtime/mesh.ts, src/chains/executor.ts, src/orchestrator/mesh.ts, src/orchestrator/mesh-types.ts, src/shared/mesh/types.ts, mcp-server/src/tools/run-mesh.ts. DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "notes": "Allowed: src/runtime/dag.ts, src/runtime/mesh.ts, src/chains/executor.ts, src/orchestrator/mesh.ts, src/orchestrator/mesh-types.ts, src/shared/mesh/types.ts, mcp-server/src/tools/run-mesh.ts. DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/shared/mesh/parse.ts and src/chains/critic-decision.ts with tests: missing explicit accept rejects; score must be finite 0..100; accepted requires both sufficient score AND explicit accept. Keep parsed best evaluation paired with output.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1501,7 +1501,8 @@
       "owner_role": "worker",
       "status": "ready",
       "deps": [
-        "T-035"
+        "T-035",
+        "T-036"
       ],
       "seams": [
         "S-runtime-045"
@@ -1519,7 +1520,7 @@
         "Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Reuse structural ports supplied by T036; do not duplicate or edit runtime/ports.ts. Configure calls through provider resolution options.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
