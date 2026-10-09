@@ -78,3 +78,6 @@ S-runtime-045 recibe runtime/turn.ts de T-036, serializado por dependencia, para
 T-043 incorpora settings-tab.ts para controles existentes. T-049 transferencias seriales están bloqueadas por dependencias; T-045 no edita configuración/puertos.
 
 S-runtime-047 incluye helpers src/rag/vector-store-*.ts y src/kg/kg-store-*.ts para split propietario, sin otro seam.
+
+| S-runtime-051 | stores Vector/KG, helpers propios y regresiones lifecycle; transferencia serial de T-047 | accepted |
+Orden serial actualizado: T-045 chat turn primero; T-049 embedding turn después.

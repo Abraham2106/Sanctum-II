@@ -65,6 +65,6 @@ Interfaz conserva apariencia, añade controles de proveedor y estados loading/mi
 
 ## Propiedad y evidencia
 
-T-050: sidecar Python/README/tests nuevos, sin tocar TS. T-049: puerto/cliente/config compartidos, tipos/settings/env y serialización de selección de proyecto; propiedad serial después de T-036/T-038/T-047/T-048. T-040 consume puerto y generación, T-041 MCP, T-042 plugin, T-043 controles, T-044 docs/CI. T-045 recibe turn después de T-049, solo opciones de chat. Nunca escritores simultáneos.
+T-050: sidecar Python/README/tests nuevos, sin tocar TS. T-049: puerto/cliente/config compartidos, tipos/settings/env y serialización de selección de proyecto; propiedad serial después de T-036/T-038/T-047/T-048/T-051. T-040 consume puerto y generación, T-041 MCP, T-042 plugin, T-043 controles, T-044 docs/CI. T-045 modifica turn primero para chat; T-049 lo recibe después solo para embeddings. Nunca escritores simultáneos.
 
 Composer 2.5 headless implementa; Sol 6.1 revisa. TS/Python tests con dobles explícitos exclusivamente de contrato y HTTP real de loopback. Probar auth/Origin/Host/límites, errores/readiness, valores inválidos, batch, identidad, cancelación, no fallback y migración. Sin pesos/dependencias disponibles: integración real pendiente, no producción. Benchmark de RESEARCH-embeddinggemma-2 sigue pendiente; no garantizar VRAM/latencia/calidad.

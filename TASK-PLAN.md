@@ -103,3 +103,5 @@ DEC-0023 amplía alcance por usuario: T-050 sidecar Python seguro solo texto (in
 T-048 e2ba2dc aceptada; núcleo T-036 queda aceptado tras 35 pruebas de runtime y typecheck sobre rama integrada. Worktree T-048 retirado/podado con dependencias propias. Descriptor JSON exacto de DEC-0023 congelado para paridad Python/TS.
 
 T-047 propiedad de split explícita en helpers vector-store-*.ts/kg-store-*.ts; revisión detecta intents mutables, retiro incompleto y orden incorrecto de tombstones, última corrección de la hoja en curso. T-050 revisión requiere descriptor congelado, offline/revisión/prefijos reales y schemas adversos; contrato no aceptado todavía.
+
+T-047 borrador de código integrado excluyendo HANDOFF, sigue REVIEW: 75 tests/typecheck pasan pero faltan snapshot capturado, KG append-only y split. T-051 acota estos tres casos de lifecycle/split, prerequisito de aceptación T-038/T-047 y de T-040/T-049. T-045 se adelanta (deps T-036/T-048); T-049 recibe turn después, sin writes simultáneos.

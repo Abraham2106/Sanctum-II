@@ -1347,7 +1347,8 @@
         "T-047",
         "T-048",
         "T-049",
-        "T-050"
+        "T-050",
+        "T-051"
       ],
       "seams": [
         "S-runtime-040"
@@ -1527,8 +1528,7 @@
       "deps": [
         "T-035",
         "T-036",
-        "T-048",
-        "T-049"
+        "T-048"
       ],
       "seams": [
         "S-runtime-045"
@@ -1546,7 +1546,7 @@
         "Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Reuse structural ports supplied by T036; do not duplicate or edit runtime/ports.ts. Configure calls through provider resolution options. Serial additional ownership src/runtime/turn.ts after T036 integration, solely wire per-call resolved model/provider/signal into all chat and chatMessages branches (including conversation). Reuse CallOptions structural ports. Extend agent/project optional explicit provider fields/loaders only if required, with ownership handoff after T035/T038; do not infer provider from model. T049 owns embedding port/types/settings and transfers turn serially to this leaf; modify only chat options there, no embedding/config files. No agent/projecttype/store ownership; explicit provider configuration via resolverglobal/call options sufficient.",
+      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Reuse structural ports supplied by T036; do not duplicate or edit runtime/ports.ts. Configure calls through provider resolution options. Serial additional ownership src/runtime/turn.ts after T036 integration, solely wire per-call resolved model/provider/signal into all chat and chatMessages branches (including conversation). Reuse CallOptions structural ports. Extend agent/project optional explicit provider fields/loaders only if required, with ownership handoff after T035/T038; do not infer provider from model. T049 owns embedding port/types/settings and transfers turn serially to this leaf; modify only chat options there, no embedding/config files. No agent/projecttype/store ownership; explicit provider configuration via resolverglobal/call options sufficient. Corrected serial order: this leaf NOW precedes T049. Own chat changes in turn; T049 later owns embedding-only turn changes. No embedding/config/types/store modifications.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1594,7 +1594,7 @@
       "id": "T-047",
       "title": "Reconciliación load con operaciones pendientes",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "review",
       "deps": [],
       "seams": [
         "S-runtime-047"
@@ -1617,7 +1617,10 @@
           "npm run typecheck",
           "npx vitest run resource-queue, project store/YAML, VectorStore and KG persistence + preexisting regressions"
         ],
-        "run": []
+        "run": [
+          "Source-only draft integrated; review rejected after two repair loops",
+          "75 tests/8 suites and typecheck pass but captured snapshot, append-only KG and file split pendingT051; HANDOFF excluded"
+        ]
       }
     },
     {
@@ -1692,7 +1695,9 @@
         "T-036",
         "T-038",
         "T-047",
-        "T-048"
+        "T-048",
+        "T-051",
+        "T-045"
       ],
       "seams": [
         "S-local-client"
@@ -1716,6 +1721,37 @@
           "npx vitest run owned tests and src/runtime",
           "npm run typecheck",
           "npm run build"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-051",
+      "title": "Snapshot capturado y compatibilidad de escrituras de stores",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-runtime-051"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside precise storage lifecycle/split"
+      ],
+      "done_when": [
+        "Materialization uses immutable captured operations across asyncread; clear/duringIO cannot change captured batch; localnextops remainpending",
+        "KG upsert/save with append-only adapter without read compiles/runs; required-read semantic cases fail explicitly without data loss",
+        "Split Vector/KG helpers under400lines; all meaningful regressions/typecheck/review pass"
+      ],
+      "notes": "Split after rejected T047 draft, source-only rootintegration; serial ownership. Own src/rag/vector-store.ts and vector-store-*.ts, src/kg/kg-store.ts and kg-store-*.ts helpers and persistence tests. Freeze current semantic immutable ops reconciliation; fix precise remaining snapshot bug: materialization cannot index live this.replayLog afterawait, use capturedimmutable batch/ref for persist, preserve clear/new ops for nextsave and correct loadcurrentoverlay semantics. Restore KG save optional read adapter; append-only compatibility upsert/knowndelete must work without baseline read. For semantic cases truly needing unavailable baseline, explicit failure without writes/data loss, never castassume read. Split oversized files <400, move existing helpers notnewarchitecture. Tests deterministicclear while deferredreadmaterialization, capturedset then clear/newset survives save/reload, IOerrorretry/prefixretirement and appendonly compiletest no casts. T038/T047 remainreview untilT051 accepted. Composer2.5 CLI only, no HANDOFF/governance commit, max2 reviews.",
+      "rollback": "Revert leaf and drafts reverse; preserve vault",
+      "verification": {
+        "planned": [
+          "npx vitest run storage/runtime/preexisting suites",
+          "npm run typecheck"
         ],
         "run": []
       }
