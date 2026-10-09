@@ -1,7 +1,7 @@
-import { describe, it, expect, afterEach } from "vitest"
+import { describe, it, expect, afterEach, vi } from "vitest"
 import http from "node:http"
 import { McpServer } from "./server.js"
-import { startMcpHttp, validateJsonRpcRequest } from "./http.js"
+import { startMcpHttp, validateJsonRpcRequest, isValidSerializedHttpOrigin } from "./http.js"
 
 const TEST_TOKEN = "secret-token"
 const TEST_ORIGIN = "http://127.0.0.1:5173"
@@ -102,6 +102,34 @@ describe("validateJsonRpcRequest", () => {
 
   it("rechaza id con tipo inválido", () => {
     expect(validateJsonRpcRequest({ jsonrpc: "2.0", id: {}, method: "ping" })).toBeNull()
+  })
+
+  it("rechaza id numérico no finito (p. ej. JSON 1e400)", () => {
+    const parsed = JSON.parse('{"jsonrpc":"2.0","id":1e400,"method":"ping"}') as unknown
+    expect(validateJsonRpcRequest(parsed)).toBeNull()
+  })
+
+  it("rechaza params null", () => {
+    expect(
+      validateJsonRpcRequest({ jsonrpc: "2.0", id: 1, method: "ping", params: null }),
+    ).toBeNull()
+  })
+})
+
+describe("isValidSerializedHttpOrigin", () => {
+  it("acepta origen http(s) serializado exacto", () => {
+    expect(isValidSerializedHttpOrigin(TEST_ORIGIN)).toBe(true)
+    expect(isValidSerializedHttpOrigin("https://localhost:3000")).toBe(true)
+  })
+
+  it("rechaza basura, path, credenciales, query/hash y cadenas vacías", () => {
+    expect(isValidSerializedHttpOrigin("not-a-url")).toBe(false)
+    expect(isValidSerializedHttpOrigin(`${TEST_ORIGIN}/path`)).toBe(false)
+    expect(isValidSerializedHttpOrigin("http://user:pass@127.0.0.1:5173")).toBe(false)
+    expect(isValidSerializedHttpOrigin(`${TEST_ORIGIN}?q=1`)).toBe(false)
+    expect(isValidSerializedHttpOrigin(`${TEST_ORIGIN}#frag`)).toBe(false)
+    expect(isValidSerializedHttpOrigin("")).toBe(false)
+    expect(isValidSerializedHttpOrigin("null")).toBe(false)
   })
 })
 
@@ -266,6 +294,66 @@ describe("startMcpHttp", () => {
       { Origin: "null" },
     )
     expect(res.status).toBe(403)
+  })
+
+  it("Origin inválido devuelve 403 aunque esté en allowedOrigins", async () => {
+    const invalidListed = `${TEST_ORIGIN}/evil`
+    await start({ allowedOrigins: [TEST_ORIGIN, invalidListed] })
+    const res = await post(
+      port,
+      "/mcp",
+      { jsonrpc: "2.0", id: 1, method: "ping" },
+      { Origin: invalidListed },
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it("cuerpo JSON-RPC inválido responde 400 sin despachar", async () => {
+    const server = makeServer()
+    const handleSpy = vi.spyOn(server, "handleMessage")
+    const h = await startMcpHttp(server, {
+      port: 0,
+      host: "127.0.0.1",
+      token: TEST_TOKEN,
+      allowedOrigins: [TEST_ORIGIN],
+    })
+    port = h.port
+    close = h.close
+
+    const res = await post(port, "/mcp", { jsonrpc: "1.0", id: 1, method: "ping" })
+    expect(res.status).toBe(400)
+    expect(handleSpy).not.toHaveBeenCalled()
+    handleSpy.mockRestore()
+  })
+
+  it("params null y id no finito responden 400 sin despachar", async () => {
+    const server = makeServer()
+    const handleSpy = vi.spyOn(server, "handleMessage")
+    const h = await startMcpHttp(server, {
+      port: 0,
+      host: "127.0.0.1",
+      token: TEST_TOKEN,
+      allowedOrigins: [TEST_ORIGIN],
+    })
+    port = h.port
+    close = h.close
+
+    const nullParams = await post(port, "/mcp", {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "ping",
+      params: null,
+    })
+    expect(nullParams.status).toBe(400)
+
+    const nonFiniteId = await postRaw(
+      port,
+      "/mcp",
+      Buffer.from('{"jsonrpc":"2.0","id":1e400,"method":"ping"}', "utf8"),
+    )
+    expect(nonFiniteId.status).toBe(400)
+    expect(handleSpy).not.toHaveBeenCalled()
+    handleSpy.mockRestore()
   })
 
   it("cuerpo JSON-RPC inválido responde 400", async () => {

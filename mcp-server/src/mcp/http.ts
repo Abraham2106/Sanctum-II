@@ -65,18 +65,32 @@ function wantsEventStream(accept: string | undefined): boolean {
   return accept.includes("text/event-stream")
 }
 
+/** Origen http(s) serializado exactamente (scheme + host + puerto opcional), sin path/credenciales/query/hash (DEC-0022). */
+export function isValidSerializedHttpOrigin(originHeader: string): boolean {
+  if (originHeader === "" || originHeader === "null") return false
+  try {
+    const u = new URL(originHeader)
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false
+    if (u.username !== "" || u.password !== "") return false
+    if (u.search !== "" || u.hash !== "") return false
+    return u.origin === originHeader
+  } catch {
+    return false
+  }
+}
+
 function isOriginAllowed(
   originHeader: string | undefined,
   allowedOrigins: readonly string[] | undefined,
 ): boolean {
   if (originHeader === undefined) return true
-  if (originHeader === "null" || originHeader === "") return false
+  if (!isValidSerializedHttpOrigin(originHeader)) return false
   if (!allowedOrigins || allowedOrigins.length === 0) return false
   return allowedOrigins.includes(originHeader)
 }
 
 function isStructuredParams(value: unknown): boolean {
-  return value === null || typeof value === "object"
+  return typeof value === "object" && value !== null
 }
 
 /** Valida forma de solicitud JSON-RPC 2.0 antes de despachar (DEC-0022). */
@@ -90,6 +104,7 @@ export function validateJsonRpcRequest(parsed: unknown): JsonRpcRequest | null {
   if ("id" in obj) {
     const id = obj.id
     if (id !== null && typeof id !== "string" && typeof id !== "number") return null
+    if (typeof id === "number" && !Number.isFinite(id)) return null
   }
   if ("params" in obj && !isStructuredParams(obj.params)) return null
   return parsed as JsonRpcRequest
