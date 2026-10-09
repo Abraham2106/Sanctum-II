@@ -1424,7 +1424,7 @@
       "id": "T-042",
       "title": "Composición plugin y servicios",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [
         "T-039",
         "T-040",
@@ -1455,14 +1455,16 @@
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Accepted 344c3b0. main.ts 338 lines. 4 contract tests re-run: open permissions, stale without embed, snapshot scope, needs_review not written."
+        ]
       }
     },
     {
       "id": "T-043",
       "title": "Vistas con servicios comunes",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [
         "T-042"
       ],
