@@ -44,6 +44,12 @@ export function registerPluginViews(plugin: SanctumPlugin, session: PluginSessio
   plugin.registerView(VIEW_TYPE_CHAINS, (leaf) => new ChainView(leaf, {
     chainStore: plugin.chainStore,
     vaultAdapter: plugin.app.vault.adapter,
+    runtime: {
+      cancelMeshRequest: () => plugin.cancelMeshRequest(),
+      beginMeshRequest: () => plugin.services.beginMeshRequest().signal,
+      getIndexSnapshot: () => plugin.services.activeIndexSnapshot ?? null,
+      getActiveFolder: () => plugin.activeFolder,
+    },
     getTurnDeps: () => ({
       agent: plugin.agent || fallbackAgent(),
       opencodeClient: plugin.opencodeClient,

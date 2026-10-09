@@ -1,34 +1,45 @@
-import { Notice, setIcon } from "obsidian";
+import { setIcon } from "obsidian";
 import type { ChainNode, ChainEdge } from "../chains/types";
 import { topologicalOrder } from "../chains/executor";
-import { AGENT_TYPES, genId, getAgentById } from "./chain-types";
-import { bezierPath, createLinkPreviewPath, newChainEdge, portPos, renderChainEdges } from "./chain-edges";
+import { bezierPath, newChainEdge, portPos, renderChainEdges } from "./chain-edges";
 import type { ExecutionResult } from "./chain-types";
+import { addChainNode, buildChainPalette, type ChainCanvasNodeHost } from "./chain-canvas-nodes";
 
 export interface ChainCanvasHost {
   canvasWrap: HTMLElement;
   onAutoSave: () => void;
 }
 
-export class ChainCanvas {
+export class ChainCanvas implements ChainCanvasNodeHost {
   nodes: ChainNode[] = [];
   edges: ChainEdge[] = [];
   results = new Map<string, ExecutionResult>();
 
-  private nodeEls = new Map<string, HTMLElement>();
-  private dragging: { nodeId: string; ox: number; oy: number } | null = null;
-  private linking: { fromId: string; path: SVGPathElement } | null = null;
+  nodeEls = new Map<string, HTMLElement>();
+  linking: { fromId: string; path: SVGPathElement } | null = null;
   private panning: { sx: number; sy: number } | null = null;
-  private scale = 1;
-  private tx = 0;
-  private ty = 0;
+  scale = 1;
+  tx = 0;
+  ty = 0;
 
   private vpEl!: HTMLElement;
-  private svgEl!: SVGSVGElement;
-  private nodesLayer!: HTMLElement;
+  svgEl!: SVGSVGElement;
+  nodesLayer!: HTMLElement;
   emptyEl!: HTMLElement;
 
   constructor(private readonly host: ChainCanvasHost) {}
+
+  get canvasWrap(): HTMLElement {
+    return this.host.canvasWrap;
+  }
+
+  onAutoSave(): void {
+    this.host.onAutoSave();
+  }
+
+  setLinking(v: ChainCanvasNodeHost["linking"]): void {
+    this.linking = v;
+  }
 
   mount(parent: HTMLElement): void {
     this.host.canvasWrap = parent.createDiv({
@@ -169,91 +180,11 @@ export class ChainCanvas {
   }
 
   buildPalette(side: HTMLElement): void {
-    side.createDiv({ cls: "och-palette-label", text: "AGENTES" });
-    for (const a of AGENT_TYPES) {
-      const it = side.createDiv({ cls: "s-rail-item" });
-      const avatar = it.createSpan({
-        attr: {
-          style: `width:30px;height:30px;border-radius:8px;background:${a.color}33;display:flex;align-items:center;justify-content:center;flex-shrink:0`,
-        },
-      });
-      avatar.style.color = a.color;
-      setIcon(avatar, a.lucide);
-      const m = it.createDiv({ cls: "s-rail-info" });
-      m.createDiv({ text: a.name, attr: { style: "font-weight:600;font-size:11px" } });
-      m.createDiv({ text: `@${a.id}`, attr: { style: "font-size:9px;color:var(--text-3)" } });
-      it.draggable = true;
-      it.ondragstart = (e) => e.dataTransfer!.setData("agentId", a.id);
-      it.onclick = () => {
-        const r = this.host.canvasWrap.getBoundingClientRect();
-        this.addNode(
-          a.id,
-          (r.width / 2 - this.tx) / this.scale + (Math.random() * 80 - 40),
-          (r.height / 2 - this.ty) / this.scale + (Math.random() * 80 - 40),
-        );
-      };
-    }
+    buildChainPalette(this, side);
   }
 
   addNode(agentId: string, x: number, y: number): string {
-    const a = getAgentById(agentId);
-    if (!a) return "";
-    const id = genId("n");
-    this.nodes.push({ id, agentId, x, y });
-    const el = this.nodesLayer.createDiv({ attr: { "data-node-id": id } });
-    el.addClass("och-node");
-    el.style.setProperty("--nodeColor", a.color);
-    el.style.position = "absolute";
-    el.style.left = x + "px";
-    el.style.top = y + "px";
-    el.style.transform = "translate(-50%,-50%)";
-    el.style.zIndex = "3";
-    el.style.width = "200px";
-    el.innerHTML = `<div class="och-badge" style="position:absolute;top:-10px;left:-10px;min-width:20px;height:20px;border-radius:10px;background:${a.color};color:#fff;display:none;align-items:center;justify-content:center;font-size:11px;font-weight:800">-</div>
-      <div class="och-result" style="display:none;position:absolute;bottom:-6px;right:-6px;width:14px;height:14px;border-radius:50%;align-items:center;justify-content:center;font-size:8px;color:#fff"></div>
-      <div class="och-bubble"><div class="och-del" role="button" tabindex="0" aria-label="Eliminar agente">×</div>
-        <div style="display:flex;align-items:center;gap:8px"><span class="och-node-icon" style="font-size:16px"></span><div><div style="font-size:12px;font-weight:700">${a.name}</div><div style="font-size:10px;color:var(--text-3)">@${a.id}</div></div></div>
-        <div style="font-size:10px;color:var(--text-3);margin-top:4px">${a.desc}</div></div>
-      <div class="och-port-in" aria-hidden="true"></div>
-      <div class="och-port-out" role="button" tabindex="0" aria-label="Conectar agente ${a.name}"></div>`;
-    this.nodeEls.set(id, el);
-    const iconSpan = el.querySelector(".och-node-icon") as HTMLElement;
-    if (iconSpan) setIcon(iconSpan, a.lucide);
-    const del = el.querySelector(".och-del") as HTMLElement;
-    del.onclick = (ev) => {
-      ev.stopPropagation();
-      this.removeNode(id);
-    };
-    del.onkeydown = (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") {
-        ev.preventDefault();
-        del.click();
-      }
-    };
-    const outputPort = el.querySelector(".och-port-out") as HTMLElement;
-    outputPort.onpointerdown = (ev) => {
-      ev.stopPropagation();
-      ev.preventDefault();
-      this.startLink(ev, id);
-    };
-    outputPort.onkeydown = (ev) => {
-      if (ev.key !== "Enter" && ev.key !== " ") return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (this.linking) {
-        const from = this.linking.fromId;
-        this.linking.path.remove();
-        this.linking = null;
-        if (from !== id && !this.edges.some((edge) => edge.from === from && edge.to === id)) this.addEdge(from, id);
-      } else {
-        this.startLink(ev, id);
-        new Notice("Seleccioná otro agente y presioná Enter para conectarlo");
-      }
-    };
-    this.makeDraggable(el, id);
-    this.updateEmpty();
-    this.host.onAutoSave();
-    return id;
+    return addChainNode(this, agentId, x, y);
   }
 
   removeNode(id: string): void {
@@ -385,58 +316,22 @@ export class ChainCanvas {
     }, 50);
   }
 
-  private makeDraggable(el: HTMLElement, nodeId: string): void {
-    const bub = el.querySelector(".och-bubble") as HTMLElement;
-    bub.onpointerdown = (e) => {
-      if ((e.target as HTMLElement).classList.contains("och-del")) return;
-      const r = this.host.canvasWrap.getBoundingClientRect();
-      const n = this.nodes.find((x) => x.id === nodeId);
-      if (!n) return;
-      this.dragging = {
-        nodeId,
-        ox: (e.clientX - r.left - this.tx) / this.scale - n.x,
-        oy: (e.clientY - r.top - this.ty) / this.scale - n.y,
-      };
-      bub.setPointerCapture(e.pointerId);
-      e.stopPropagation();
-    };
-    bub.onpointermove = (e) => {
-      if (!this.dragging || this.dragging.nodeId !== nodeId) return;
-      const r = this.host.canvasWrap.getBoundingClientRect();
-      const n = this.nodes.find((x) => x.id === nodeId);
-      if (!n) return;
-      n.x = (e.clientX - r.left - this.tx) / this.scale - this.dragging.ox;
-      n.y = (e.clientY - r.top - this.ty) / this.scale - this.dragging.oy;
-      el.style.left = n.x + "px";
-      el.style.top = n.y + "px";
-      this.renderEdges();
-    };
-    bub.onpointerup = () => {
-      this.dragging = null;
-      this.host.onAutoSave();
-    };
-    bub.onpointercancel = () => {
-      this.dragging = null;
-    };
-  }
-
-  private addEdge(from: string, to: string) {
+  addEdge(from: string, to: string): void {
     this.edges.push(newChainEdge(from, to));
     this.renderEdges();
     this.host.onAutoSave();
   }
 
-  private startLink(_e: Event, fromId: string) {
-    const p = createLinkPreviewPath(this.svgEl);
-    this.linking = { fromId, path: p };
-  }
-
-  private renderEdges(): void {
+  renderEdges(): void {
     renderChainEdges(this.svgEl, this.nodes, this.edges, (edgeId) => {
       this.edges = this.edges.filter((ed) => ed.id !== edgeId);
       this.renderEdges();
       this.host.onAutoSave();
     });
+  }
+
+  updateEmpty(): void {
+    this.emptyEl.style.display = this.nodes.length ? "none" : "grid";
   }
 
   private applyVp(): void {
@@ -450,9 +345,5 @@ export class ChainCanvas {
     this.ty = cy - (cy - this.ty) * f;
     this.scale = ns;
     this.applyVp();
-  }
-
-  private updateEmpty(): void {
-    this.emptyEl.style.display = this.nodes.length ? "none" : "grid";
   }
 }
