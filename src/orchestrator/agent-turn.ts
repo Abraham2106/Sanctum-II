@@ -45,6 +45,8 @@ export interface TurnDeps {
   traceId?: string;
   /** DEC-0022: optional sealed generation metadata for vector identity checks. */
   sealedGeneration?: VectorIdentity;
+  /** DEC-0022: aborts in-flight chat/embed provider calls when set. */
+  signal?: AbortSignal;
 }
 
 export interface TurnResult {
@@ -159,6 +161,7 @@ export async function executeTurn(
     conversationSummary: deps.conversationSummary,
     traceId: deps.traceId,
     tavilyQuery: deps.tavilyQuery,
+    signal: deps.signal,
     notify: (message, durationMs) => new Notice(message, durationMs ?? 4000),
     ports: {
       chat: createChatPort(deps.opencodeClient),

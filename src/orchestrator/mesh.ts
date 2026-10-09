@@ -130,27 +130,28 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
       {
         runForager: async (prompt, signal) => {
           const result = await executeTurn(
-            { agent: forager, traceId, ...turnDeps },
+            { agent: forager, traceId, ...turnDeps, signal },
             prompt,
             false,
             opts.pathFilter,
           );
-          void signal;
           return result;
         },
         runResearcher: async (input, signal) => {
           const result = await executeTurn(
-            { agent: researcher, traceId, ...turnDeps },
+            { agent: researcher, traceId, ...turnDeps, signal },
             input,
             false,
             opts.pathFilter,
           );
-          void signal;
           return result;
         },
         runCritic: async (input, signal) => {
-          const result = await executeTurn({ agent: critic, traceId, ...turnDeps }, input, true);
-          void signal;
+          const result = await executeTurn(
+            { agent: critic, traceId, ...turnDeps, signal },
+            input,
+            true,
+          );
           return result;
         },
         resolveOrchestratorAction: async (attempt, evaluation, attempts) => {

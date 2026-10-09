@@ -62,6 +62,8 @@ export interface PortableTurnInput {
   /** DEC-0022: per-turn overrides merged with agent/project/global chat resolution. */
   chatOptions?: CallOptions;
   globalChat?: GlobalChatConfig;
+  /** DEC-0022: merged into chat and query-embed call options. */
+  signal?: AbortSignal;
 }
 
 export interface PortableTurnResult {
@@ -75,6 +77,30 @@ export interface PortableTurnResult {
 
 function hasWebSearchTool(agent: AgentDefinition, skill?: Skill): boolean {
   return agent.tools?.includes("web_search") || skill?.tools?.includes("web_search") || false;
+}
+
+function mergeTurnAbortSignals(...signals: (AbortSignal | undefined)[]): AbortSignal | undefined {
+  const active = signals.filter(Boolean) as AbortSignal[];
+  if (active.length === 0) {
+    return undefined;
+  }
+  if (active.length === 1) {
+    return active[0];
+  }
+  if (active.some((s) => s.aborted)) {
+    return active.find((s) => s.aborted);
+  }
+  const controller = new AbortController();
+  for (const s of active) {
+    s.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  return controller.signal;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
 }
 
 /** DEC-0022: agent model > project model > global; explicit provider via resolver. */
@@ -118,7 +144,10 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
     notify,
     chatOptions,
     globalChat,
+    signal: turnSignal,
   } = input;
+
+  const mergedTurnSignal = mergeTurnAbortSignals(turnSignal, chatOptions?.signal);
 
   const project = projectContext?.project;
   const readScope = buildEffectiveReadScope({
@@ -129,12 +158,10 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
 
   const topK = project?.rag?.top_k ?? RAG_DEFAULTS.TOP_K;
   const minSim = project?.rag?.min_similarity ?? RAG_DEFAULTS.MIN_SIMILARITY;
-  const chatCallOptions = resolveChatCallOptions(
-    agent,
-    project?.model,
-    globalChat,
-    chatOptions,
-  );
+  const chatCallOptions = resolveChatCallOptions(agent, project?.model, globalChat, {
+    ...chatOptions,
+    signal: mergedTurnSignal,
+  });
 
   let ragContext = "";
 
@@ -169,10 +196,12 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
       } else if (parseMinSimilarityThreshold(minSim) === null) {
         notify?.("⚠ RAG: umbral de similitud inválido", 5000);
       } else {
+        throwIfAborted(mergedTurnSignal);
         const queryEmbedding = await ports.embedder.embed(userInput, {
           model: queryIdentity.embedModel,
           purpose: "query",
           expectedIdentity: queryEmbeddingIdentity,
+          signal: mergedTurnSignal,
         });
         if (!embeddingMatchesDims(queryEmbedding, queryIdentity.dims)) {
           notify?.("⚠ RAG: embedding incompatible con dimensiones del proyecto", 8000);
@@ -235,6 +264,8 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
     const renderedSkill = renderSkillPrompt(skillContext, ragContext, webContext, userInput);
     renderedPrompt = `--- Skill: ${skillContext.name} ---\n${renderedSkill}\n\n---\n\n${renderedPrompt}`;
   }
+
+  throwIfAborted(chatCallOptions.signal);
 
   let result: { content: string; usage: { prompt: number; completion: number } };
   if (conversationMessages && conversationMessages.length > 0) {

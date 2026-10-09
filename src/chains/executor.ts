@@ -51,7 +51,7 @@ export async function executeChain(
       }
       const agent = await getAgent(node.agentId);
       const result = await executeTurn(
-        { ...baseDeps, agent },
+        { ...baseDeps, agent, signal },
         ctx.userMessage,
         false,
         pathFilter,

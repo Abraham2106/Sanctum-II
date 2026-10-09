@@ -115,7 +115,12 @@ describe("runPortableTurn (DEC-0022)", () => {
       ports: { chat, embedder, vectorStore: store },
     });
 
-    expect(embed).toHaveBeenCalledWith("q", { model: DEFAULT_PROJECT_RAG.embed_model });
+    expect(embed).toHaveBeenCalledWith("q", {
+      model: DEFAULT_PROJECT_RAG.embed_model,
+      purpose: "query",
+      expectedIdentity: undefined,
+      signal: undefined,
+    });
   });
 
   it("nonverifiable store identity skips embed (rebuild_required)", async () => {
@@ -278,6 +283,64 @@ describe("runPortableTurn (DEC-0022)", () => {
     );
     expect(opts.model).toBe("agent-m");
     expect(opts.provider).toBe("anthropic");
+  });
+
+  it("aborted signal skips chat port", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const chat = vi.fn().mockResolvedValue({ content: "ok", usage: { prompt: 1, completion: 1 } });
+    const chatMessages = vi.fn();
+    const embedder: EmbedderPort = { hasKeys: false, embed: vi.fn() };
+    const store: VectorStorePort = { count: 0, allChunks: () => [] };
+
+    await expect(
+      runPortableTurn({
+        userInput: "hi",
+        skipRag: true,
+        signal: controller.signal,
+        agent,
+        ports: { chat: { chat, chatMessages }, embedder, vectorStore: store },
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(chat).not.toHaveBeenCalled();
+    expect(chatMessages).not.toHaveBeenCalled();
+  });
+
+  it("passes turn signal on query embed options", async () => {
+    const controller = new AbortController();
+    const embed = vi.fn().mockResolvedValue([1, 0, 0]);
+    const embedder: EmbedderPort = { hasKeys: true, embed };
+    const chat: ChatPort = {
+      chat: vi.fn().mockResolvedValue({ content: "ok", usage: { prompt: 1, completion: 1 } }),
+      chatMessages: vi.fn(),
+    };
+    const store: VectorStorePort = {
+      count: 1,
+      identity: { embedModel: DEFAULT_PROJECT_RAG.embed_model, dims: 3, projectId: "p1" },
+      allChunks: () => [
+        { id: "1", notePath: "Research/ok.md", chunkText: "allowed", embedding: [1, 0, 0] },
+      ],
+    };
+
+    await runPortableTurn({
+      userInput: "q",
+      signal: controller.signal,
+      agent,
+      projectContext: {
+        project: makeProject(["/Research/**"]),
+        memory: [],
+        systemPrefix: "",
+      },
+      ports: { chat, embedder, vectorStore: store },
+    });
+
+    expect(embed).toHaveBeenCalledWith("q", {
+      model: DEFAULT_PROJECT_RAG.embed_model,
+      purpose: "query",
+      expectedIdentity: undefined,
+      signal: controller.signal,
+    });
   });
 
   it("bindEmbedderPort forwards sealed model when embed has default second arg (length 1)", async () => {
