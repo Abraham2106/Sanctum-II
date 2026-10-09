@@ -38,3 +38,21 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-mcp-notes | `mcp-server/src/tools/list-notes.ts`, `mcp-server/src/tools/list-notes.test.ts`, el `registerTool` de esa tool en `mcp-server/index.ts` | DEC-0021 al listar | el resto de `index.ts`, el índice, recursión | accepted |
 | S-mcp-context | `mcp-server/src/tools/tool-context.ts`, `mcp-server/src/tools/tool-context.test.ts`, el argumento `context` y `annotations` de `invoke-agent.ts` y `run-mesh.ts` | DEC-0021 en el contexto | el bucle del mesh, embeddings, `server.ts` | accepted |
 | S-mcp-limit | el tope de cuerpo en `mcp-server/src/mcp/http.ts` y el caso 413 de `mcp-server/src/mcp/http.test.ts` | DEC-0021 | el resto del HTTP, Discord | accepted |
+
+## SANCTUM-RUNTIME-V2 (DEC-0022)
+
+Un seam agrupa una frontera explícita; las dependencias serializan sus adaptadores.
+
+| id | owns | status |
+|---|---|---|
+| S-runtime-035 | src/shared/agents/frontmatter.ts, src/agents/agent-loader.ts, mcp-server/src/tools/list-agents.ts | accepted |
+| S-runtime-036 | src/runtime/permissions.ts, src/runtime/retrieval.ts, src/orchestrator/agent-turn.ts | accepted |
+| S-runtime-037 | mcp-server/src/mcp/http.ts, mcp-server/src/mcp/http.test.ts | accepted |
+| S-runtime-038 | src/core/resource-queue.ts, src/projects/store.ts, src/rag/vector-store.ts, src/kg/kg-store.ts | accepted |
+| S-runtime-039 | src/runtime/dag.ts, src/runtime/mesh.ts, src/chains/executor.ts, src/orchestrator/mesh.ts, src/orchestrator/mesh-types.ts, src/shared/mesh/types.ts, mcp-server/src/tools/run-mesh.ts | accepted |
+| S-runtime-040 | src/projects/index-generations.ts, src/projects/indexer.ts, src/projects/indexer.test.ts, src/embeddings/gemini-balancer.ts, mcp-server/src/embeddings/gemini-embed.ts | accepted |
+| S-runtime-041 | mcp-server/index.ts, mcp-server/src/tools/query-vault.ts, mcp-server/src/tools/get-note.ts, mcp-server/src/tools/list-notes.ts, mcp-server/src/mcp/permission-resolver.ts, src/app/project-reader.ts | accepted |
+| S-runtime-042 | src/main.ts, src/plugin/**, src/app/services.ts, src/app/chat-orchestrator.ts, src/app/pending-turn.ts, src/app/write-turn.ts | accepted |
+| S-runtime-043 | src/ui/chain-view.ts, src/ui/chain-canvas.ts, src/ui/projects-view.ts, src/ui/projects/**, src/ui/kg-view.ts, src/ui/kg-scene.ts, src/ui/kg-inspector.ts, src/ui/chat-view.ts, src/ui/chat-types.ts | accepted |
+| S-runtime-044 | package.json, .github/workflows/ci.yml, mcp-server/test/**, vitest.config.ts, scripts/**, README.md, mcp-server/README.md, .env.example, docs/audits/2026-10-08/reproduce.test.ts, docs/registro-arquitectura.md, docs/arquitectura-uml.md | accepted |
+| S-runtime-045 | src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts | accepted |

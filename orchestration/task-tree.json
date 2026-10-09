@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "feature_id": "SANCTUM-REFACTOR",
+  "feature_id": "SANCTUM-RUNTIME-V2",
   "gate": {
     "feature_preparation": "ready",
     "implementation_allowed": true
@@ -998,8 +998,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-http"],
-      "decisions": ["DEC-0020"],
+      "seams": [
+        "S-mcp-http"
+      ],
+      "decisions": [
+        "DEC-0020"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "POST /mcp initialize con protocolVersion 2025-03-26 devuelve esa versión en un evento SSE message",
@@ -1016,7 +1020,9 @@
       ],
       "notes": "Ponytail. Cita // DEC-0020: Grok Bot usa el MCP por POST /mcp. Archivos: mcp-server/src/mcp/http.ts, mcp-server/src/mcp/http.test.ts, el handleMessage y el echo de versión en mcp-server/src/mcp/server.ts, el if de arranque en mcp-server/index.ts, el script mcp:http en package.json, y las líneas SANCTUM_MCP_* en .env.example. No toques el bloque Discord salvo la frase que dice que el vault se ofrece con node mcp-server/dist/index.cjs: cámbiala a npm run mcp:http y la URL local. handleMessage(req) público devuelve JsonRpcResponse o null si es notificación. initialize: si params.protocolVersion es 2024-11-05, 2025-03-26 o 2025-06-18, devuelve esa; si no, 2025-03-26. startMcpHttp(server, {port, host, token}) escucha solo en 127.0.0.1. Puerto 0 permitido para el test; devuelve {port, close}. POST /mcp: JSON inválido o array es 400. Notificación 202 vacío. Si Accept incluye text/event-stream o falta, responde text/event-stream con event: message y data el JSON más una línea en blanco. Si Accept es solo application/json, el cuerpo es el JSON. GET /mcp 405. Otra ruta 404. Si token no vacío, Authorization debe ser Bearer más ese token o 401. No loguees el token. Comentario ponytail: sin allowlist de Origin; el bind es localhost. Subir cuando escuche en una interfaz pública. index.ts: si SANCTUM_MCP_HTTP=1, startMcpHttp con SANCTUM_MCP_PORT o 8787 y el token trim; si no, server.start() como hoy. Script mcp:http = SANCTUM_MCP_HTTP=1 tsx mcp-server/index.ts. .env.example comenta grok.com/connectors, New Connector, Custom, y que la URL pública es un túnel hacia 127.0.0.1. Variables comentadas: SANCTUM_MCP_HTTP=1, SANCTUM_MCP_PORT=8787, SANCTUM_MCP_TOKEN vacío. El test usa node:http contra port 0, sin red externa, con un McpServer y una tool de prueba. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/mcp/http.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/mcp/http.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -1027,8 +1033,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-guide"],
-      "decisions": ["DEC-0021"],
+      "seams": [
+        "S-mcp-guide"
+      ],
+      "decisions": [
+        "DEC-0021"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "initialize devuelve instructions con sanctum_list_notes y OPENCODE_GO_API_KEY",
@@ -1042,7 +1052,9 @@
       ],
       "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Solo mcp-server/src/mcp/server.ts, types.ts, server.test.ts, y el campo annotations de list-agents.ts, get-note.ts y query-vault.ts. No cambies handlers. En el result de initialize añade instructions con este texto exacto: Sanctum es un vault local de notas Markdown. Para verlo: sanctum_list_notes, sanctum_get_note y sanctum_query_vault. La búsqueda exige índice y GEMINI_API_KEYS. sanctum_list_agents enumera agentes. sanctum_invoke_agent y sanctum_run_mesh no leen el vault: pasan context a {{rag_context}} y gastan OPENCODE_GO_API_KEY. En types.ts, ToolDef gana annotations opcional con readOnlyHint y openWorldHint boolean. tools/list copia annotations solo si está definida. list_agents y get_note: readOnlyHint true, openWorldHint false. query_vault: readOnlyHint true, openWorldHint true. Test con handleMessage, sin red: initialize trae ese texto y tools/list devuelve las annotations de una tool de prueba. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/mcp/server.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/mcp/server.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -1053,8 +1065,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-notes"],
-      "decisions": ["DEC-0021"],
+      "seams": [
+        "S-mcp-notes"
+      ],
+      "decisions": [
+        "DEC-0021"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "sin folder devuelve los read_paths y no llama a list",
@@ -1068,7 +1084,9 @@
       ],
       "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Crea mcp-server/src/tools/list-notes.ts y su test. En mcp-server/index.ts solo añade el import y server.registerTool(createListNotesTool(vault)) después de createRunMeshTool, para no cambiar la primera tool. Nombre sanctum_list_notes. annotations readOnlyHint true, openWorldHint false. Args agent_id obligatorio y folder opcional. Sin folder o folder vacío: resuelve permisos y devuelve los read_paths, uno por línea, sin llamar a vault.list. Con folder: si incluye .., empieza por / o tiene barra invertida, isError PATH_DENIED y no listes. Permitido si checkPathPermission del folder o de folder/a.md. Si no, isError PERMISSION_DENIED. vault.list de un nivel. Archivos que terminen en .md y no isInternalPath. Carpetas que no sean isInternalPath, mostradas con barra final. Orden alfabético. Máximo 200 entradas; si hay más, la última línea es hay más; afina el folder. Si list lanza, isError PATH_DENIED sin pegar el mensaje. El test usa un adaptador en memoria, sin disco. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/tools/list-notes.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/tools/list-notes.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -1079,8 +1097,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-context"],
-      "decisions": ["DEC-0021"],
+      "seams": [
+        "S-mcp-context"
+      ],
+      "decisions": [
+        "DEC-0021"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "readToolContext devuelve vacío si context no es string y corta a 8000",
@@ -1094,7 +1116,9 @@
       ],
       "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Crea mcp-server/src/tools/tool-context.ts con readToolContext(args): si context no es string, vacío; si pasa de 8000 caracteres, slice(0, 8000). Comentario ponytail: el contexto se corta a 8000; subir cuando haga falta el texto entero. Test de esa función. En invoke-agent.ts usa readToolContext como rag de renderSystemPrompt. En run-mesh.ts úsalo solo en el renderSystemPrompt de Forager. Añade context opcional string al inputSchema de las dos, descripción corta: texto ya recuperado del vault. Cambia la description de invoke a: Llama al agente con su prompt. No busca en el vault. context entra como contexto. Gasta OPENCODE_GO_API_KEY. La de mesh a: Corre Forager, Researcher y Critic. No lee el vault. context es el contexto de Forager. Gasta OPENCODE_GO_API_KEY. annotations en las dos: readOnlyHint false, openWorldHint true. No cambies el bucle ni los umbrales. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/tools/tool-context.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/tools/tool-context.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -1105,8 +1129,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-limit"],
-      "decisions": ["DEC-0021"],
+      "seams": [
+        "S-mcp-limit"
+      ],
+      "decisions": [
+        "DEC-0021"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "un POST /mcp de más de 1048576 bytes responde 413",
@@ -1119,10 +1147,386 @@
       ],
       "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Solo mcp-server/src/mcp/http.ts y un caso en mcp-server/src/mcp/http.test.ts. Si el cuerpo pasa de 1048576 bytes, responde 413 y destruye el request sin seguir concatenando. Un POST pequeño existente sigue en 200. No cambies auth, rutas ni el formato SSE. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/mcp/http.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/mcp/http.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-035",
+      "title": "Frontmatter portable CRLF/BOM",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-runtime-035"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Normalizar BOM/CRLF y extractor único, errores explícitos; conservar ausencia modelo con string vacío. Tests en archivos nuevos propios.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/shared/agents/frontmatter.ts, src/agents/agent-loader.ts, mcp-server/src/tools/list-agents.ts. Normalizar BOM/CRLF y extractor único, errores explícitos; conservar ausencia modelo con string vacío. Tests en archivos nuevos propios. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-036",
+      "title": "Política permisos y recuperación portable",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-035"
+      ],
+      "seams": [
+        "S-runtime-036"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Intersección project/agent/selection antes de ranking/context/KG/traces; umbral sin fallback. Núcleo sin Obsidian, turn usa puertos estructurales y wrapper notificaciones. Tests de permisos y ranking. No indexer/main/MCP.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/runtime/permissions.ts, src/runtime/retrieval.ts, src/orchestrator/agent-turn.ts. Intersección project/agent/selection antes de ranking/context/KG/traces; umbral sin fallback. Núcleo sin Obsidian, turn usa puertos estructurales y wrapper notificaciones. Tests de permisos y ranking. No indexer/main/MCP. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-037",
+      "title": "HTTP autenticado loopback",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-runtime-037"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Token requerido, host loopback estricto, Origin exact allowlist. JSON-RPC validate. Tests actualizar requisito token. No index.ts/package.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: mcp-server/src/mcp/http.ts, mcp-server/src/mcp/http.test.ts. Token requerido, host loopback estricto, Origin exact allowlist. JSON-RPC validate. Tests actualizar requisito token. No index.ts/package. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-038",
+      "title": "Durabilidad por recurso",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-runtime-038"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/core/resource-queue.ts, src/projects/store.ts, src/rag/vector-store.ts, src/kg/kg-store.ts. Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-039",
+      "title": "DAG y mesh común",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-036"
+      ],
+      "seams": [
+        "S-runtime-039"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/runtime/dag.ts, src/runtime/mesh.ts, src/chains/executor.ts, src/orchestrator/mesh.ts, src/orchestrator/mesh-types.ts, src/shared/mesh/types.ts, mcp-server/src/tools/run-mesh.ts. DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-040",
+      "title": "Generaciones e indexador",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-036",
+        "T-038"
+      ],
+      "seams": [
+        "S-runtime-040"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Generaciones DEC0022, SHA256 portable, seal completo, conservar legacy, recursive permissions, fingerprint exact modelo/dims/chunking, reuse/full/partial seguro, sin fallback modelo indexed. Exponer reader a MCP y plugin. Métodos embed(text,model?) compatible. Tests reales Fs fixtures + dobles explícitos. No main/UI.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/projects/index-generations.ts, src/projects/indexer.ts, src/projects/indexer.test.ts, src/embeddings/gemini-balancer.ts, mcp-server/src/embeddings/gemini-embed.ts. Generaciones DEC0022, SHA256 portable, seal completo, conservar legacy, recursive permissions, fingerprint exact modelo/dims/chunking, reuse/full/partial seguro, sin fallback modelo indexed. Exponer reader a MCP y plugin. Métodos embed(text,model?) compatible. Tests reales Fs fixtures + dobles explícitos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-041",
+      "title": "MCP servicios por proyecto",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-039",
+        "T-040",
+        "T-037"
+      ],
+      "seams": [
+        "S-runtime-041"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Servicio portable ProjectReader, project_id/env/PROJECT_REQUIRED; query generation refresh/model, before-topk permissions; listar cada hijo autorizado y read efectivo. Pasar origins y token startup. No HTTP/package/main.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: mcp-server/index.ts, mcp-server/src/tools/query-vault.ts, mcp-server/src/tools/get-note.ts, mcp-server/src/tools/list-notes.ts, mcp-server/src/mcp/permission-resolver.ts, src/app/project-reader.ts. Servicio portable ProjectReader, project_id/env/PROJECT_REQUIRED; query generation refresh/model, before-topk permissions; listar cada hijo autorizado y read efectivo. Pasar origins y token startup. No HTTP/package/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-042",
+      "title": "Composición plugin y servicios",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-039",
+        "T-040",
+        "T-045"
+      ],
+      "seams": [
+        "S-runtime-042"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/main.ts, src/plugin/**, src/app/services.ts, src/app/chat-orchestrator.ts, src/app/pending-turn.ts, src/app/write-turn.ts. Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-043",
+      "title": "Vistas con servicios comunes",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-042"
+      ],
+      "seams": [
+        "S-runtime-043"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/ui/chain-view.ts, src/ui/chain-canvas.ts, src/ui/projects-view.ts, src/ui/projects/**, src/ui/kg-view.ts, src/ui/kg-scene.ts, src/ui/kg-inspector.ts, src/ui/chat-view.ts, src/ui/chat-types.ts. Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-044",
+      "title": "CI smoke auditoría y documentación",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-041",
+        "T-043"
+      ],
+      "seams": [
+        "S-runtime-044"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Launcher HTTP Node, smoke fixture aislado sin secrets, Windows/Linux matrix, KG+orchestration en verify correspondiente, migrar/adaptar reproducciones y tests runtime. Docs six tools/project/indices/states. Benchmark synth sizes logs. No source domain.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: package.json, .github/workflows/ci.yml, mcp-server/test/**, vitest.config.ts, scripts/**, README.md, mcp-server/README.md, .env.example, docs/audits/2026-10-08/reproduce.test.ts, docs/registro-arquitectura.md, docs/arquitectura-uml.md. Launcher HTTP Node, smoke fixture aislado sin secrets, Windows/Linux matrix, KG+orchestration en verify correspondiente, migrar/adaptar reproducciones y tests runtime. Docs six tools/project/indices/states. Benchmark synth sizes logs. No source domain. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-045",
+      "title": "Resolución proveedores portable",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-035"
+      ],
+      "seams": [
+        "S-runtime-045"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
     }
   ]
 }

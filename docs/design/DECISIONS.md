@@ -27,3 +27,5 @@ Fuente compacta para inyectar en workers. Detalle en `DEC-*.md`.
 | DEC-0021 | el MCP anuncia el uso, lista notas y corta el POST a 1 MiB | accepted |
 
 Si dos planners contradicen una fila, no se mergea código. Se abre reconciliación de docs y se incrementa el id. No se agregan sufijos al id. Decisiones de producto empiezan en DEC-0003.
+
+| DEC-0022 | Núcleo portable, scopes intersectados, generaciones, DAG y mesh únicos; supersede alcance histórico y gate DEC-0014/HTTP DEC-0020 | accepted |
