@@ -23,9 +23,15 @@ export class GeminiBalancer {
     return this.keys.length;
   }
 
-  async embed(text: string): Promise<number[]> {
+  /** DEC-0023: optional exact model/dims; fixed model skips priority fallback. */
+  async embed(text: string, model?: string, dims?: number): Promise<number[]> {
     if (!this.hasKeys) {
       throw new Error("No se configuraron GEMINI_API_KEYS");
+    }
+
+    const fixedModel = model?.trim();
+    if (fixedModel) {
+      return this.embedWithFixedModel(text, fixedModel, dims);
     }
 
     for (let modelAttempt = 0; modelAttempt < PRIORITY_MODELS.length; modelAttempt++) {
@@ -37,7 +43,7 @@ export class GeminiBalancer {
         const key = this.keys[keyIdx];
 
         try {
-          const result = await this.callEmbed(key, model, text);
+          const result = await this.callEmbed(key, model, text, dims);
           this.currentKeyIndex = (keyIdx + 1) % this.keys.length;
           if (modelAttempt > 0) {
             this.currentModelIndex = modelIdx;
@@ -64,14 +70,31 @@ export class GeminiBalancer {
     throw new Error("Todas las claves y modelos de Gemini se agotaron");
   }
 
-  private async callEmbed(key: string, model: string, text: string): Promise<number[]> {
+  private async embedWithFixedModel(text: string, model: string, dims?: number): Promise<number[]> {
+    for (let keyAttempt = 0; keyAttempt < this.keys.length; keyAttempt++) {
+      const keyIdx = this.currentKeyIndex;
+      const key = this.keys[keyIdx];
+      try {
+        const result = await this.callEmbed(key, model, text, dims);
+        this.currentKeyIndex = (keyIdx + 1) % this.keys.length;
+        return result;
+      } catch (err: any) {
+        this.currentKeyIndex = (keyIdx + 1) % this.keys.length;
+        if (this.isQuotaError(err) && this.keys.length > 1) continue;
+        throw err;
+      }
+    }
+    throw new Error("Todas las claves de Gemini se agotaron");
+  }
+
+  private async callEmbed(key: string, model: string, text: string, dims?: number): Promise<number[]> {
     const url = `${GEMINI_BASE}/${model}:embedContent?key=${key}`;
 
     const response = await requestUrl({
       url,
       method: "POST",
       contentType: "application/json; charset=utf-8",
-      body: JSON.stringify(embedContentJsonBody(model, text)),
+      body: JSON.stringify(embedContentJsonBody(model, text, dims)),
     });
 
     const decoder = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8") : null;

@@ -21,6 +21,13 @@ describe("FsVaultAdapter confinement", () => {
     await expect(adapter.exists("inside.txt")).resolves.toBe(true);
   });
 
+  it("propagates list errors instead of returning empty listings", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sanctum-vault-"));
+    tempRoots.push(root);
+    const adapter = new FsVaultAdapter(root);
+    await expect(adapter.list("missing-dir")).rejects.toBeDefined();
+  });
+
   it("rejects forbidden segments case-insensitively", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "sanctum-vault-"));
     tempRoots.push(root);
