@@ -121,3 +121,5 @@ T-041 `e69ac1f` aceptada: 17 pruebas. Las herramientas de notas y consulta exige
 T-046 `5dea018` aceptada: 22 pruebas. Skills y notas usan el ámbito efectivo, y las escrituras de notas pasan por la cola. Siguiente: T-042, composición del plugin.
 
 T-042 `344c3b0` aceptada. `main.ts` queda en 338 líneas. Abrir un proyecto no rellena permisos, un evento del vault no genera embeddings, y `needs_review` no escribe notas. Siguiente: T-043, vistas.
+
+T-043 aceptada en `cb07fea` y `f1714a2`. Las vistas quedan bajo 400 líneas y el canvas recibe cancelación e índice. Siguiente y última hoja de implementación: T-044, CI, smoke y documentación.

@@ -1464,7 +1464,7 @@
       "id": "T-043",
       "title": "Vistas con servicios comunes",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [
         "T-042"
       ],
@@ -1491,14 +1491,16 @@
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Accepted cb07fea+f1714a2. projects-view 222, chain-canvas 320. 8 UI tests re-run. Chain runtime wired in register-views."
+        ]
       }
     },
     {
       "id": "T-044",
       "title": "CI smoke auditoría y documentación",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [
         "T-041",
         "T-043"
