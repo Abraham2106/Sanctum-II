@@ -428,6 +428,50 @@ describe("KgEdgeStore pending batch (DEC-0022)", () => {
     expect(lines).toHaveLength(2);
   });
 
+  it("persists upsert with append-only adapter and no read", async () => {
+    let disk = "";
+    const adapter = {
+      write: async (_: string, c: string) => { disk = c; },
+      append: async (_: string, c: string) => { disk += c; },
+    };
+    const store = new KgEdgeStore("append-only.jsonl");
+    store.addEdge({ from: "a.md", to: "b.md", type: "semantic", weight: 1, relation: "semantic" });
+    await store.save(adapter);
+    const loaded = new KgEdgeStore("append-only.jsonl");
+    await loaded.load({
+      read: async () => disk,
+    });
+    expect(loaded.getEdge("a.md", "b.md")).toBeDefined();
+  });
+
+  it("persists known delete with append-only adapter and no read", async () => {
+    let disk = "";
+    const adapter = {
+      write: async (_: string, c: string) => { disk = c; },
+      append: async (_: string, c: string) => { disk += c; },
+    };
+    const store = new KgEdgeStore("append-del.jsonl");
+    store.addEdge({ from: "a.md", to: "b.md", type: "semantic", weight: 1, relation: "semantic" });
+    await store.save(adapter);
+    store.delEdge("a.md", "b.md");
+    await store.save(adapter);
+    const loaded = new KgEdgeStore("append-del.jsonl");
+    await loaded.load({ read: async () => disk });
+    expect(loaded.count).toBe(0);
+  });
+
+  it("rejects delAllEdgesForNote without read before any write", async () => {
+    let writes = 0;
+    const adapter = {
+      write: async () => { writes++; },
+      append: async () => { writes++; },
+    };
+    const store = new KgEdgeStore("no-read-delall.jsonl");
+    store.delAllEdgesForNote("note.md");
+    await expect(store.save(adapter)).rejects.toThrow(/read adapter/);
+    expect(writes).toBe(0);
+  });
+
   it("does not overwrite on append fallback read failure", async () => {
     const files = new Map<string, string>();
     const adapter = {

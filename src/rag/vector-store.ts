@@ -1,6 +1,16 @@
 import { pathMatchesAny } from "../utils";
 import { isNotFoundError } from "../core/vault-fs";
 import { withResourceLock } from "../core/resource-queue";
+import { float32ArrayToBase64 } from "./vector-store-encoding";
+import { appendToFile } from "./vector-store-io";
+import {
+  applyReplaceNoteSemantic,
+  applyTxnLine,
+  buildPersistBatchFromReplaySnapshot,
+  cloneChunk,
+  mapsFromRaw,
+  type VectorReplayEntry,
+} from "./vector-store-replay";
 
 export interface VectorStoreAdapter {
   read: (path: string) => Promise<string>;
@@ -20,12 +30,6 @@ export interface Chunk {
 
 const DEFAULT_STORE_PATH = "sanctum-logs/vector-store.jsonl";
 
-type VectorSemanticOp = { kind: "replace_note"; notePath: string; chunks: readonly Chunk[] };
-
-type VectorReplayEntry =
-  | { type: "semantic"; op: VectorSemanticOp }
-  | { type: "txn"; line: string };
-
 export function cosineSimilarity(a: number[], b: number[]): number {
   // DEC-0015: largos distintos no pueden ganar el ranking con NaN
   if (a.length !== b.length || a.length === 0) return 0;
@@ -38,54 +42,6 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   }
   const denom = Math.sqrt(na) * Math.sqrt(nb);
   return denom === 0 ? 0 : dot / denom;
-}
-
-function float32ArrayToBase64(arr: Float32Array): string {
-  const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
-  let binary = "";
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToFloat32Array(b64: string): Float32Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
-}
-
-async function readExistingOrEmpty(adapter: Pick<VectorStoreAdapter, "read">, path: string): Promise<string> {
-  try {
-    return await adapter.read(path);
-  } catch (error) {
-    if (isNotFoundError(error)) return "";
-    throw error;
-  }
-}
-
-async function appendToFile(
-  adapter: VectorStoreAdapter,
-  path: string,
-  content: string
-): Promise<void> {
-  if (typeof adapter.append === "function") {
-    await adapter.append(path, content);
-    return;
-  }
-  let existing = "";
-  if (typeof adapter.exists === "function") {
-    if (await adapter.exists(path)) {
-      existing = await readExistingOrEmpty(adapter, path);
-    }
-  } else {
-    existing = await readExistingOrEmpty(adapter, path);
-  }
-  await adapter.write(path, existing ? `${existing}${content}` : content);
 }
 
 export class VectorStore {
@@ -117,70 +73,6 @@ export class VectorStore {
 
   getStorePath(): string { return this.storePath; }
 
-  private applyTxnLine(line: string, maps: {
-    chunksMap: Map<string, Chunk>;
-    noteToChunksMap: Map<string, Set<string>>;
-    dims: number;
-  }): void {
-    if (!line.trim()) return;
-    try {
-      const txn = JSON.parse(line);
-      if (txn.t === "set") {
-        const floatArr = base64ToFloat32Array(txn.v);
-        const embedding = Array.from(floatArr);
-
-        const chunk: Chunk = {
-          id: txn.id,
-          note_path: txn.p,
-          chunk_text: txn.txt,
-          embedding
-        };
-        maps.chunksMap.set(txn.id, chunk);
-
-        let noteSet = maps.noteToChunksMap.get(txn.p);
-        if (!noteSet) {
-          noteSet = new Set<string>();
-          maps.noteToChunksMap.set(txn.p, noteSet);
-        }
-        noteSet.add(txn.id);
-
-        if (embedding.length > 0 && !maps.dims) {
-          maps.dims = embedding.length;
-        }
-      } else if (txn.t === "del") {
-        const chunk = maps.chunksMap.get(txn.id);
-        if (chunk) {
-          const noteSet = maps.noteToChunksMap.get(chunk.note_path);
-          if (noteSet) {
-            noteSet.delete(txn.id);
-            if (noteSet.size === 0) {
-              maps.noteToChunksMap.delete(chunk.note_path);
-            }
-          }
-          maps.chunksMap.delete(txn.id);
-        }
-      }
-    } catch (e) {
-      console.error("Error parsing transaction line in vector store log:", e);
-    }
-  }
-
-  private mapsFromRaw(raw: string): {
-    chunksMap: Map<string, Chunk>;
-    noteToChunksMap: Map<string, Set<string>>;
-    dims: number;
-  } {
-    const maps = {
-      chunksMap: new Map<string, Chunk>(),
-      noteToChunksMap: new Map<string, Set<string>>(),
-      dims: 0,
-    };
-    for (const line of raw.split("\n")) {
-      this.applyTxnLine(line, maps);
-    }
-    return maps;
-  }
-
   private installMaps(maps: {
     chunksMap: Map<string, Chunk>;
     noteToChunksMap: Map<string, Set<string>>;
@@ -193,113 +85,7 @@ export class VectorStore {
   }
 
   private installFromRaw(raw: string): void {
-    this.installMaps(this.mapsFromRaw(raw));
-  }
-
-  private enqueueTxn(line: string): void {
-    this.pendingTxns.push(line);
-    this.replayLog.push({ type: "txn", line });
-  }
-
-  private cloneChunk(chunk: Chunk): Chunk {
-    return {
-      id: chunk.id,
-      note_path: chunk.note_path,
-      chunk_text: chunk.chunk_text,
-      embedding: [...chunk.embedding],
-    };
-  }
-
-  private chunkToSetLine(chunk: Chunk): string {
-    const b64 = float32ArrayToBase64(new Float32Array(chunk.embedding));
-    return JSON.stringify({
-      t: "set",
-      id: chunk.id,
-      p: chunk.note_path,
-      txt: chunk.chunk_text,
-      v: b64,
-    }) + "\n";
-  }
-
-  private applyReplaceNoteSemantic(
-    op: VectorSemanticOp,
-    staged: {
-      chunksMap: Map<string, Chunk>;
-      noteToChunksMap: Map<string, Set<string>>;
-      dims: number;
-    }
-  ): void {
-    const keep = new Set(op.chunks.map((c) => c.id));
-    const stagedIds = staged.noteToChunksMap.get(op.notePath);
-    if (stagedIds) {
-      for (const id of [...stagedIds]) {
-        if (!keep.has(id)) {
-          staged.chunksMap.delete(id);
-          stagedIds.delete(id);
-        }
-      }
-      if (stagedIds.size === 0) {
-        staged.noteToChunksMap.delete(op.notePath);
-      }
-    }
-
-    const mergedIds = new Set<string>();
-    for (const chunk of op.chunks) {
-      const cloned = this.cloneChunk(chunk);
-      staged.chunksMap.set(cloned.id, cloned);
-      mergedIds.add(cloned.id);
-      if (cloned.embedding.length > 0 && !staged.dims) {
-        staged.dims = cloned.embedding.length;
-      }
-    }
-    if (mergedIds.size > 0) {
-      staged.noteToChunksMap.set(op.notePath, mergedIds);
-    } else {
-      staged.noteToChunksMap.delete(op.notePath);
-    }
-  }
-
-  private materializeReplaceNoteTxns(
-    op: VectorSemanticOp,
-    staged: {
-      chunksMap: Map<string, Chunk>;
-      noteToChunksMap: Map<string, Set<string>>;
-      dims: number;
-    }
-  ): string[] {
-    const lines: string[] = [];
-    const keep = new Set(op.chunks.map((c) => c.id));
-    const stagedIds = staged.noteToChunksMap.get(op.notePath);
-    if (stagedIds) {
-      for (const id of [...stagedIds]) {
-        if (!keep.has(id)) {
-          lines.push(JSON.stringify({ t: "del", id }) + "\n");
-        }
-      }
-    }
-    for (const chunk of op.chunks) {
-      lines.push(this.chunkToSetLine(chunk));
-    }
-    return lines;
-  }
-
-  private async buildPersistBatchFromReplay(replayEnd: number, adapter: Pick<VectorStoreAdapter, "read">): Promise<string[]> {
-    const raw = await readExistingOrEmpty(adapter, this.storePath);
-    const staged = this.mapsFromRaw(raw);
-    const lines: string[] = [];
-    for (let i = 0; i < replayEnd; i++) {
-      const entry = this.replayLog[i];
-      if (entry.type === "txn") {
-        lines.push(entry.line);
-        this.applyTxnLine(entry.line, staged);
-      } else {
-        for (const line of this.materializeReplaceNoteTxns(entry.op, staged)) {
-          lines.push(line);
-        }
-        this.applyReplaceNoteSemantic(entry.op, staged);
-      }
-    }
-    return lines;
+    this.installMaps(mapsFromRaw(raw));
   }
 
   private retirePersistedPrefix(
@@ -323,9 +109,9 @@ export class VectorStore {
   }): void {
     for (const entry of this.replayLog) {
       if (entry.type === "semantic") {
-        this.applyReplaceNoteSemantic(entry.op, staged);
+        applyReplaceNoteSemantic(entry.op, staged);
       } else {
-        this.applyTxnLine(entry.line, staged);
+        applyTxnLine(entry.line, staged);
       }
     }
   }
@@ -352,7 +138,7 @@ export class VectorStore {
       } else if (this.shouldTruncate) {
         // clear() during load stays authoritative over disk baseline
       } else {
-        const staged = this.mapsFromRaw(raw);
+        const staged = mapsFromRaw(raw);
         this.replayOntoMaps(staged);
         this.installMaps(staged);
       }
@@ -364,7 +150,7 @@ export class VectorStore {
           this.pendingTxns = [];
           this.shouldTruncate = false;
         } else if (!this.shouldTruncate && this.replayLog.length > 0) {
-          const staged = this.mapsFromRaw("");
+          const staged = mapsFromRaw("");
           this.replayOntoMaps(staged);
           this.installMaps(staged);
         }
@@ -382,7 +168,8 @@ export class VectorStore {
 
   private async saveUnlocked(adapter: VectorStoreAdapter): Promise<void> {
     const replayRef = this.replayLog;
-    const replayCount = replayRef.length;
+    const replaySnapshot = replayRef.slice();
+    const replayCount = replaySnapshot.length;
     const pendingRef = this.pendingTxns;
     const pendingCountAtCapture = pendingRef.length;
 
@@ -410,7 +197,7 @@ export class VectorStore {
 
     const appendLines =
       replayCount > 0
-        ? await this.buildPersistBatchFromReplay(replayCount, adapter)
+        ? await buildPersistBatchFromReplaySnapshot(replaySnapshot, this.storePath, adapter)
         : pendingRef.slice(0, pendingCountAtCapture);
     if (appendLines.length === 0) return;
 
@@ -428,7 +215,7 @@ export class VectorStore {
 
     this.touchMutation();
 
-    const clonedChunks = newChunks.map((c) => this.cloneChunk(c));
+    const clonedChunks = newChunks.map((c) => cloneChunk(c));
     this.replayLog.push({
       type: "semantic",
       op: { kind: "replace_note", notePath: path, chunks: clonedChunks },

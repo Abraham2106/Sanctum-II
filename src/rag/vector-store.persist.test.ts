@@ -477,6 +477,32 @@ describe("VectorStore pending batch (DEC-0022)", () => {
     expect(lines).toHaveLength(2);
   });
 
+  it("materializes captured replay when clear runs during deferred disk read", async () => {
+    let disk = "";
+    let releaseRead!: () => void;
+    const readGate = new Promise<void>((r) => { releaseRead = r; });
+    const adapter = {
+      read: async () => {
+        await readGate;
+        return disk;
+      },
+      write: async (_: string, value: string) => { disk = value; },
+      append: async (_: string, value: string) => { disk += value; },
+    };
+    const store = new VectorStore("cap-read.jsonl");
+    store.addChunks([chunk("first", "a.md")]);
+    const saving = store.save(adapter);
+    store.clear();
+    store.addChunks([chunk("second", "b.md")]);
+    releaseRead();
+    await saving;
+    await store.save(adapter);
+    const reloaded = new VectorStore("cap-read.jsonl");
+    await reloaded.load(adapter);
+    expect(reloaded.count).toBe(1);
+    expect(reloaded.allChunks[0].id).toBe("second");
+  });
+
   it("rejects append save when read-before-write fails", async () => {
     let disk = "keep\n";
     const adapter = {
