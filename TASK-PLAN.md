@@ -85,3 +85,5 @@ T-039 incluye los parsers de evaluación compartidos y de cadenas: aceptación e
 T-035 integrada en 44e7606: revisión independiente Sol 6.1, 11 regresiones y typecheck correctos. Validación Obsidian pendiente del hito final.
 
 Primer control de integración (44e7606): suite completa 28 archivos / 228 pruebas correctas (217 existentes + 11 nuevas). node_modules restaurado con npm ci --ignore-scripts. En Windows, desvincular junction de dependencias antes de git worktree remove; preferir instalaciones independientes.
+
+T-041 incluye invoke-agent para resolver su modelo explícito y validar IDs sin recuperación oculta. T-039 consume APIs de proveedor de T-045 y por eso depende de ella. Resolver MCP conserva errores YAML con archivo.
