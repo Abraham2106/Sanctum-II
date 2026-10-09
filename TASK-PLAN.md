@@ -115,3 +115,5 @@ T-049 aceptada en `9b9069c` y partida en `2294834`. Los archivos de identidad qu
 T-052 `66a3724` aceptada: 25 pruebas. El mesh y las cadenas pasan la señal al turno, y un turno ya abortado no llama al proveedor. Siguiente hoja: T-040, generaciones de índice.
 
 T-040 `90bec41` aceptada: 22 pruebas. Generaciones inmutables, permisos vacíos deniegan la indexación y un fallo no sustituye la generación anterior. Siguiente paralelo: T-041 (MCP por proyecto) y T-046 (skills y notas).
+
+T-041 `e69ac1f` aceptada: 17 pruebas. Las herramientas de notas y consulta exigen proyecto y leen la generación publicada. T-042 espera a que T-046 termine.

@@ -1385,7 +1385,7 @@
       "id": "T-041",
       "title": "MCP servicios por proyecto",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [
         "T-039",
         "T-040",
@@ -1415,7 +1415,9 @@
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Accepted e69ac1f. 17 owned tests re-run. T-046 working tree left unstaged."
+        ]
       }
     },
     {
