@@ -81,3 +81,5 @@ S-runtime-047 incluye helpers src/rag/vector-store-*.ts y src/kg/kg-store-*.ts p
 
 | S-runtime-051 | stores Vector/KG, helpers propios y regresiones lifecycle; transferencia serial de T-047 | accepted |
 Orden serial actualizado: T-045 chat turn primero; T-049 embedding turn después.
+
+| S-runtime-052 | src/runtime/turn.ts y src/orchestrator/agent-turn.ts solo para AbortSignal, después de T-049 | accepted |

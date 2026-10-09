@@ -1306,7 +1306,7 @@
       "id": "T-039",
       "title": "DAG y mesh común",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [
         "T-036",
         "T-045"
@@ -1327,14 +1327,16 @@
         "DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/runtime/dag.ts, src/runtime/mesh.ts, src/chains/executor.ts, src/orchestrator/mesh.ts, src/orchestrator/mesh-types.ts, src/shared/mesh/types.ts, mcp-server/src/tools/run-mesh.ts. DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/shared/mesh/parse.ts and src/chains/critic-decision.ts with tests: missing explicit accept rejects; score must be finite 0..100; accepted requires both sufficient score AND explicit accept. Keep parsed best evaluation paired with output. Consume provider per-call options from T045 for all nodes/agents and AbortSignal. Agent/project/global resolution must not be bypassed in mesh adapters.",
+      "notes": "Allowed: src/runtime/dag.ts, src/runtime/mesh.ts, src/chains/executor.ts, src/orchestrator/mesh.ts, src/orchestrator/mesh-types.ts, src/shared/mesh/types.ts, mcp-server/src/tools/run-mesh.ts. DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/shared/mesh/parse.ts and src/chains/critic-decision.ts with tests: missing explicit accept rejects; score must be finite 0..100; accepted requires both sufficient score AND explicit accept. Keep parsed best evaluation paired with output. Consume provider per-call options from T045 for all nodes/agents and AbortSignal. Agent/project/global resolution must not be bypassed in mesh adapters. Accepted 8d9a6f2. Abort through executeTurn is T-052, after T-049.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Accepted 8d9a6f2 on integration branch. 36 focused tests passed (dag 12, mesh 11, critic 6, parse 7). Plugin Forager/Researcher/Critic abort waits for T-052 because turn.ts is owned by T-049."
+        ]
       }
     },
     {
@@ -1762,6 +1764,40 @@
         "run": [
           "Accepted cb95d0c. Branch re-run: vector/kg persistence tests passed. Snapshot is captured before await."
         ]
+      }
+    },
+    {
+      "id": "T-052",
+      "title": "AbortSignal en turnos del mesh del plugin",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-039",
+        "T-049"
+      ],
+      "seams": [
+        "S-runtime-052"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Embedding identity or chat provider redesign",
+        "Editing indexer, UI, or MCP HTTP"
+      ],
+      "done_when": [
+        "runPortableTurn and executeTurn accept AbortSignal and pass it into chat calls used by Forager, Researcher, and Critic",
+        "Cancel stops new provider calls and ignores late requestUrl results; focused tests and typecheck pass"
+      ],
+      "notes": "Split from T-039 alarm. Own src/runtime/turn.ts and src/orchestrator/agent-turn.ts only to thread an existing AbortSignal. Do not change T-045 provider resolution or T-049 embedding purpose/identity. DAG between-node cancel already exists. Composer 2.5 only. No governance commit.",
+      "rollback": "Revert the leaf commit",
+      "verification": {
+        "planned": [
+          "npx vitest run mesh and turn tests",
+          "npm run typecheck"
+        ],
+        "run": []
       }
     }
   ]
