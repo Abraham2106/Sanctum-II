@@ -48,6 +48,7 @@ export function isValidVectorDims(dims: unknown): dims is number {
 /** DEC-0022: trusted index identity from sealed generation metadata (not project settings). */
 export function isVerifiableStoreIdentity(identity: VectorIdentity | undefined): boolean {
   if (!identity) return false;
+  if (!identity.projectId?.trim()) return false;
   if (!identity.embedModel?.trim()) return false;
   if (!isValidVectorDims(identity.dims)) return false;
   return true;
@@ -62,6 +63,8 @@ export function vectorIdentitiesCompatible(
   query: VectorIdentity,
   store: VectorIdentity,
 ): boolean {
+  if (!query.projectId?.trim() || !store.projectId?.trim()) return false;
+  if (query.projectId.trim() !== store.projectId.trim()) return false;
   if (!query.embedModel?.trim() || !store.embedModel?.trim()) return false;
   if (!isValidVectorDims(query.dims) || !isValidVectorDims(store.dims)) return false;
   if (query.dims !== store.dims) return false;
@@ -150,9 +153,15 @@ export function retrieveContextChunks(params: RetrievalParams): {
   if (!scope.allowed) {
     return { chunks: [], skipReason: "scope_denied" };
   }
-  if (store.count === 0) {
-    return { chunks: [], skipReason: "empty_store" };
+
+  const storeIdentity = store.identity;
+  if (!isVerifiableStoreIdentity(storeIdentity)) {
+    return { chunks: [], skipReason: "rebuild_required" };
   }
+  if (!vectorIdentitiesCompatible(queryIdentity, storeIdentity!)) {
+    return { chunks: [], skipReason: "identity_mismatch" };
+  }
+
   if (!isValidVectorDims(queryIdentity.dims)) {
     return { chunks: [], skipReason: "embedding_dims_mismatch" };
   }
@@ -169,12 +178,8 @@ export function retrieveContextChunks(params: RetrievalParams): {
     return { chunks: [], skipReason: "invalid_threshold" };
   }
 
-  const storeIdentity = store.identity;
-  if (!isVerifiableStoreIdentity(storeIdentity)) {
-    return { chunks: [], skipReason: "rebuild_required" };
-  }
-  if (!vectorIdentitiesCompatible(queryIdentity, storeIdentity!)) {
-    return { chunks: [], skipReason: "identity_mismatch" };
+  if (store.count === 0) {
+    return { chunks: [], skipReason: "empty_store" };
   }
 
   let results = scoreAuthorizedChunks(
