@@ -5,6 +5,8 @@ import type { Tracer } from "../observability/tracer";
 import { renderSystemPrompt } from "../agents/agent-loader";
 import { slugify, extractTitle, globMatch, isInternalPath } from "../utils";
 import { RESEARCH_PATH } from "../constants";
+import type { GlobalChatConfig } from "../runtime/providers";
+import { resolveChatCallOptions } from "../runtime/turn"; // DEC-0022
 
 export function makeInstruction(topic: string): string {
   return `Generá contenido detallado y bien estructurado sobre: ${topic}. Empezá con '# Título' en la primera línea. Incluí secciones, ejemplos y referencias. Respondé SOLO con el contenido Markdown.`;
@@ -24,6 +26,10 @@ export interface NoteGenDeps {
   vaultAdapter: { exists(p: string): Promise<boolean> };
   writePaths: string[];
   outputPath?: string;
+  /** DEC-0022: project model layer (agent still wins when set). */
+  projectModel?: string;
+  /** DEC-0022: global/env provider and model defaults. */
+  globalChat?: GlobalChatConfig;
 }
 
 /** Result of generation and persistence, including the path actually written. */
@@ -57,7 +63,12 @@ async function generateNoteContent(
   fallbackTitle?: string,
 ): Promise<GenerateResult> {
   const rendered = renderSystemPrompt(deps.agent, "", instruction);
-  const result = await deps.opencodeClient.chat(rendered, instruction);
+  const chatOptions = resolveChatCallOptions(
+    deps.agent,
+    deps.projectModel,
+    deps.globalChat,
+  );
+  const result = await deps.opencodeClient.chat(rendered, instruction, undefined, chatOptions);
   const title = extractTitle(result.content) || fallbackTitle || slugify(instruction.slice(0, 40));
   const basePath = deps.outputPath || RESEARCH_PATH;
   const path = `${basePath}/${slugify(title)}.md`;

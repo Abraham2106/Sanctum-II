@@ -1,8 +1,19 @@
 import { RAG_DEFAULTS } from "../../constants"; // DEC-0003: un solo dueño para este valor
 import { loadAgentFromVault, renderSystemPrompt } from "../../agents/agent-loader";
 import type { AgentTool } from "../../agents/authoring/types";
-import { pathMatchesAny } from "../../utils";
 import { loadSkill } from "../loader";
+import { buildEffectiveReadScope } from "../../runtime/permissions"; // DEC-0022
+import type { CallOptions, VectorIdentity } from "../../runtime/ports";
+import type { GlobalChatConfig } from "../../runtime/providers";
+import {
+  evaluatePreEmbedStoreIdentity,
+  formatRetrievedContext,
+  isVerifiableStoreIdentity,
+  retrieveContextChunks,
+  resolveSealedEmbedIdentity,
+} from "../../runtime/retrieval";
+import { resolveChatCallOptions } from "../../runtime/turn";
+import type { TraceChunk } from "../../observability/tracer";
 import { formatWebContext, searchTavily, type TavilyResponse } from "../../tools/tavily";
 import {
   extractSkillJson,
@@ -33,6 +44,11 @@ const CRITERION_MAX: Record<SkillCriticScore["name"], number> = {
   clarity_density: 10,
 };
 const CRITERION_NAMES = Object.keys(CRITERION_MAX) as SkillCriticScore["name"][];
+
+type SkillMeshRuntimeOptions = SkillAuthoringMeshOptions & {
+  sealedGeneration?: VectorIdentity;
+  globalChat?: GlobalChatConfig;
+};
 
 interface ContextAnalysis {
   topic: string;
@@ -123,20 +139,33 @@ function syntheticRejection(message: string): SkillCriticEvaluation {
 }
 
 export class SkillAuthoringMesh {
-  constructor(private readonly options: SkillAuthoringMeshOptions) {}
+  constructor(private readonly options: SkillMeshRuntimeOptions) {}
 
   private progress(progress: SkillAuthoringProgress): void {
     this.options.onProgress?.(progress);
   }
 
-  private async invokeAgent(fileName: string, userInput: string, ragContext = "", webContext = ""): Promise<string> {
+  private async invokeAgent(
+    fileName: string,
+    userInput: string,
+    ragContext = "",
+    webContext = "",
+    callOverrides?: CallOptions,
+  ): Promise<string> {
     const agent = await loadAgentFromVault(this.options.adapter, fileName);
     let systemPrompt = renderSystemPrompt(agent, ragContext, userInput);
     systemPrompt = systemPrompt.replace(/\{\{web_context\}\}/g, webContext);
+    const projectModel = this.options.projectContext?.project?.model;
+    const chatOptions = resolveChatCallOptions(
+      agent,
+      projectModel,
+      this.options.globalChat,
+      callOverrides,
+    );
     const response = await this.options.opencodeClient.chat([
       { role: "system", content: systemPrompt },
       { role: "user", content: userInput },
-    ]);
+    ], chatOptions);
     return response.content;
   }
 
@@ -146,32 +175,71 @@ export class SkillAuthoringMesh {
     if (!this.options.geminiBalancer.hasKeys) throw new SkillAuthoringMeshError("RAG_KEYS_REQUIRED", "El mesh necesita claves de Gemini para consultar el RAG.");
     if (this.options.vectorStore.count === 0) throw new SkillAuthoringMeshError("RAG_INDEX_EMPTY", "El índice RAG del proyecto está vacío. Indexá el proyecto antes de crear la skill.");
 
-    const query = cleanBriefForSearch(description);
-    const embedding = await this.options.geminiBalancer.embed(query);
     const project = projectContext.project;
-    const topK = project.rag?.top_k || 5;
-    const minSimilarity = project.rag?.min_similarity ?? RAG_DEFAULTS.MIN_SIMILARITY;
-    const searchK = Math.max(50, this.options.vectorStore.count);
-    let results = this.options.vectorStore.search(embedding, searchK)
-      .filter(result => result.score >= minSimilarity)
-      .filter(result => !project.read_paths.length || pathMatchesAny(result.chunk.note_path, project.read_paths));
-    if (this.options.pathFilter?.length) {
-      results = results.filter(result => pathMatchesAny(result.chunk.note_path, this.options.pathFilter));
+    const contextAnalyst = await loadAgentFromVault(this.options.adapter, "skill-context-analyst.md");
+    const readScope = buildEffectiveReadScope({
+      projectReadPaths: project.read_paths,
+      agentReadPaths: contextAnalyst.permissions?.read_paths,
+      selectionPaths: this.options.pathFilter,
+    });
+    if (!readScope.allowed) {
+      return { context: "", sources: [] };
     }
-    results = results.slice(0, topK);
+
+    const sealed = this.options.sealedGeneration;
+    if (
+      !sealed
+      || !isVerifiableStoreIdentity(sealed)
+      || evaluatePreEmbedStoreIdentity(project.rag, sealed, project.id)
+    ) {
+      throw new SkillAuthoringMeshError("RAG_REBUILD_REQUIRED", "Reindexá el proyecto con una generación sellada compatible.");
+    }
+    const queryIdentity = resolveSealedEmbedIdentity(project.rag, project.id, {
+      generationId: sealed.generationId,
+      provenance: sealed.provenance,
+      configFingerprint: sealed.configFingerprint,
+    });
+    if (!queryIdentity) {
+      throw new SkillAuthoringMeshError("RAG_REBUILD_REQUIRED", "Reindexá el proyecto con una generación sellada compatible.");
+    }
+
+    const query = cleanBriefForSearch(description);
+    const queryEmbedding = await this.options.geminiBalancer.embed(
+      query,
+      queryIdentity.embedModel,
+      queryIdentity.dims,
+    );
+    const topK = project.rag?.top_k || RAG_DEFAULTS.TOP_K;
+    const minSimilarity = project.rag?.min_similarity ?? RAG_DEFAULTS.MIN_SIMILARITY;
+    const store = this.options.vectorStore;
+    const { chunks } = retrieveContextChunks({
+      queryEmbedding,
+      queryIdentity,
+      store: {
+        count: store.count,
+        identity: sealed,
+        allChunks: () => store.allChunks.map((c) => ({
+          id: c.id,
+          notePath: c.note_path,
+          chunkText: c.chunk_text,
+          embedding: c.embedding,
+        })),
+      },
+      scope: readScope,
+      topK,
+      minSimilarity,
+      traceId,
+      tracer: {
+        addChunk: (id, chunk) => this.options.tracer.addChunk(id, chunk as TraceChunk),
+      },
+    });
 
     const sourceScores = new Map<string, number>();
-    for (const result of results) {
-      sourceScores.set(result.chunk.note_path, Math.max(sourceScores.get(result.chunk.note_path) || 0, result.score));
-      this.options.tracer.addChunk(traceId, {
-        source: "rag",
-        chunk: result.chunk.chunk_text,
-        similarity_score: result.score,
-        from_note: result.chunk.note_path,
-      });
+    for (const chunk of chunks) {
+      sourceScores.set(chunk.notePath, Math.max(sourceScores.get(chunk.notePath) || 0, chunk.score));
     }
     const sources = [...sourceScores.entries()].map(([notePath, score]) => ({ notePath, score }));
-    const context = results.map(result => `[${result.chunk.note_path}]\n${result.chunk.chunk_text}`).join("\n\n");
+    const context = formatRetrievedContext(chunks);
     return { context, sources };
   }
 
@@ -302,17 +370,7 @@ export class SkillAuthoringMesh {
             history_path: saved.historyPath,
           });
           this.progress({ stage: "done", attempt, score: evaluation.totalScore, ragSources, webSources, message: "Skill aprobada y guardada." });
-          return {
-            status: "accepted",
-            generation,
-            score: evaluation.totalScore,
-            attempts,
-            feedback: evaluation.feedback,
-            ragSources,
-            webSources,
-            traceId,
-            saved,
-          };
+          return { status: "accepted", generation, score: evaluation.totalScore, attempts, feedback: evaluation.feedback, ragSources, webSources, traceId, saved };
         }
         feedback.push(...evaluation.feedback);
       }
@@ -328,16 +386,7 @@ export class SkillAuthoringMesh {
         web_sources: webSources,
       });
       this.progress({ stage: "failed", attempt: attempts, score: bestEvaluation.totalScore, ragSources, webSources, message: "El borrador no superó el quality gate y no fue guardado." });
-      return {
-        status: "escalated",
-        generation,
-        score: bestEvaluation.totalScore,
-        attempts,
-        feedback: bestEvaluation.feedback,
-        ragSources,
-        webSources,
-        traceId,
-      };
+      return { status: "escalated", generation, score: bestEvaluation.totalScore, attempts, feedback: bestEvaluation.feedback, ragSources, webSources, traceId };
     } catch (error: any) {
       this.options.tracer.abort(traceId, error?.message || String(error));
       this.progress({ stage: "failed", ragSources, webSources, message: error?.message || "Falló el mesh de autoría." });

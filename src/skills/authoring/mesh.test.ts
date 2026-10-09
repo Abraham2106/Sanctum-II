@@ -5,8 +5,19 @@ import { Tracer } from "../../observability/tracer";
 import { defaultProject } from "../../projects/types";
 import { VectorStore } from "../../rag/vector-store";
 import type { TavilyResponse } from "../../tools/tavily";
+import type { VectorIdentity } from "../../runtime/ports";
 import { parseSkillCriticEvaluation, SkillAuthoringMesh } from "./mesh";
 import type { SkillAuthoringProgress } from "./types";
+
+function sealedGeneration(projectId: string, dims: number): VectorIdentity {
+  return {
+    embedModel: "gemini-embedding-2",
+    dims,
+    projectId,
+    generationId: "gen-test",
+    provenance: "fp-test",
+  };
+}
 
 vi.mock("obsidian", () => ({
   requestUrl: vi.fn(),
@@ -73,23 +84,31 @@ function makeHarness(options: {
   existing?: boolean;
   hasGeminiKeys?: boolean;
   tavilyKey?: string | null;
+  pathFilter?: string[];
+  omitSeal?: boolean;
+  extraChunks?: { note_path: string; chunk_text: string; embedding: number[] }[];
 } = {}) {
   const vault = new MemoryVault();
   seedDefinitions(vault);
   if (options.existing) vault.files.set("sanctum-skills/quantum-optimization-coder.md", "skill anterior deplorable");
   const vectorStore = new VectorStore("test.jsonl");
   if (!options.emptyIndex) {
+    const primaryPath = options.ragPath || "Research/Quantum Optimization/QAOA.md";
     vectorStore.addChunks([{
       id: "qaoa#0",
-      note_path: options.ragPath || "Research/Quantum Optimization/QAOA.md",
+      note_path: primaryPath,
       chunk_text: "El proyecto formula restricciones con QUBO, mapea a Ising y valida QAOA contra soluciones clásicas.",
       embedding: options.ragMatch === false ? [-1, 0] : [1, 0],
-    }], options.ragPath || "Research/Quantum Optimization/QAOA.md");
+    }], primaryPath);
+    for (const [index, chunk] of (options.extraChunks || []).entries()) {
+      vectorStore.addChunks([{ id: `extra#${index}`, ...chunk }], chunk.note_path);
+    }
   }
   const project = defaultProject("quantum");
   project.read_paths = ["/Research/Quantum Optimization/**"];
   project.rag.top_k = 5;
   project.rag.min_similarity = 0.65;
+  project.rag.dims = 2;
   let criticCalls = 0;
   const authorPackets: string[] = [];
   const chat = vi.fn(async (messages: { role: string; content: string }[]) => {
@@ -111,6 +130,8 @@ function makeHarness(options: {
     tracer: new Tracer(vault),
     tavilyApiKey: options.tavilyKey === null ? undefined : options.tavilyKey || "test",
     projectContext: { project, memory: [], systemPrefix: "" },
+    pathFilter: options.pathFilter,
+    sealedGeneration: options.omitSeal ? undefined : sealedGeneration(project.id, 2),
     onProgress: item => progress.push(item),
     searchWeb,
   });
@@ -169,6 +190,28 @@ describe("SkillAuthoringMesh", () => {
     const result = await mesh.run({ description: quantumBrief });
     expect(result.ragSources).toEqual([]);
     expect(authorPackets[0]).toContain("Sin evidencia local relacionada");
+  });
+
+  it("no amplía el proyecto cuando la selección incluye rutas fuera del scope", async () => {
+    const { mesh, authorPackets, result } = await (async () => {
+      const harness = makeHarness({
+        pathFilter: ["/Private/**", "/Research/Quantum Optimization/**"],
+        extraChunks: [{
+          note_path: "Private/leak/QAOA.md",
+          chunk_text: "contenido privado no autorizado",
+          embedding: [1, 0],
+        }],
+      });
+      const result = await harness.mesh.run({ description: quantumBrief });
+      return { ...harness, result };
+    })();
+    expect(result.ragSources.every((s) => s.notePath.startsWith("Research/"))).toBe(true);
+    expect(authorPackets[0]).not.toContain("Private/");
+  });
+
+  it("bloquea RAG sin generación sellada verificable", async () => {
+    const { mesh } = makeHarness({ omitSeal: true });
+    await expect(mesh.run({ description: quantumBrief })).rejects.toMatchObject({ code: "RAG_REBUILD_REQUIRED" });
   });
 
   it("bloquea antes de Tavily cuando falta su credencial obligatoria", async () => {
