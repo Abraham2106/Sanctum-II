@@ -1424,7 +1424,7 @@
       "id": "T-042",
       "title": "Composición plugin y servicios",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [
         "T-039",
         "T-040",
@@ -1569,7 +1569,7 @@
       "id": "T-046",
       "title": "Skills y notas usan permisos y proveedores comunes",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [
         "T-036",
         "T-040",
@@ -1596,7 +1596,9 @@
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Accepted 5dea018. 22 tests re-run. Files under 400 lines."
+        ]
       }
     },
     {

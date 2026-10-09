@@ -117,3 +117,5 @@ T-052 `66a3724` aceptada: 25 pruebas. El mesh y las cadenas pasan la señal al t
 T-040 `90bec41` aceptada: 22 pruebas. Generaciones inmutables, permisos vacíos deniegan la indexación y un fallo no sustituye la generación anterior. Siguiente paralelo: T-041 (MCP por proyecto) y T-046 (skills y notas).
 
 T-041 `e69ac1f` aceptada: 17 pruebas. Las herramientas de notas y consulta exigen proyecto y leen la generación publicada. T-042 espera a que T-046 termine.
+
+T-046 `5dea018` aceptada: 22 pruebas. Skills y notas usan el ámbito efectivo, y las escrituras de notas pasan por la cola. Siguiente: T-042, composición del plugin.
