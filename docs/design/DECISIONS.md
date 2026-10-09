@@ -29,3 +29,5 @@ Fuente compacta para inyectar en workers. Detalle en `DEC-*.md`.
 Si dos planners contradicen una fila, no se mergea código. Se abre reconciliación de docs y se incrementa el id. No se agregan sufijos al id. Decisiones de producto empiezan en DEC-0003.
 
 | DEC-0022 | Núcleo portable, scopes intersectados, generaciones, DAG y mesh únicos; supersede alcance histórico y gate DEC-0014/HTTP DEC-0020 | accepted |
+
+- DEC-0023 accepted: infraestructura opcional EmbeddingGemma 2 texto, por instrucción nueva del usuario; sustituye restricción Gemini-only y exclusión local, conserva permisos/generaciones DEC-0022. Ver DEC-0023-local-text-embeddings.md.

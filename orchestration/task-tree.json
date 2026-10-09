@@ -1344,7 +1344,9 @@
         "T-036",
         "T-038",
         "T-047",
-        "T-048"
+        "T-048",
+        "T-049",
+        "T-050"
       ],
       "seams": [
         "S-runtime-040"
@@ -1362,7 +1364,7 @@
         "Generaciones DEC0022, SHA256 portable, seal completo, conservar legacy, recursive permissions, fingerprint exact modelo/dims/chunking, reuse/full/partial seguro, sin fallback modelo indexed. Exponer reader a MCP y plugin. Métodos embed(text,model?) compatible. Tests reales Fs fixtures + dobles explícitos. No main/UI.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/projects/index-generations.ts, src/projects/indexer.ts, src/projects/indexer.test.ts, src/embeddings/gemini-balancer.ts, mcp-server/src/embeddings/gemini-embed.ts. Generaciones DEC0022, SHA256 portable, seal completo, conservar legacy, recursive permissions, fingerprint exact modelo/dims/chunking, reuse/full/partial seguro, sin fallback modelo indexed. Exponer reader a MCP y plugin. Métodos embed(text,model?) compatible. Tests reales Fs fixtures + dobles explícitos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/embeddings/embed-contract.ts and mcp-server/src/core/fs-vault-adapter.ts with focused tests: optional exact model/dims embedding API embed(text, model?, dims?), body dims; filesystem list errors propagate so failed traversal cannot publish destructive omissions. No removal of path/symlink protections. Document strict reader snapshots ready/rebuild_required/unavailable/corrupt for downstream; fingerprint actual chunk/truncation; strict file/hash/schema/finite vector validation. Queue by adapter+project, stage stores off-side, any failure leaves previous disk/in-memory generation. Filter both KG endpoints before serialization. Real Fs temporary vault tests plus explicit synthetic embed doubles.",
+      "notes": "Allowed: src/projects/index-generations.ts, src/projects/indexer.ts, src/projects/indexer.test.ts, src/embeddings/gemini-balancer.ts, mcp-server/src/embeddings/gemini-embed.ts. Generaciones DEC0022, SHA256 portable, seal completo, conservar legacy, recursive permissions, fingerprint exact modelo/dims/chunking, reuse/full/partial seguro, sin fallback modelo indexed. Exponer reader a MCP y plugin. Métodos embed(text,model?) compatible. Tests reales Fs fixtures + dobles explícitos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/embeddings/embed-contract.ts and mcp-server/src/core/fs-vault-adapter.ts with focused tests: optional exact model/dims embedding API embed(text, model?, dims?), body dims; filesystem list errors propagate so failed traversal cannot publish destructive omissions. No removal of path/symlink protections. Document strict reader snapshots ready/rebuild_required/unavailable/corrupt for downstream; fingerprint actual chunk/truncation; strict file/hash/schema/finite vector validation. Queue by adapter+project, stage stores off-side, any failure leaves previous disk/in-memory generation. Filter both KG endpoints before serialization. Real Fs temporary vault tests plus explicit synthetic embed doubles. DEC0023 local authorized: consume common EmbedderPort resolved identity and explicit purpose document/query; Gemini adapter translates options preserving overload; generation metadata contains full embedding identity/descriptor fingerprint and chunking, local health actualidentity pinned and response revalidated. Differentbackend/revision/config/dims demands full explicit rebuild; no mixed partial reuse. No localclient/server edits.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1380,7 +1382,8 @@
       "deps": [
         "T-039",
         "T-040",
-        "T-037"
+        "T-037",
+        "T-049"
       ],
       "seams": [
         "S-runtime-041"
@@ -1398,7 +1401,7 @@
         "Servicio portable ProjectReader, project_id/env/PROJECT_REQUIRED; query generation refresh/model, before-topk permissions; listar cada hijo autorizado y read efectivo. Pasar origins y token startup. No HTTP/package/main.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: mcp-server/index.ts, mcp-server/src/tools/query-vault.ts, mcp-server/src/tools/get-note.ts, mcp-server/src/tools/list-notes.ts, mcp-server/src/mcp/permission-resolver.ts, src/app/project-reader.ts. Servicio portable ProjectReader, project_id/env/PROJECT_REQUIRED; query generation refresh/model, before-topk permissions; listar cada hijo autorizado y read efectivo. Pasar origins y token startup. No HTTP/package/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned mcp-server/src/tools/invoke-agent.ts: agent explicit model/provider options via T045, validate agent IDs, preserve supplied context without hidden retrieval. Resolver must propagate file-specific YAML errors rather than silently empty permissions. Validate project/agent IDs before adapter reads.",
+      "notes": "Allowed: mcp-server/index.ts, mcp-server/src/tools/query-vault.ts, mcp-server/src/tools/get-note.ts, mcp-server/src/tools/list-notes.ts, mcp-server/src/mcp/permission-resolver.ts, src/app/project-reader.ts. Servicio portable ProjectReader, project_id/env/PROJECT_REQUIRED; query generation refresh/model, before-topk permissions; listar cada hijo autorizado y read efectivo. Pasar origins y token startup. No HTTP/package/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned mcp-server/src/tools/invoke-agent.ts: agent explicit model/provider options via T045, validate agent IDs, preserve supplied context without hidden retrieval. Resolver must propagate file-specific YAML errors rather than silently empty permissions. Validate project/agent IDs before adapter reads. DEC0023 construct commonprovider using sharedresolver/env and sealed identity; local generation queried through exact local backend, no Gemini keys requirement or remote fallback. Numericport NodeHTTP transport shared.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1417,7 +1420,8 @@
         "T-039",
         "T-040",
         "T-045",
-        "T-046"
+        "T-046",
+        "T-049"
       ],
       "seams": [
         "S-runtime-042"
@@ -1435,7 +1439,7 @@
         "Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/main.ts, src/plugin/**, src/app/services.ts, src/app/chat-orchestrator.ts, src/app/pending-turn.ts, src/app/write-turn.ts. Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. All note writes must intersect project AND initiating agent scope using permission service; passthrough read scope to resolver; do not auto-write needs_review mesh output. Capture all clients/model/project in request snapshots; cancel lifecycle methods for UI. Notice callbacks injected where needed.",
+      "notes": "Allowed: src/main.ts, src/plugin/**, src/app/services.ts, src/app/chat-orchestrator.ts, src/app/pending-turn.ts, src/app/write-turn.ts. Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. All note writes must intersect project AND initiating agent scope using permission service; passthrough read scope to resolver; do not auto-write needs_review mesh output. Capture all clients/model/project in request snapshots; cancel lifecycle methods for UI. Notice callbacks injected where needed. DEC0023 wire commonprovider globally/projectoverride, snapshothealth+identity; localkeysnotrequired, expose readiness/missingruntime/auth/config mismatch service states. Use shared NodeHTTP desktop transport (no renderer CORS/redirectrequestUrl). No automatic serverstart/download. Settings/types suppliedT049.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1469,7 +1473,7 @@
         "Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/ui/chain-view.ts, src/ui/chain-canvas.ts, src/ui/projects-view.ts, src/ui/projects/**, src/ui/kg-view.ts, src/ui/kg-scene.ts, src/ui/kg-inspector.ts, src/ui/chat-view.ts, src/ui/chat-types.ts. Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/ui/chat-right.ts src/ui/chat-composer.ts src/ui/projects/index-state.ts; correct all nonaccepted mesh labels; cancel buttons wired to service. Read modern-web-guidance SKILL before client JS/DOM edits and follow official API guidance without redesign.",
+      "notes": "Allowed: src/ui/chain-view.ts, src/ui/chain-canvas.ts, src/ui/projects-view.ts, src/ui/projects/**, src/ui/kg-view.ts, src/ui/kg-scene.ts, src/ui/kg-inspector.ts, src/ui/chat-view.ts, src/ui/chat-types.ts. Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/ui/chat-right.ts src/ui/chat-composer.ts src/ui/projects/index-state.ts; correct all nonaccepted mesh labels; cancel buttons wired to service. Read modern-web-guidance SKILL before client JS/DOM edits and follow official API guidance without redesign. Additionalowned src/ui/settings-tab.ts existing controls localbackend/revision/port/token/dims and health statuses DEC0023; preserveappearance, projectprovideroverridecontrols ifneeded in projects-ownedfiles, noCSS. Offlineembeddingsdoesnotmeanofflinechat; neverdisplaytoken inerrors.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1504,7 +1508,7 @@
         "Launcher HTTP Node, smoke fixture aislado sin secrets, Windows/Linux matrix, KG+orchestration en verify correspondiente, migrar/adaptar reproducciones y tests runtime. Docs six tools/project/indices/states. Benchmark synth sizes logs. No source domain.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: package.json, .github/workflows/ci.yml, mcp-server/test/**, vitest.config.ts, scripts/**, README.md, mcp-server/README.md, .env.example, docs/audits/2026-10-08/reproduce.test.ts, docs/registro-arquitectura.md, docs/arquitectura-uml.md. Launcher HTTP Node, smoke fixture aislado sin secrets, Windows/Linux matrix, KG+orchestration en verify correspondiente, migrar/adaptar reproducciones y tests runtime. Docs six tools/project/indices/states. Benchmark synth sizes logs. No source domain. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "notes": "Allowed: package.json, .github/workflows/ci.yml, mcp-server/test/**, vitest.config.ts, scripts/**, README.md, mcp-server/README.md, .env.example, docs/audits/2026-10-08/reproduce.test.ts, docs/registro-arquitectura.md, docs/arquitectura-uml.md. Launcher HTTP Node, smoke fixture aislado sin secrets, Windows/Linux matrix, KG+orchestration en verify correspondiente, migrar/adaptar reproducciones y tests runtime. Docs six tools/project/indices/states. Benchmark synth sizes logs. No source domain. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Include localPythonunittest/contractsmoke inWindowsLinuxCI whenPythonavailable; docs manualoptionalcache/requirements startup. Distinguish live inference absent/qualitycalibration pending from contracttests. No modeldownloadsCI.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1522,7 +1526,8 @@
       "deps": [
         "T-035",
         "T-036",
-        "T-048"
+        "T-048",
+        "T-049"
       ],
       "seams": [
         "S-runtime-045"
@@ -1540,7 +1545,7 @@
         "Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Reuse structural ports supplied by T036; do not duplicate or edit runtime/ports.ts. Configure calls through provider resolution options. Serial additional ownership src/runtime/turn.ts after T036 integration, solely wire per-call resolved model/provider/signal into all chat and chatMessages branches (including conversation). Reuse CallOptions structural ports. Extend agent/project optional explicit provider fields/loaders only if required, with ownership handoff after T035/T038; do not infer provider from model.",
+      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Reuse structural ports supplied by T036; do not duplicate or edit runtime/ports.ts. Configure calls through provider resolution options. Serial additional ownership src/runtime/turn.ts after T036 integration, solely wire per-call resolved model/provider/signal into all chat and chatMessages branches (including conversation). Reuse CallOptions structural ports. Extend agent/project optional explicit provider fields/loaders only if required, with ownership handoff after T035/T038; do not infer provider from model. T049 owns embedding port/types/settings and transfers turn serially to this leaf; modify only chat options there, no embedding/config files. No agent/projecttype/store ownership; explicit provider configuration via resolverglobal/call options sufficient.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1558,7 +1563,8 @@
       "deps": [
         "T-036",
         "T-040",
-        "T-045"
+        "T-045",
+        "T-049"
       ],
       "seams": [
         "S-runtime-046"
@@ -1617,7 +1623,7 @@
       "id": "T-048",
       "title": "Identidad estricta de proyecto en recuperación pública",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
       "seams": [
         "S-runtime-048"
@@ -1639,6 +1645,74 @@
         "planned": [
           "npx vitest run src/runtime",
           "npm run typecheck"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-050",
+      "title": "Servicio local EmbeddingGemma 2 texto",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-local-service"
+      ],
+      "decisions": [
+        "DEC-0022",
+        "DEC-0023"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside seam/new unfrozen design/missing Composer runtime"
+      ],
+      "done_when": [
+        "Local service implements secure exact wire and explicit readiness/error states with genuine model loader and test-only doubles",
+        "Independent review plus executed verification; no synthetic production fallback"
+      ],
+      "notes": "Own only new local-embeddings/server.py, model.py, requirements.txt, README.md, test_*.py (small helpers allowed, all files under400 lines). Implement exact DEC0023 protocol/prefixes/identity/fingerprint matching forthcoming TS port. Python stdlib HTTP loopback127.0.0.1 port8767 token mandatory fromenv, noOrigin/foreignHost/redirects,1MiB/batch16/singleinference/busy. Manual lifecycle lazyimports/backgroundload healthloading/failed/ready only afteractualfiniteprobe, missingdeps/model errors. Fixed google/embeddinggemma-2 40hexrevision textonlycachedlocal load offline trust_remote_codeFalse; CPUFP32/CUDABF16 explicit, noFP16. No weightdownload/install/model synthetic fallback. Deterministic unittest injectedfake only test, actual stdlibloopback auth/limits/readiness/identity/batchorder invalidvectors and missingdependency startup. Verify immutable modelrevision, tokenizerprefixbudget8192, dimsconfiguredMrl normalize. Full descriptor runtimeversions/dtype/device/textencoders/prefixes/normalization/preprocessing3000UTF16 and canonicalSHA256 identity. Testunittest realHTTP and missingmodel error—notliveinference. NoTS/governance/package edits. Coordinate protocol with T049 through coordinator, no changes DEC. Composer2.5 CLI only, own install optionaldeps neverautomatic.",
+      "rollback": "Revert leaf, retain prior generations; local service optional",
+      "verification": {
+        "planned": [
+          "python -m unittest discover -s local-embeddings -p test_*.py",
+          "python local-embeddings/server.py missing dependency/model controlled startup smoke"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-049",
+      "title": "Puerto y cliente de embeddings locales compartidos",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-036",
+        "T-038",
+        "T-047",
+        "T-048"
+      ],
+      "seams": [
+        "S-local-client"
+      ],
+      "decisions": [
+        "DEC-0022",
+        "DEC-0023"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside seam/new unfrozen design/missing Composer runtime"
+      ],
+      "done_when": [
+        "Shared port/client/config supports explicit textlocal backend with strict identities and preserved portable boundaries",
+        "Independent review plus executed verification; no synthetic production fallback"
+      ],
+      "notes": "Own new src/runtime/embedding.ts, src/embeddings/local-client.ts, local-node-transport.ts, embedding-config.ts, embedding-identity.ts helpers/tests; serial handoff src/runtime/ports.ts and runtime/retrieval.ts+tests embeddingfingerprint only, runtime/turn.ts query purpose/identity only beforeT045; src/orchestrator/agent-turn.ts embedding binding accepts commonport (notchat logic); src/projects/types.ts, project-md.ts +tests optional embedding selection; src/constants.ts src/core/env-loader.ts global optional settings/env; esbuild.config.mjs node:http external only ifneeded. No indexer/Gemini/MCPcomposition/main/UI/gov. DEC0023 fixed ports andwire, query/document, configuredalias hasKeys, batch/health/identity cancellation; strictscalar/vector/schema, canonical fingerprint; exact model/revision/dims config resolver selectionnotinferred frommodel. Project embedding?:backend/model/revision/dims noendpoint/token. Coreturn querypurpose forwards verified identity, pinfingerprint prior/queryresponse; wrapper consumes injectedprovider, fallback only explicitdefaultGemini composition—notremote on localfailure. NodeHTTP transport127.0.0.1 numericport rejectsredirects physicalsocketabort; injectedtransport tests plusreal loopbackfixtures. Validatelocalhealth andidentitydescriptor fingerprint crossPythoncontract, healthstate actionable. DefaultsGemini envnames/settings DEC, alias geminiBalancercompat preserveduntilT042. No realweightsneeded, no productiontest fallback. Tests providerconfig/identity/querydocprefix/truncation/zeroNaN/nonnumber/count/timeout/cancel/auth/redirect/no fallback; allfiles<400 splithelpers.",
+      "rollback": "Revert leaf, retain prior generations; local service optional",
+      "verification": {
+        "planned": [
+          "npx vitest run owned tests and src/runtime",
+          "npm run typecheck",
+          "npm run build"
         ],
         "run": []
       }

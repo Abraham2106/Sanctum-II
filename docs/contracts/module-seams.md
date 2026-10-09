@@ -72,3 +72,7 @@ S-runtime-045 recibe runtime/turn.ts de T-036, serializado por dependencia, para
 | S-runtime-047 | src/rag/vector-store.ts, src/kg/kg-store.ts y tests de persistencia; transferencia serial tras borrador T-038 | accepted |
 
 | S-runtime-048 | src/runtime/retrieval.ts y tests, transferencia serial tras T-036 | accepted |
+
+| S-local-service | local-embeddings/** Python y documentación/runtime tests únicamente | accepted |
+| S-local-client | runtime embedding/ports/retrieval/turn binding serial; embedding local-client/transport/config; projects types/project-md; constants/env; external node:http en esbuild | accepted |
+T-043 incorpora settings-tab.ts para controles existentes. T-049 transferencias seriales están bloqueadas por dependencias; T-045 no edita configuración/puertos.
