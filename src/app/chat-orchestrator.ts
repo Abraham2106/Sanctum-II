@@ -1,66 +1,25 @@
 import { Notice } from "obsidian";
-import type { AppServices } from "./services";
+import type { AppServices, RequestSnapshot } from "./services";
 import { executeTurn } from "../orchestrator/agent-turn";
 import { loadAgentFromVault } from "../agents/agent-loader";
 import { fallbackAgent } from "../agents/fallback";
-import { executeWriteIntent as executeWriteIntentFromNoteGen, generateNoteFromSource, canWriteToPath } from "../orchestrator/note-generator";
-import { classifyIntent, detectPendingAction, buildConversationPayload } from "../orchestrator/conversation";
+import { detectPendingAction } from "../orchestrator/conversation";
 import { executeChain, topologicalOrder } from "../chains/executor";
 import type { ConversationMessage } from "../orchestrator/conversation";
-import type { PendingAction, CreatedNote } from "../projects/types";
-import { resolveNoteReference } from "../orchestrator/note-resolver";
-import { parseWriteIntent } from "../utils";
 import { DEFAULT_MODEL, BUILTIN_AGENTS } from "../constants";
+import { tryResolvePendingAction, createNoteFromOrchestratorDecision } from "./pending-turn";
+import { executeWriteIntentMessage, modifyNoteFromIntent } from "./write-turn";
 
 export interface ChatResponse {
   content: string;
   conversationSummary?: string;
 }
 
-/**
- * Encapsulates the message-processing pipeline:
- * mention → chain → pending action → forager pipeline → executeTurn → persistence
- */
-interface RequestSnapshot {
-  projectId: string | undefined;
-  threadId: string | undefined;
-  project: import("../projects/types").Project | null;
-  agent: import("../agents/types").AgentDefinition | null;
-  pathFilter: string[] | undefined;
-  projectContext: import("../projects/context").ProjectContext | null;
-  skillContext: import("../skills/types").Skill | null;
-  vectorStore: AppServices["vectorStore"];
-  geminiBalancer: AppServices["geminiBalancer"];
-  kgEdgeStore: AppServices["kgEdgeStore"];
-}
-
 export class ChatOrchestrator {
   constructor(private svc: AppServices) {}
 
-  private captureContext(): RequestSnapshot {
-    const active = this.svc.activeProject;
-    const project = active ? {
-      ...active,
-      read_paths: [...active.read_paths],
-      write_paths: [...active.write_paths],
-      rag: { ...active.rag },
-      files: [...(active.files || [])],
-      attachedFiles: [...(active.attachedFiles || [])],
-    } : null;
-    return {
-      projectId: this.svc.activeProject?.id,
-      threadId: this.svc.activeThreadId,
-      project,
-      agent: this.svc.agent,
-      pathFilter: this.svc.pathFilter,
-      projectContext: this.svc.activeProjectContext,
-      skillContext: this.svc.skillContext,
-      vectorStore: this.svc.vectorStore,
-      geminiBalancer: this.svc.geminiBalancer,
-      kgEdgeStore: typeof this.svc.kgEdgeStore.snapshot === "function"
-        ? this.svc.kgEdgeStore.snapshot()
-        : this.svc.kgEdgeStore,
-    };
+  cancelInFlightChat(): void {
+    this.svc.cancelChatRequest();
   }
 
   async handleMessage(
@@ -68,51 +27,75 @@ export class ChatOrchestrator {
     convMessages?: ConversationMessage[],
     convSummary?: string,
   ): Promise<ChatResponse> {
-    if (!this.svc.opencodeClient.configured) return { content: "OPENCODE_GO_API_KEY no configurada." };
+    if (!this.svc.opencodeClient.configured) {
+      return { content: "OPENCODE_GO_API_KEY no configurada." };
+    }
 
-    const snap = this.captureContext();
+    const snap = this.svc.captureRequestSnapshot();
 
-    // 1. Resolve pending action (confirmation/rejection of a previous offer)
-    const pendingResult = await this.tryResolvePendingAction(userMessage, snap);
-    if (pendingResult) return pendingResult;
+    try {
+      const pendingResult = await tryResolvePendingAction(
+        this.svc,
+        userMessage,
+        snap,
+        (followUp, pendingSnap) =>
+          this.handleAgentMessage(followUp, null, convMessages, convSummary, pendingSnap),
+      );
+      if (pendingResult) return pendingResult;
 
-    // 2. Write intent detection
-    const writeIntent = await this.executeWriteIntent(userMessage, snap);
-    if (writeIntent) return { content: writeIntent };
+      const writeIntent = await executeWriteIntentMessage(this.svc, userMessage, snap, convMessages);
+      if (writeIntent) return { content: writeIntent };
 
-    const mentionMatch = userMessage.trim().match(/^@([\w\-]+)(?:\s+([\s\S]*))?$/);
-    const mentionName = mentionMatch?.[1];
+      const mentionMatch = userMessage.trim().match(/^@([\w\-]+)(?:\s+([\s\S]*))?$/);
+      const mentionName = mentionMatch?.[1];
 
-    // ── Chain detection (@cadena-name) ──
-    if (mentionName) {
-      const chain = await this.svc.chainStore.load(mentionName).catch(() => null);
-      if (chain && chain.nodes.length > 0) {
-        const chainMsg = mentionMatch![2]?.trim() || "Ejecutar cadena";
-        new Notice(`⛓️ Ejecutando cadena: ${chain.name} (${chain.nodes.length} pasos)`, 3000);
-        try {
-          const order = topologicalOrder(chain.nodes, chain.edges);
-          const result = await executeChain(
-            chain,
-            this.buildTurnDeps(chainMsg, snap),
-            async (agentId) => {
-      try { return await loadAgentFromVault(this.svc.adapter, `${agentId}.md`); }
-      catch (err: any) { console.warn("[Chain] Agent load failed:", err.message); return { id: "fallback", name: "Fallback", avatar: "🤖", model: DEFAULT_MODEL, description: "", triggers: [], tools: [], permissions: { read_paths: [], write_paths: [] }, system_prompt: "" }; }
-            },
-            chainMsg,
-            snap.pathFilter,
-          );
-          return { content: `⛓️ Cadena "${chain.name}" (${order.length} pasos):\n\n${result.finalOutput}` };
-        } catch (err: any) {
-          return { content: `⛓️ Error: ${err.message}` };
+      if (mentionName) {
+        const chain = await this.svc.chainStore.load(mentionName).catch(() => null);
+        if (chain && chain.nodes.length > 0) {
+          const chainMsg = mentionMatch![2]?.trim() || "Ejecutar cadena";
+          new Notice(`⛓️ Ejecutando cadena: ${chain.name} (${chain.nodes.length} pasos)`, 3000);
+          try {
+            const order = topologicalOrder(chain.nodes, chain.edges);
+            const result = await executeChain(
+              chain,
+              this.buildTurnDeps(chainMsg, snap),
+              async (agentId) => {
+                try {
+                  return await loadAgentFromVault(this.svc.adapter, `${agentId}.md`);
+                } catch (err: any) {
+                  console.warn("[Chain] Agent load failed:", err.message);
+                  return {
+                    id: "fallback",
+                    name: "Fallback",
+                    avatar: "🤖",
+                    model: DEFAULT_MODEL,
+                    description: "",
+                    triggers: [],
+                    tools: [],
+                    permissions: { read_paths: [], write_paths: [] },
+                    system_prompt: "",
+                  };
+                }
+              },
+              chainMsg,
+              snap.pathFilter,
+            );
+            return {
+              content: `⛓️ Cadena "${chain.name}" (${order.length} pasos):\n\n${result.finalOutput}`,
+            };
+          } catch (err: any) {
+            return { content: `⛓️ Error: ${err.message}` };
+          }
         }
       }
-    }
 
-    // ── Agent flow ──
-    if (!mentionMatch) {
-      return this.handleImplicitMessage(userMessage, convMessages, convSummary, snap);
+      if (!mentionMatch) {
+        return this.handleImplicitMessage(userMessage, convMessages, convSummary, snap);
+      }
+      return this.handleAgentMessage(userMessage, mentionMatch, convMessages, convSummary, snap);
+    } finally {
+      this.svc.clearChatAbort();
     }
-    return this.handleAgentMessage(userMessage, mentionMatch, convMessages, convSummary, snap);
   }
 
   private async handleImplicitMessage(
@@ -121,26 +104,37 @@ export class ChatOrchestrator {
     convSummary: string | undefined,
     snap: RequestSnapshot,
   ): Promise<ChatResponse> {
-    // Load orchestrator and build context
     let orchestratorPrompt = "";
     try {
       const orch = await loadAgentFromVault(this.svc.adapter, `${BUILTIN_AGENTS.ORCHESTRATOR}.md`);
-      // Build recent conversation context from convMessages
       let recentContext = convSummary || "";
       if (!recentContext && convMessages && convMessages.length > 0) {
-        const lastMsgs = convMessages.slice(-4).map((m) =>
-          `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.content.slice(0, 300)}`
-        ).join("\n");
+        const lastMsgs = convMessages
+          .slice(-4)
+          .map((m) => `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.content.slice(0, 300)}`)
+          .join("\n");
         recentContext = lastMsgs || "(sin historial previo)";
       }
-      orchestratorPrompt = orch.system_prompt.replace("{{user_prompt}}", JSON.stringify({
-        mode: "implicit",
-        userMessage,
-        historySummary: recentContext || "(sin historial previo)",
-        createdNotes: (snap.projectId && snap.threadId)
-          ? (await this.svc.projectStore.loadThreadData(snap.projectId, snap.threadId).catch(() => null))?.createdNotes?.map(n => n.title) || []
-          : [],
-      }, null, 2));
+      orchestratorPrompt = orch.system_prompt.replace(
+        "{{user_prompt}}",
+        JSON.stringify(
+          {
+            mode: "implicit",
+            userMessage,
+            historySummary: recentContext || "(sin historial previo)",
+            createdNotes:
+              snap.projectId && snap.threadId
+                ? (
+                    await this.svc.projectStore
+                      .loadThreadData(snap.projectId, snap.threadId)
+                      .catch(() => null)
+                  )?.createdNotes?.map((n) => n.title) || []
+                : [],
+          },
+          null,
+          2,
+        ),
+      );
     } catch (err: any) {
       console.warn("[Orchestrator] load failed, falling back to direct agent:", err.message);
       return this.handleAgentMessage(userMessage, null, convMessages, convSummary, snap);
@@ -161,171 +155,37 @@ export class ChatOrchestrator {
         return this.handleAgentMessage(userMessage, null, convMessages, convSummary, snap);
       }
       if (action === "create_note") {
-        const noteName = (decision.noteName || userMessage.slice(0, 40))
-          .replace(/[^a-zA-Z0-9áéíóúñ\s-]/g, "").trim() || "nota";
-        // A referential request ("a partir de eso", "generá la nota") must use
-        // the complete preceding assistant response. The router only receives
-        // a short history window, so resolve the source before invoking the
-        // note generator.
-        const sourceContent = await this.findSourceContent(convMessages, userMessage, snap);
-        if (this.isReferentialNoteRequest(userMessage) && !sourceContent) {
-          return { content: "No encontré una investigación previa para convertir en nota. Indicá el tema o compartí primero el contenido fuente." };
-        }
-        const content = await this.createNoteFromIntent(noteName, userMessage, snap, sourceContent || undefined);
+        const noteName =
+          (decision.noteName || userMessage.slice(0, 40)).replace(/[^a-zA-Z0-9áéíóúñ\s-]/g, "").trim() ||
+          "nota";
+        const content = await createNoteFromOrchestratorDecision(
+          this.svc,
+          noteName,
+          userMessage,
+          snap,
+          convMessages,
+        );
         return { content };
       }
       if (action === "modify_note") {
-        const named = typeof decision.noteName === "string" ? decision.noteName.trim() : "";
-        const threadData = (snap.projectId && snap.threadId)
-          ? await this.svc.projectStore.loadThreadData(snap.projectId, snap.threadId).catch(() => null)
-          : null;
-        // DEC-0017: noteName manda; el mensaje solo si ese nombre no está
-        let resolution = await resolveNoteReference(
-          named || userMessage,
-          threadData?.createdNotes,
-          snap.vectorStore,
-          snap.geminiBalancer,
+        const content = await modifyNoteFromIntent(
+          this.svc,
+          userMessage,
+          typeof decision.noteName === "string" ? decision.noteName : undefined,
+          snap,
         );
-        if (named && resolution.method === "not_found") {
-          resolution = await resolveNoteReference(
-            userMessage,
-            threadData?.createdNotes,
-            snap.vectorStore,
-            snap.geminiBalancer,
-          );
-        }
-        if (resolution.method === "not_found") {
-          return { content: "No encontré ninguna nota que coincida. ¿Podrías decirme el nombre exacto?" };
-        }
-        if (resolution.method === "ambiguous") {
-          const names = (resolution.candidates || []).map(c => c.title).join(", ");
-          return { content: `Encontré varias notas posibles: ${names}. ¿A cuál te referís?` };
-        }
-        if (!resolution.path) return { content: "No encontré una ruta válida para esa nota." };
-        if (!canWriteToPath(resolution.path!, snap.project?.write_paths || [])) {
-          return { content: `Permiso denegado: no se puede modificar ${resolution.path}` };
-        }
-        // Note resolved — modify it
-        try {
-          const currentContent = await this.svc.adapter.read(resolution.path);
-          const modPrompt = `Nota actual:\n${currentContent.slice(0, 3000)}\n\nInstrucción del usuario: ${userMessage}\n\nRegenerá la nota completa incorporando los cambios pedidos. Responde SOLO con el contenido Markdown completo de la nota modificada.`;
-          const agent = snap.agent || fallbackAgent();
-          const result = await executeTurn(
-            { ...this.buildTurnDeps(modPrompt, snap), agent, tavilyQuery: undefined, conversationMessages: undefined, conversationSummary: undefined },
-            modPrompt,
-            true,
-            snap.pathFilter,
-          );
-          const wr = await this.svc.noteWriter.update(resolution.path, result.content);
-          return { content: `✏️ **${wr.message}**\n\n${result.content.slice(0, 300)}…` };
-        } catch (err: any) {
-          return { content: `Error al modificar nota: ${err.message}` };
-        }
+        return { content };
       }
       if (action === "clarify") {
-        return { content: "¿Podrías darme más detalles sobre qué querés hacer? ¿Crear una nota nueva, modificar una existente, o solo consultar algo?" };
+        return {
+          content:
+            "¿Podrías darme más detalles sobre qué querés hacer? ¿Crear una nota nueva, modificar una existente, o solo consultar algo?",
+        };
       }
     } catch (err: any) {
       console.warn("[Orchestrator] implicit parse failed:", err.message);
     }
-    // Fallback: treat as normal agent query
     return this.handleAgentMessage(userMessage, null, convMessages, convSummary, snap);
-  }
-
-  private async tryResolvePendingAction(
-    userMessage: string,
-    snap: RequestSnapshot,
-  ): Promise<ChatResponse | null> {
-    if (!snap.threadId || !snap.projectId) return null;
-    const data = await this.svc.projectStore.loadThreadData(snap.projectId, snap.threadId).catch(() => null);
-    if (!data?.pendingAction) return null;
-
-    const intent = classifyIntent(userMessage, data.pendingAction);
-    const projectId = snap.projectId;
-    const threadId = snap.threadId;
-
-    if (intent.type === "rejection") {
-      await this.svc.projectStore.patchThreadData(projectId, threadId, d => { d.pendingAction = undefined; return d; });
-      return { content: "👍 Ok, no se realiza la acción." };
-    }
-
-    if (intent.type === "confirmation") {
-      const pa = data.pendingAction;
-      if (pa.type === "create_note") {
-        let agent = snap.agent || fallbackAgent();
-        // Preserve the agent that produced the source when it is available;
-        // this keeps formatting instructions consistent across turns while
-        // the source snapshot remains the authoritative input.
-        if (pa.params.sourceAgentId) {
-          try {
-            agent = await loadAgentFromVault(this.svc.adapter, `${pa.params.sourceAgentId}.md`);
-          } catch (err: any) {
-            console.warn(`[Note] source agent "${pa.params.sourceAgentId}" unavailable:`, err?.message || err);
-          }
-        }
-        const noteName = pa.params.noteName || pa.params.title || "nota";
-        const sourceContent = pa.params.sourceContent || pa.params.fullProposal || pa.description || noteName;
-        try {
-          const result: any = pa.params.sourceContent
-            ? await generateNoteFromSource(
-              {
-                agent,
-                opencodeClient: this.svc.opencodeClient,
-                noteWriter: this.svc.noteWriter,
-                tracer: this.svc.tracer,
-                vaultAdapter: this.svc.adapter,
-                writePaths: snap.project?.write_paths || [],
-                outputPath: snap.project?.outputPath,
-              },
-              sourceContent,
-              { title: pa.params.suggestedTitle || noteName },
-            )
-            : await executeWriteIntentFromNoteGen(
-            {
-              agent,
-              opencodeClient: this.svc.opencodeClient,
-              noteWriter: this.svc.noteWriter,
-              tracer: this.svc.tracer,
-              vaultAdapter: this.svc.adapter,
-              writePaths: snap.project?.write_paths || [],
-              outputPath: snap.project?.outputPath,
-            },
-            { name: noteName, topic: sourceContent },
-          );
-          if (typeof result === "string" && /^Error\s*:/i.test(result)) {
-            throw new Error(result.replace(/^Error\s*:\s*/i, ""));
-          }
-          const resultContent = typeof result === "string"
-            ? result
-            : `✏️ **${result.writeResult.message}**\n\n${result.content}`;
-          const resultPath = typeof result === "object" && result?.path
-            ? result.path
-            : `${snap.project?.outputPath || "Research"}/${noteName}.md`;
-          await this.svc.projectStore.patchThreadData(projectId, threadId, d => {
-            d.pendingAction = undefined;
-            if (!d.createdNotes) d.createdNotes = [];
-            d.createdNotes.push({
-              path: resultPath,
-              title: typeof result === "object" && result?.title ? result.title : noteName,
-              created_at: Date.now(),
-            });
-            return d;
-          });
-          return { content: resultContent };
-        } catch (err: any) {
-          // Keep pendingAction intact so the user can retry after a transient
-          // provider, permission or filesystem failure.
-          return { content: `Error al crear nota: ${err.message}` };
-        }
-      }
-      if (pa.type === "research") {
-        await this.svc.projectStore.patchThreadData(projectId, threadId, d => { d.pendingAction = undefined; return d; });
-        const followUp = pa.params.fullProposal || pa.description || "profundizar";
-        return this.handleAgentMessage(followUp, null, undefined, undefined, snap);
-      }
-    }
-
-    return null;
   }
 
   private async handleAgentMessage(
@@ -350,12 +210,24 @@ export class ChatOrchestrator {
 
     const originalQuery = actualMessage;
 
-    // ── Forager pipeline (for web-search / researcher) ──
-    if ((mentionMatch?.[1] === "web-search" || mentionMatch?.[1] === "researcher") && actualMessage.length > 0) {
+    if (
+      (mentionMatch?.[1] === "web-search" || mentionMatch?.[1] === "researcher") &&
+      actualMessage.length > 0
+    ) {
       try {
         const forager = await loadAgentFromVault(this.svc.adapter, `${BUILTIN_AGENTS.FORAGER}.md`);
-        const foragerDeps = { ...this.buildTurnDeps(actualMessage, snap), agent: forager, tavilyApiKey: undefined, tavilyQuery: undefined };
-        const foragerResult = await executeTurn(foragerDeps, actualMessage, false, snap.pathFilter);
+        const foragerDeps = {
+          ...this.buildTurnDeps(actualMessage, snap),
+          agent: forager,
+          tavilyApiKey: undefined,
+          tavilyQuery: undefined,
+        };
+        const foragerResult = await executeTurn(
+          foragerDeps,
+          actualMessage,
+          false,
+          snap.pathFilter,
+        );
         const refined = foragerResult.content.slice(0, 4000);
         actualMessage = `${refined}\n\n---\nPregunta original del usuario: ${originalQuery}\n\nResponde usando el contexto recopilado${mentionMatch[1] === "web-search" ? " y la búsqueda web" : ""}.`;
       } catch (err: any) {
@@ -363,14 +235,17 @@ export class ChatOrchestrator {
       }
     }
 
-    const convMsgs = convMessages?.filter(m => m.role !== "system");
-    const deps = { ...this.buildTurnDeps(actualMessage, snap), agent, tavilyQuery: originalQuery, conversationMessages: convMsgs, conversationSummary: convSummary || undefined };
+    const convMsgs = convMessages?.filter((m) => m.role !== "system");
+    const deps = {
+      ...this.buildTurnDeps(actualMessage, snap),
+      agent,
+      tavilyQuery: originalQuery,
+      conversationMessages: convMsgs,
+      conversationSummary: convSummary || undefined,
+    };
 
     const result = await executeTurn(deps, actualMessage, false, snap.pathFilter);
-
-    // Persist summary and pending action using the captured context
     await this.persistThreadData(snap.projectId, snap.threadId, result, agent.id);
-
     return { content: result.content, conversationSummary: result.conversationSummary };
   }
 
@@ -379,19 +254,27 @@ export class ChatOrchestrator {
       agent: snap.agent || fallbackAgent(),
       opencodeClient: this.svc.opencodeClient,
       geminiBalancer: snap.geminiBalancer,
+      embedder: snap.embedder,
       vectorStore: snap.vectorStore,
       tracer: this.svc.tracer,
       tavilyApiKey: this.svc.settings?.tavilyApiKey,
-      kgOptions: this.svc.kgOptions,
+      kgOptions: snap.kgOptions,
       edgeStore: snap.kgEdgeStore,
       projectContext: snap.projectContext || undefined,
       skillContext: snap.skillContext || undefined,
+      sealedGeneration: snap.sealedGeneration,
+      signal: snap.chatAbort.signal,
     };
   }
 
-  private async persistThreadData(projectId: string | undefined, threadId: string | undefined, result: { conversationSummary?: string; content: string }, sourceAgentId?: string): Promise<void> {
+  private async persistThreadData(
+    projectId: string | undefined,
+    threadId: string | undefined,
+    result: { conversationSummary?: string; content: string },
+    sourceAgentId?: string,
+  ): Promise<void> {
     if (threadId && projectId) {
-      await this.svc.projectStore.patchThreadData(projectId, threadId, d => {
+      await this.svc.projectStore.patchThreadData(projectId, threadId, (d) => {
         if (result.conversationSummary) d.summary = result.conversationSummary;
         const action = detectPendingAction(result.content, { sourceAgentId });
         if (action) d.pendingAction = action;
@@ -399,85 +282,4 @@ export class ChatOrchestrator {
       });
     }
   }
-
-  private async executeWriteIntent(userMessage: string, snap: RequestSnapshot): Promise<string | null> {
-    const intent = parseWriteIntent(userMessage);
-    if (!intent) return null;
-    const sourceContent = this.isReferentialNoteRequest(userMessage)
-      ? await this.findSourceContent(undefined, userMessage, snap)
-      : undefined;
-    if (this.isReferentialNoteRequest(userMessage) && !sourceContent) {
-      return "No encontré una investigación previa para convertir en nota. Indicá el tema o compartí primero el contenido fuente.";
-    }
-    return await this.createNoteFromIntent(intent.name || intent.topic!, intent.topic!, snap, sourceContent || undefined);
-  }
-
-  private async createNoteFromIntent(name: string, topic: string, snap: RequestSnapshot, sourceContent?: string): Promise<string> {
-    const agent = snap.agent || fallbackAgent();
-    try {
-      const result: any = sourceContent
-        ? await generateNoteFromSource(
-          {
-            agent,
-            opencodeClient: this.svc.opencodeClient,
-            noteWriter: this.svc.noteWriter,
-            tracer: this.svc.tracer,
-            vaultAdapter: this.svc.adapter,
-            writePaths: snap.project?.write_paths || [],
-            outputPath: snap.project?.outputPath,
-          },
-          sourceContent,
-          { title: name },
-        )
-        : await executeWriteIntentFromNoteGen(
-        {
-          agent,
-          opencodeClient: this.svc.opencodeClient,
-          noteWriter: this.svc.noteWriter,
-          tracer: this.svc.tracer,
-          vaultAdapter: this.svc.adapter,
-          writePaths: snap.project?.write_paths || [],
-          outputPath: snap.project?.outputPath,
-        },
-        { name, topic },
-      );
-      const resultPath = typeof result === "object" && result?.path
-        ? result.path
-        : `${snap.project?.outputPath || "Research"}/${name}.md`;
-      if (snap.threadId && snap.projectId) {
-        await this.svc.projectStore.patchThreadData(snap.projectId, snap.threadId, d => {
-          if (!d.createdNotes) d.createdNotes = [];
-          d.createdNotes.push({ path: resultPath, title: typeof result === "object" && result?.title ? result.title : name, created_at: Date.now() });
-          return d;
-        });
-      }
-      return typeof result === "string" ? result : `✏️ **${result.writeResult.message}**\n\n${result.content}`;
-    } catch (err: any) {
-      return `Error al crear nota: ${err.message}`;
-    }
-  }
-
-  /** Find the last substantive assistant response for referential commands. */
-  private async findSourceContent(
-    convMessages?: ConversationMessage[],
-    userMessage?: string,
-    snap?: RequestSnapshot,
-  ): Promise<string | null> {
-    const referential = !userMessage || this.isReferentialNoteRequest(userMessage);
-    if (!referential) return null;
-    const fromHistory = [...(convMessages || [])].reverse().find(m => m.role === "assistant" && m.content.trim().length > 80 && !/^(?:pensando|error al crear nota)/i.test(m.content.trim()));
-    if (fromHistory?.content) return fromHistory.content;
-    if (snap?.projectId && snap.threadId) {
-      const data = await this.svc.projectStore.loadThreadData(snap.projectId, snap.threadId).catch(() => null);
-      const fromThread = [...(data?.messages || [])].reverse().find((m: any) => m.role === "assistant" && typeof m.content === "string" && m.content.trim().length > 80 && !/^(?:pensando|error al crear nota)/i.test(m.content.trim()));
-      if (fromThread?.content) return fromThread.content;
-    }
-    return null;
-  }
-
-  private isReferentialNoteRequest(userMessage: string): boolean {
-    const normalized = userMessage.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return /\b(?:eso|lo anterior|la investigacion|la respuesta|a partir de eso|genera(?:r)? la nota|crea(?:r)? la nota)\b/i.test(normalized);
-  }
-
 }
