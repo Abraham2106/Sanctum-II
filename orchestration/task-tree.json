@@ -1158,7 +1158,7 @@
       "id": "T-035",
       "title": "Frontmatter portable CRLF/BOM",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-runtime-035"
@@ -1183,7 +1183,12 @@
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Integrated 44e7606; independent Sol 6.1 review: no blocking findings",
+          "npx vitest run three owned test files: 11 passed (2026-10-08)",
+          "npm run typecheck: passed",
+          "Vitest sandbox EPERM; rerun outside sandbox passed"
+        ]
       }
     },
     {
