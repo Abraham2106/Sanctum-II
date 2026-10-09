@@ -1229,7 +1229,7 @@
       "id": "T-037",
       "title": "HTTP autenticado loopback",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-runtime-037"
@@ -1254,7 +1254,11 @@
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Integrated 8ddceb2+c6d1fce; independent Sol6.1 review accepted after one repair",
+          "npx vitest run mcp-server/src/mcp/http.test.ts: 24 passed",
+          "npm run typecheck: passed (independent worktree)"
+        ]
       }
     },
     {
