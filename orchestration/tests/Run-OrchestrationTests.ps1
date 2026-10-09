@@ -69,8 +69,16 @@ function New-TestRepo {
     if ($init.Exit -ne 0) { throw "git init failed" }
     $add = Invoke-NativeGit -GitArgs @("add", "-A")
     if ($add.Exit -ne 0) { throw "git add failed" }
-    $commit = Invoke-NativeGit -GitArgs @("commit", "-m", "init")
-    if ($commit.Exit -ne 0) { throw "git commit failed" }
+    $commit = Invoke-NativeGit -GitArgs @(
+      "-c", "user.name=Orchestration Test",
+      "-c", "user.email=orchestration-test@example.invalid",
+      "-c", "commit.gpgsign=false",
+      "commit", "-m", "init"
+    )
+    if ($commit.Exit -ne 0) {
+      $detail = ($commit.Output | ForEach-Object { "$_" }) -join "`n"
+      throw "git commit failed: $detail"
+    }
   } finally {
     Pop-Location
   }
@@ -112,7 +120,8 @@ function Invoke-Orchestrate([string]$Repo, [string[]]$OrchestrateArgs) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-      $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $script @OrchestrateArgs 2>&1
+      $hostExe = (Get-Process -Id $PID).Path
+      $out = & $hostExe -NoProfile -ExecutionPolicy Bypass -File $script @OrchestrateArgs 2>&1
       $code = $LASTEXITCODE
     } finally {
       $ErrorActionPreference = $prev
