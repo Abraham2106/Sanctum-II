@@ -1343,7 +1343,7 @@
       "id": "T-040",
       "title": "Generaciones e indexador",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [
         "T-036",
         "T-038",
@@ -1772,7 +1772,7 @@
       "id": "T-052",
       "title": "AbortSignal en turnos del mesh del plugin",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [
         "T-039",
         "T-049"
@@ -1800,7 +1800,9 @@
           "npx vitest run mesh and turn tests",
           "npm run typecheck"
         ],
-        "run": []
+        "run": [
+          "Accepted 66a3724. 25 tests re-run on the branch: turn, runtime mesh, plugin mesh, executor."
+        ]
       }
     }
   ]

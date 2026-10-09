@@ -111,3 +111,5 @@ T-051 `cb95d0c`, T-045 `1480c7b` y T-050 `f539d21`+`0ea1761` aceptadas en la ram
 T-039 `8d9a6f2` aceptada: 36 pruebas de DAG, mesh, crítico y parse. La aceptación exige score válido y veredicto explícito. El abort del mesh del plugin, dentro de `executeTurn`, queda en T-052 y espera a que T-049 suelte `turn.ts`.
 
 T-049 aceptada en `9b9069c` y partida en `2294834`. Los archivos de identidad quedan bajo 400 líneas. T-052 puede cablear `AbortSignal` en `TurnDeps` y pasarlo desde el mesh y el ejecutor de cadenas.
+
+T-052 `66a3724` aceptada: 25 pruebas. El mesh y las cadenas pasan la señal al turno, y un turno ya abortado no llama al proveedor. Siguiente hoja: T-040, generaciones de índice.
