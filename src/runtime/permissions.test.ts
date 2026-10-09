@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { defaultProject } from "../projects/types";
 import {
   buildEffectiveReadScope,
   filterAuthorizedPaths,
   isPathAuthorized,
   isValidPathPattern,
+  normalizeProjectReadPattern,
+  normalizeVaultPath,
 } from "./permissions";
 
 describe("permissions (DEC-0022)", () => {
@@ -89,5 +92,31 @@ describe("permissions (DEC-0022)", () => {
     expect(
       filterAuthorizedPaths(["Research/a.md", "Finanzas/b.md", "../bad.md"], scope),
     ).toEqual(["Research/a.md"]);
+  });
+
+  it("normalizeVaultPath rejects absolutes and drive paths", () => {
+    expect(normalizeVaultPath("/Research/a.md")).toBeNull();
+    expect(normalizeVaultPath("C:/Research/a.md")).toBeNull();
+    expect(normalizeVaultPath("\\\\server\\share\\a.md")).toBeNull();
+    expect(normalizeVaultPath("Research\\a.md")).toBeNull();
+    expect(normalizeVaultPath("Research/../x.md")).toBeNull();
+    expect(normalizeVaultPath("Research//a.md")).toBeNull();
+    expect(normalizeVaultPath("Research/*/a.md")).toBeNull();
+    expect(normalizeVaultPath("Research/a.md")).toBe("Research/a.md");
+  });
+
+  it("default project read_paths authorize subtree after normalization", () => {
+    const project = defaultProject("demo");
+    const scope = buildEffectiveReadScope({
+      projectReadPaths: project.read_paths,
+      agentReadPaths: ["/**"],
+    });
+    expect(isPathAuthorized("Research/note.md", scope)).toBe(true);
+    expect(isPathAuthorized(`Projects/demo/nested.md`, scope)).toBe(true);
+  });
+
+  it("normalizeProjectReadPattern preserves globs for agent-style patterns", () => {
+    expect(normalizeProjectReadPattern("/Research/**")).toBe("/Research/**");
+    expect(normalizeProjectReadPattern("Projects/id")).toBe("/Projects/id/");
   });
 });

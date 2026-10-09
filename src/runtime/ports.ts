@@ -3,6 +3,8 @@
  * Per-call model/provider/AbortSignal options are forward-compatible; physical abort is wired in T-045.
  */
 
+import type { EffectiveReadScope } from "./permissions";
+
 export interface CallOptions {
   model?: string;
   provider?: string;
@@ -85,6 +87,7 @@ export interface KgExpanderPort {
   expandFromSeeds(
     seedNotes: string[],
     queryEmbedding: number[],
+    scope: EffectiveReadScope,
   ): { added_chunks: KgExpansionChunkPort[] };
 }
 

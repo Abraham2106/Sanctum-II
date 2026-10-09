@@ -5,13 +5,13 @@ import type { OpenCodeClient } from "../llm/opencode-client";
 import type { VectorStore } from "../rag/vector-store";
 import type { Tracer, TraceChunk } from "../observability/tracer";
 import { searchTavily, formatWebContext } from "../tools/tavily";
-import { expandFromSeeds } from "../kg/kg";
 import type { KgOptions } from "../kg/types";
 import type { KgEdgeStore } from "../kg/kg-store";
 import type { ProjectContext } from "../projects/context";
 import type { Skill } from "../skills/types";
 import type { ConversationMessage } from "./conversation";
 import type { ChatMessage } from "../llm/chat-wire";
+import { authorizedExpandFromSeeds } from "../runtime/kg-expansion";
 import type {
   ChatPort,
   EmbedderPort,
@@ -21,6 +21,7 @@ import type {
   VectorStorePort,
   WebSearchPort,
 } from "../runtime/ports";
+import type { EffectiveReadScope } from "../runtime/permissions";
 import { runPortableTurn } from "../runtime/turn";
 import type { PortableTurnResult } from "../runtime/turn";
 
@@ -52,18 +53,48 @@ export interface TurnResult {
   provenance?: string;
 }
 
+type EmbedFn = ((text: string) => Promise<number[]>) & {
+  (text: string, model?: string): Promise<number[]>;
+};
+
 function createChatPort(client: OpenCodeClient): ChatPort {
+  const chatWithContext = client.chat.bind(client) as (
+    systemPrompt: string,
+    userPrompt: string,
+    injectedContext?: string,
+    options?: unknown,
+  ) => ReturnType<OpenCodeClient["chat"]>;
+  const chatMessages = client.chat.bind(client) as (
+    messages: ChatMessage[],
+    options?: unknown,
+  ) => ReturnType<OpenCodeClient["chat"]>;
   return {
-    chat: (systemPrompt, userPrompt, injectedContext, options) =>
-      client.chat(systemPrompt, userPrompt, injectedContext),
-    chatMessages: (messages) => client.chat(messages as ChatMessage[]),
+    chat: (systemPrompt, userPrompt, injectedContext, options) => {
+      if (chatWithContext.length > 3 && options !== undefined) {
+        return chatWithContext(systemPrompt, userPrompt, injectedContext, options);
+      }
+      return client.chat(systemPrompt, userPrompt, injectedContext);
+    },
+    chatMessages: (messages, options) => {
+      if (chatMessages.length > 1 && options !== undefined) {
+        return chatMessages(messages as ChatMessage[], options);
+      }
+      return client.chat(messages as ChatMessage[]);
+    },
   };
 }
 
 function createEmbedderPort(balancer: GeminiBalancer): EmbedderPort {
+  const embedFn = balancer.embed.bind(balancer) as EmbedFn;
   return {
     hasKeys: balancer.hasKeys,
-    embed: (text, options) => balancer.embed(text),
+    embed: (text, options) => {
+      const model = options?.model;
+      if (model !== undefined && embedFn.length >= 2) {
+        return embedFn(text, model);
+      }
+      return embedFn(text);
+    },
   };
 }
 
@@ -75,22 +106,11 @@ function createTracerPort(tracer: Tracer): TracerPort {
 
 function createVectorStorePort(
   store: VectorStore,
-  projectContext?: ProjectContext,
   sealedGeneration?: VectorIdentity,
 ): VectorStorePort {
-  const project = projectContext?.project;
-  const identity: VectorIdentity | undefined =
-    sealedGeneration ??
-    (project?.rag
-      ? {
-          embedModel: project.rag.embed_model,
-          dims: project.rag.dims,
-        }
-      : undefined);
-
   return {
     count: store.count,
-    identity,
+    identity: sealedGeneration,
     allChunks: () =>
       store.allChunks.map((c) => ({
         id: c.id,
@@ -107,11 +127,31 @@ function createKgPort(
   kgOptions: KgOptions | undefined,
 ): KgExpanderPort | undefined {
   if (!kgOptions || !edgeStore) return undefined;
+  const chunks = () =>
+    store.allChunks.map((c) => ({
+      id: c.id,
+      notePath: c.note_path,
+      chunkText: c.chunk_text,
+      embedding: c.embedding,
+    }));
   return {
     enabled: kgOptions.enabled,
     edgeCount: edgeStore.count,
-    expandFromSeeds: (seedNotes, queryEmbedding) =>
-      expandFromSeeds(store, seedNotes, queryEmbedding, kgOptions, edgeStore),
+    expandFromSeeds: (seedNotes, queryEmbedding, scope: EffectiveReadScope) =>
+      authorizedExpandFromSeeds({
+        seedNotes,
+        queryEmbedding,
+        scope,
+        hops: kgOptions.hops,
+        maxNeighborsPerHop: kgOptions.maxNeighborsPerHop,
+        edges: edgeStore.getAllEdges().map((e) => ({
+          from: e.from,
+          to: e.to,
+          weight: e.weight,
+          relation: e.relation,
+        })),
+        chunks: chunks(),
+      }),
   };
 }
 
@@ -149,11 +189,7 @@ export async function executeTurn(
     ports: {
       chat: createChatPort(deps.opencodeClient),
       embedder: createEmbedderPort(deps.geminiBalancer),
-      vectorStore: createVectorStorePort(
-        deps.vectorStore,
-        deps.projectContext,
-        deps.sealedGeneration,
-      ),
+      vectorStore: createVectorStorePort(deps.vectorStore, deps.sealedGeneration),
       tracer: deps.traceId ? createTracerPort(deps.tracer) : undefined,
       kg: createKgPort(deps.vectorStore, deps.edgeStore, deps.kgOptions),
       webSearch: hasWebSearch(deps) ? createWebSearchPort(deps.tavilyApiKey) : undefined,

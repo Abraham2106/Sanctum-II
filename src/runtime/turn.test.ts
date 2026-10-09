@@ -88,6 +88,64 @@ describe("runPortableTurn (DEC-0022)", () => {
     expect(embed).not.toHaveBeenCalled();
   });
 
+  it("passes sealed embed model to embedder on RAG turn", async () => {
+    const embed = vi.fn().mockResolvedValue([1, 0, 0]);
+    const embedder: EmbedderPort = { hasKeys: true, embed };
+    const chat: ChatPort = {
+      chat: vi.fn().mockResolvedValue({ content: "ok", usage: { prompt: 1, completion: 1 } }),
+      chatMessages: vi.fn(),
+    };
+    const store: VectorStorePort = {
+      count: 1,
+      identity: { embedModel: DEFAULT_PROJECT_RAG.embed_model, dims: 3 },
+      allChunks: () => [
+        { id: "1", notePath: "Research/ok.md", chunkText: "allowed", embedding: [1, 0, 0] },
+      ],
+    };
+
+    await runPortableTurn({
+      userInput: "q",
+      agent,
+      projectContext: {
+        project: makeProject(["/Research/**"]),
+        memory: [],
+        systemPrefix: "",
+      },
+      ports: { chat, embedder, vectorStore: store },
+    });
+
+    expect(embed).toHaveBeenCalledWith("q", { model: DEFAULT_PROJECT_RAG.embed_model });
+  });
+
+  it("nonverifiable store identity skips embed (rebuild_required)", async () => {
+    const embed = vi.fn().mockResolvedValue([1, 0, 0]);
+    const embedder: EmbedderPort = { hasKeys: true, embed };
+    const chat: ChatPort = {
+      chat: vi.fn().mockResolvedValue({ content: "ok", usage: { prompt: 1, completion: 1 } }),
+      chatMessages: vi.fn(),
+    };
+    const store: VectorStorePort = {
+      count: 2,
+      identity: undefined,
+      allChunks: () => [
+        { id: "1", notePath: "Research/ok.md", chunkText: "x", embedding: [1, 0, 0] },
+      ],
+    };
+
+    await runPortableTurn({
+      userInput: "q",
+      agent,
+      projectContext: {
+        project: makeProject(["/Research/**"]),
+        memory: [],
+        systemPrefix: "",
+      },
+      ports: { chat, embedder, vectorStore: store },
+    });
+
+    expect(embed).not.toHaveBeenCalled();
+  });
+
   it("denied paths never appear in ragContext", async () => {
     const embedder: EmbedderPort = {
       hasKeys: true,

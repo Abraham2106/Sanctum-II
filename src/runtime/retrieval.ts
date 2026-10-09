@@ -1,4 +1,4 @@
-import { cosineSimilarity } from "../rag/vector-store";
+import { cosineSimilarity } from "./cosine";
 import type { EffectiveReadScope } from "./permissions";
 import { isPathAuthorized, normalizeVaultPath } from "./permissions";
 import type {
@@ -35,14 +35,33 @@ export type RetrievalSkipReason =
   | "scope_denied"
   | "identity_mismatch"
   | "empty_store"
-  | "embedding_dims_mismatch";
+  | "embedding_dims_mismatch"
+  | "rebuild_required";
+
+/** DEC-0022: positive integer embedding dimensions only. */
+export function isValidVectorDims(dims: unknown): dims is number {
+  return typeof dims === "number" && Number.isInteger(dims) && dims > 0;
+}
+
+/** DEC-0022: trusted index identity from sealed generation metadata (not project settings). */
+export function isVerifiableStoreIdentity(identity: VectorIdentity | undefined): boolean {
+  if (!identity) return false;
+  if (!identity.embedModel?.trim()) return false;
+  if (!isValidVectorDims(identity.dims)) return false;
+  return true;
+}
+
+export function embeddingMatchesDims(embedding: number[], dims: number): boolean {
+  return embedding.length === dims && embedding.every((v) => Number.isFinite(v));
+}
 
 /** DEC-0022: exact model/dims/provenance compatibility; no silent fallback. */
 export function vectorIdentitiesCompatible(
   query: VectorIdentity,
   store: VectorIdentity,
 ): boolean {
-  if (!query.embedModel || !store.embedModel) return false;
+  if (!query.embedModel?.trim() || !store.embedModel?.trim()) return false;
+  if (!isValidVectorDims(query.dims) || !isValidVectorDims(store.dims)) return false;
   if (query.dims !== store.dims) return false;
   if (query.embedModel !== store.embedModel) return false;
   if (query.generationId && store.generationId && query.generationId !== store.generationId) {
@@ -54,20 +73,27 @@ export function vectorIdentitiesCompatible(
   return true;
 }
 
+function finiteThreshold(minSimilarity: number): number {
+  if (!Number.isFinite(minSimilarity)) return 1;
+  return minSimilarity;
+}
+
 function scoreAuthorizedChunks(
   chunks: VectorChunkPort[],
   queryEmbedding: number[],
+  queryDims: number,
   scope: EffectiveReadScope,
   minSimilarity: number,
 ): RetrievedChunk[] {
-  if (queryEmbedding.length === 0) return [];
+  if (!embeddingMatchesDims(queryEmbedding, queryDims)) return [];
+  const threshold = finiteThreshold(minSimilarity);
   const scored: RetrievedChunk[] = [];
   for (const chunk of chunks) {
     const normPath = normalizeVaultPath(chunk.notePath);
     if (!normPath || !isPathAuthorized(normPath, scope)) continue;
-    if (chunk.embedding.length !== queryEmbedding.length) continue;
+    if (!embeddingMatchesDims(chunk.embedding, queryDims)) continue;
     const score = cosineSimilarity(queryEmbedding, chunk.embedding);
-    if (score < minSimilarity) continue;
+    if (!Number.isFinite(score) || score < threshold) continue;
     scored.push({
       id: chunk.id,
       notePath: normPath,
@@ -117,31 +143,44 @@ export function retrieveContextChunks(params: RetrievalParams): {
   if (store.count === 0) {
     return { chunks: [], skipReason: "empty_store" };
   }
-  if (queryEmbedding.length === 0) {
+  if (!isValidVectorDims(queryIdentity.dims)) {
+    return { chunks: [], skipReason: "embedding_dims_mismatch" };
+  }
+  if (!embeddingMatchesDims(queryEmbedding, queryIdentity.dims)) {
     return { chunks: [], skipReason: "embedding_dims_mismatch" };
   }
 
   const storeIdentity = store.identity;
-  if (storeIdentity && !vectorIdentitiesCompatible(queryIdentity, storeIdentity)) {
+  if (!isVerifiableStoreIdentity(storeIdentity)) {
+    return { chunks: [], skipReason: "rebuild_required" };
+  }
+  if (!vectorIdentitiesCompatible(queryIdentity, storeIdentity!)) {
     return { chunks: [], skipReason: "identity_mismatch" };
   }
 
-  let results = scoreAuthorizedChunks(store.allChunks(), queryEmbedding, scope, minSimilarity);
+  let results = scoreAuthorizedChunks(
+    store.allChunks(),
+    queryEmbedding,
+    queryIdentity.dims,
+    scope,
+    minSimilarity,
+  );
   results = results.slice(0, topK);
 
   const seedNotes = [...new Set(results.map((r) => r.notePath))];
 
   if (kg?.enabled && kg.edgeCount > 0 && seedNotes.length > 0) {
-    const expansion = kg.expandFromSeeds(seedNotes, queryEmbedding);
+    const expansion = kg.expandFromSeeds(seedNotes, queryEmbedding, scope);
     const merged = [...results];
     const seen = new Set(results.map((r) => `${r.notePath}\0${r.chunkText}`));
+    const threshold = finiteThreshold(minSimilarity);
 
     for (const ac of expansion.added_chunks) {
       const normPath = normalizeVaultPath(ac.note_path);
       if (!normPath || !isPathAuthorized(normPath, scope)) continue;
       const key = `${normPath}\0${ac.chunk_text}`;
       if (seen.has(key)) continue;
-      if (ac.score < minSimilarity) continue;
+      if (!Number.isFinite(ac.score) || ac.score < threshold) continue;
       seen.add(key);
       merged.push({
         id: "",
@@ -169,16 +208,22 @@ export function formatRetrievedContext(chunks: RetrievedChunk[]): string {
   return chunks.map((r) => `[${r.notePath}]\n${r.chunkText}`).join("\n\n");
 }
 
-/** DEC-0022: resolve sealed embed model from project RAG config. */
+/** DEC-0022: resolve sealed embed model from project RAG config for query embedding. */
 export function resolveSealedEmbedIdentity(
   projectRag: { embed_model: string; dims: number } | undefined,
-  overrides?: Partial<VectorIdentity>,
+  storeIdentity?: VectorIdentity,
 ): VectorIdentity | null {
   if (!projectRag?.embed_model?.trim()) return null;
-  return {
+  if (!isValidVectorDims(projectRag.dims)) return null;
+  const base: VectorIdentity = {
     embedModel: projectRag.embed_model.trim(),
     dims: projectRag.dims,
-    generationId: overrides?.generationId,
-    provenance: overrides?.provenance,
   };
+  if (storeIdentity?.generationId) {
+    base.generationId = storeIdentity.generationId;
+  }
+  if (storeIdentity?.provenance) {
+    base.provenance = storeIdentity.provenance;
+  }
+  return base;
 }

@@ -17,7 +17,9 @@ import type {
   WebSearchPort,
 } from "./ports";
 import {
+  embeddingMatchesDims,
   formatRetrievedContext,
+  isVerifiableStoreIdentity,
   resolveSealedEmbedIdentity,
   retrieveContextChunks,
 } from "./retrieval";
@@ -93,32 +95,43 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
   let ragContext = "";
 
   if (!skipRag && readScope.allowed && ports.embedder.hasKeys && ports.vectorStore.count > 0) {
-    const queryIdentity = resolveSealedEmbedIdentity(project?.rag, ports.vectorStore.identity);
-    if (!queryIdentity) {
-      notify?.("⚠ RAG: proyecto sin modelo de embedding sellado", 5000);
+    const storeIdentity = ports.vectorStore.identity;
+    if (!isVerifiableStoreIdentity(storeIdentity)) {
+      notify?.("⚠ RAG: rebuild_required — índice sin identidad verificable", 8000);
     } else {
-      const queryEmbedding = await ports.embedder.embed(userInput, {
-        model: queryIdentity.embedModel,
-      });
-      const { chunks, skipReason } = retrieveContextChunks({
-        queryEmbedding,
-        queryIdentity,
-        store: ports.vectorStore,
-        scope: readScope,
-        topK,
-        minSimilarity: minSim,
-        kg: ports.kg,
-        traceId,
-        tracer: ports.tracer,
-      });
+      const queryIdentity = resolveSealedEmbedIdentity(project?.rag, storeIdentity);
+      if (!queryIdentity) {
+        notify?.("⚠ RAG: proyecto sin modelo de embedding sellado", 5000);
+      } else {
+        const queryEmbedding = await ports.embedder.embed(userInput, {
+          model: queryIdentity.embedModel,
+        });
+        if (!embeddingMatchesDims(queryEmbedding, queryIdentity.dims)) {
+          notify?.("⚠ RAG: embedding incompatible con dimensiones del proyecto", 8000);
+        } else {
+          const { chunks, skipReason } = retrieveContextChunks({
+            queryEmbedding,
+            queryIdentity,
+            store: ports.vectorStore,
+            scope: readScope,
+            topK,
+            minSimilarity: minSim,
+            kg: ports.kg,
+            traceId,
+            tracer: ports.tracer,
+          });
 
-      if (skipReason === "identity_mismatch") {
-        notify?.("⚠ RAG: índice incompatible con el modelo/dimensiones del proyecto", 8000);
-      } else if (chunks.length === 0 && skipReason !== "scope_denied") {
-        notify?.("⚠ RAG: 0 resultados bajo el umbral de similitud configurado", 6000);
+          if (skipReason === "identity_mismatch") {
+            notify?.("⚠ RAG: índice incompatible con el modelo/dimensiones del proyecto", 8000);
+          } else if (skipReason === "rebuild_required") {
+            notify?.("⚠ RAG: rebuild_required — índice sin identidad verificable", 8000);
+          } else if (chunks.length === 0 && skipReason !== "scope_denied") {
+            notify?.("⚠ RAG: 0 resultados bajo el umbral de similitud configurado", 6000);
+          }
+
+          ragContext = formatRetrievedContext(chunks);
+        }
       }
-
-      ragContext = formatRetrievedContext(chunks);
     }
   } else if (!skipRag) {
     if (!readScope.allowed) {

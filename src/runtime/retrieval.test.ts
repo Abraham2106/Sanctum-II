@@ -8,10 +8,13 @@ import {
 
 const identity = { embedModel: "gemini-embedding-2", dims: 3 };
 
-function makeStore(chunks: VectorStorePort["allChunks"]): VectorStorePort {
+function makeStore(
+  chunks: VectorStorePort["allChunks"],
+  storeIdentity: VectorIdentity | null = identity,
+): VectorStorePort {
   return {
     count: chunks().length,
-    identity,
+    identity: storeIdentity === null ? undefined : storeIdentity,
     allChunks: chunks,
   };
 }
@@ -42,7 +45,35 @@ describe("retrieval (DEC-0022)", () => {
     expect(result.skipReason).toBe("identity_mismatch");
   });
 
-  it("enforces threshold without fallback", () => {
+  it("nonempty store without verifiable identity yields rebuild_required", () => {
+    const scope = buildEffectiveReadScope({
+      projectReadPaths: ["/**"],
+      agentReadPaths: ["/**"],
+    });
+    const store = makeStore(
+      () => [
+        {
+          id: "1",
+          notePath: "Research/a.md",
+          chunkText: "a",
+          embedding: [1, 0, 0],
+        },
+      ],
+      null,
+    );
+    const result = retrieveContextChunks({
+      queryEmbedding: [1, 0, 0],
+      queryIdentity: identity,
+      store,
+      scope,
+      topK: 5,
+      minSimilarity: 0.1,
+    });
+    expect(result.chunks).toHaveLength(0);
+    expect(result.skipReason).toBe("rebuild_required");
+  });
+
+  it("enforces threshold without fallback (NaN scores never pass)", () => {
     const scope = buildEffectiveReadScope({
       projectReadPaths: ["/**"],
       agentReadPaths: ["/**"],
