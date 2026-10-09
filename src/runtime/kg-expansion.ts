@@ -2,6 +2,7 @@ import { cosineSimilarity } from "./cosine";
 import type { EffectiveReadScope } from "./permissions";
 import { isPathAuthorized, normalizeVaultPath } from "./permissions";
 import type { KgExpansionChunkPort, VectorChunkPort } from "./ports";
+import { embeddingMatchesDims } from "./retrieval";
 
 export interface KgEdgeLike {
   from: string;
@@ -29,14 +30,19 @@ function authorizedNotePath(notePath: string, scope: EffectiveReadScope): string
 function pickTopChunksForNote(
   notePath: string,
   queryEmbedding: number[],
+  queryDims: number,
   chunks: VectorChunkPort[],
   maxCount: number,
 ): { chunk_text: string; score: number }[] {
+  if (!embeddingMatchesDims(queryEmbedding, queryDims)) return [];
   const noteChunks = chunks.filter((c) => normalizeVaultPath(c.notePath) === notePath);
-  const scored = noteChunks.map((c) => ({
-    chunk_text: c.chunkText,
-    score: cosineSimilarity(queryEmbedding, c.embedding),
-  }));
+  const scored = noteChunks
+    .filter((c) => embeddingMatchesDims(c.embedding, queryDims))
+    .map((c) => ({
+      chunk_text: c.chunkText,
+      score: cosineSimilarity(queryEmbedding, c.embedding),
+    }))
+    .filter((c) => Number.isFinite(c.score));
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, maxCount);
 }
@@ -57,6 +63,7 @@ export function authorizedExpandFromSeeds(params: AuthorizedKgExpandParams): {
     chunks,
   } = params;
 
+  const queryDims = queryEmbedding.length;
   const authorizedSeeds: string[] = [];
   const visited = new Set<string>();
   for (const seed of seedNotes) {
@@ -78,19 +85,30 @@ export function authorizedExpandFromSeeds(params: AuthorizedKgExpandParams): {
         const to = normalizeVaultPath(e.to);
         return from === note || to === note;
       });
-      outgoing.sort((a, b) => b.weight - a.weight);
-      for (const edge of outgoing.slice(0, maxNeighborsPerHop)) {
+      const rankedNeighbors: { neighbor: string; weight: number; relation?: string }[] = [];
+      for (const edge of outgoing) {
+        if (!Number.isFinite(edge.weight)) continue;
         const from = normalizeVaultPath(edge.from);
         const to = normalizeVaultPath(edge.to);
+        if (!from || !to) continue;
         const rawNeighbor = from === note ? edge.to : edge.from;
         const neighbor = authorizedNotePath(rawNeighbor, scope);
         if (!neighbor || visited.has(neighbor)) continue;
-        visited.add(neighbor);
-        neighborNotes.push(neighbor);
-        if (!noteToRelation.has(neighbor)) {
-          noteToRelation.set(neighbor, edge.relation ?? "semantic");
+        rankedNeighbors.push({
+          neighbor,
+          weight: edge.weight,
+          relation: edge.relation,
+        });
+      }
+      rankedNeighbors.sort((a, b) => b.weight - a.weight);
+      for (const pick of rankedNeighbors.slice(0, maxNeighborsPerHop)) {
+        if (visited.has(pick.neighbor)) continue;
+        visited.add(pick.neighbor);
+        neighborNotes.push(pick.neighbor);
+        if (!noteToRelation.has(pick.neighbor)) {
+          noteToRelation.set(pick.neighbor, pick.relation ?? "semantic");
         }
-        nextFrontier.push(neighbor);
+        nextFrontier.push(pick.neighbor);
       }
     }
     frontier = nextFrontier;
@@ -98,7 +116,7 @@ export function authorizedExpandFromSeeds(params: AuthorizedKgExpandParams): {
 
   const added_chunks: KgExpansionChunkPort[] = [];
   for (const notePath of neighborNotes) {
-    const top = pickTopChunksForNote(notePath, queryEmbedding, chunks, 2);
+    const top = pickTopChunksForNote(notePath, queryEmbedding, queryDims, chunks, 2);
     for (const c of top) {
       added_chunks.push({
         note_path: notePath,

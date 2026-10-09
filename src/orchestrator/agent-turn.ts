@@ -21,6 +21,7 @@ import type {
   VectorStorePort,
   WebSearchPort,
 } from "../runtime/ports";
+import { bindEmbedderPort } from "../runtime/ports";
 import type { EffectiveReadScope } from "../runtime/permissions";
 import { runPortableTurn } from "../runtime/turn";
 import type { PortableTurnResult } from "../runtime/turn";
@@ -53,49 +54,15 @@ export interface TurnResult {
   provenance?: string;
 }
 
-type EmbedFn = ((text: string) => Promise<number[]>) & {
-  (text: string, model?: string): Promise<number[]>;
-};
-
 function createChatPort(client: OpenCodeClient): ChatPort {
-  const chatWithContext = client.chat.bind(client) as (
-    systemPrompt: string,
-    userPrompt: string,
-    injectedContext?: string,
-    options?: unknown,
-  ) => ReturnType<OpenCodeClient["chat"]>;
-  const chatMessages = client.chat.bind(client) as (
-    messages: ChatMessage[],
-    options?: unknown,
-  ) => ReturnType<OpenCodeClient["chat"]>;
-  return {
-    chat: (systemPrompt, userPrompt, injectedContext, options) => {
-      if (chatWithContext.length > 3 && options !== undefined) {
-        return chatWithContext(systemPrompt, userPrompt, injectedContext, options);
-      }
-      return client.chat(systemPrompt, userPrompt, injectedContext);
-    },
-    chatMessages: (messages, options) => {
-      if (chatMessages.length > 1 && options !== undefined) {
-        return chatMessages(messages as ChatMessage[], options);
-      }
-      return client.chat(messages as ChatMessage[]);
-    },
-  };
+  const chat = client.chat.bind(client) as ChatPort["chat"];
+  const chatMessages = client.chat.bind(client) as ChatPort["chatMessages"];
+  return { chat, chatMessages };
 }
 
 function createEmbedderPort(balancer: GeminiBalancer): EmbedderPort {
-  const embedFn = balancer.embed.bind(balancer) as EmbedFn;
-  return {
-    hasKeys: balancer.hasKeys,
-    embed: (text, options) => {
-      const model = options?.model;
-      if (model !== undefined && embedFn.length >= 2) {
-        return embedFn(text, model);
-      }
-      return embedFn(text);
-    },
-  };
+  const embedFn = balancer.embed.bind(balancer);
+  return bindEmbedderPort(balancer.hasKeys, embedFn);
 }
 
 function createTracerPort(tracer: Tracer): TracerPort {
@@ -178,6 +145,12 @@ export async function executeTurn(
     userInput,
     skipRag,
     selectionPaths,
+    expectedVectorSeal: deps.sealedGeneration
+      ? {
+          generationId: deps.sealedGeneration.generationId,
+          provenance: deps.sealedGeneration.provenance,
+        }
+      : undefined,
     agent: deps.agent,
     projectContext: deps.projectContext,
     skillContext: deps.skillContext,

@@ -32,8 +32,12 @@ export function isValidPathPattern(pattern: string): boolean {
   if (typeof pattern !== "string") return false;
   const trimmed = pattern.trim();
   if (!trimmed) return false;
+  if (/[\x00-\x1f\x7f]/.test(trimmed)) return false;
   if (trimmed.includes("\\")) return false;
   if (trimmed.includes("..")) return false;
+  if (trimmed.includes("//")) return false;
+  if (trimmed.startsWith("//") || trimmed.startsWith("\\\\")) return false;
+  if (/^[a-zA-Z]:/.test(trimmed)) return false;
   return true;
 }
 

@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildEffectiveReadScope } from "./permissions";
-import type { KgExpanderPort, TracerPort, VectorStorePort } from "./ports";
+import type { KgExpanderPort, TracerPort, VectorIdentity, VectorStorePort } from "./ports";
 import {
+  parseMinSimilarityThreshold,
   retrieveContextChunks,
   vectorIdentitiesCompatible,
 } from "./retrieval";
 
-const identity = { embedModel: "gemini-embedding-2", dims: 3 };
+const identity: VectorIdentity = {
+  embedModel: "gemini-embedding-2",
+  dims: 3,
+  projectId: "p1",
+};
 
 function makeStore(
   chunks: VectorStorePort["allChunks"],
@@ -35,7 +40,7 @@ describe("retrieval (DEC-0022)", () => {
     ]);
     const result = retrieveContextChunks({
       queryEmbedding: [1, 0, 0],
-      queryIdentity: { embedModel: "other-model", dims: 3 },
+      queryIdentity: { embedModel: "other-model", dims: 3, projectId: "p1" },
       store,
       scope,
       topK: 5,
@@ -140,6 +145,57 @@ describe("retrieval (DEC-0022)", () => {
     expect(result.chunks.some((c) => c.notePath.includes("Finanzas"))).toBe(false);
     const traceCalls = (tracer.addChunk as ReturnType<typeof vi.fn>).mock.calls;
     expect(traceCalls.every((c) => !String(c[1].from_note).includes("Finanzas"))).toBe(true);
+  });
+
+  it("invalid threshold fails closed (no fallback to 1)", () => {
+    const scope = buildEffectiveReadScope({
+      projectReadPaths: ["/**"],
+      agentReadPaths: ["/**"],
+    });
+    const store = makeStore(() => [
+      {
+        id: "1",
+        notePath: "Research/a.md",
+        chunkText: "a",
+        embedding: [1, 0, 0],
+      },
+    ]);
+    const result = retrieveContextChunks({
+      queryEmbedding: [1, 0, 0],
+      queryIdentity: identity,
+      store,
+      scope,
+      topK: 5,
+      minSimilarity: Number.NaN,
+    });
+    expect(result.chunks).toHaveLength(0);
+    expect(result.skipReason).toBe("invalid_threshold");
+    expect(parseMinSimilarityThreshold(Number.NaN)).toBeNull();
+  });
+
+  it("invalid topK yields empty results", () => {
+    const scope = buildEffectiveReadScope({
+      projectReadPaths: ["/**"],
+      agentReadPaths: ["/**"],
+    });
+    const store = makeStore(() => [
+      {
+        id: "1",
+        notePath: "Research/a.md",
+        chunkText: "a",
+        embedding: [1, 0, 0],
+      },
+    ]);
+    const result = retrieveContextChunks({
+      queryEmbedding: [1, 0, 0],
+      queryIdentity: identity,
+      store,
+      scope,
+      topK: -1,
+      minSimilarity: 0.1,
+    });
+    expect(result.chunks).toHaveLength(0);
+    expect(result.skipReason).toBe("invalid_top_k");
   });
 
   it("vectorIdentitiesCompatible requires exact model and dims", () => {

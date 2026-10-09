@@ -64,8 +64,27 @@ export interface VectorChunkPort {
 export interface VectorIdentity {
   embedModel: string;
   dims: number;
+  /** DEC-0022: sealed generation project; must match active project before embed. */
+  projectId?: string;
   generationId?: string;
   provenance?: string;
+}
+
+/** DEC-0022: forward sealed model without arity introspection (default params have length 1). */
+export function bindEmbedderPort(
+  hasKeys: boolean,
+  embedFn: (text: string, model?: string) => Promise<number[]>,
+): EmbedderPort {
+  return {
+    hasKeys,
+    embed: (text, options) => {
+      const model = options?.model;
+      if (model !== undefined) {
+        return embedFn(text, model);
+      }
+      return embedFn(text);
+    },
+  };
 }
 
 export interface VectorStorePort {

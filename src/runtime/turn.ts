@@ -9,6 +9,7 @@ import type { ConversationMessage } from "../orchestrator/conversation";
 import { RAG_DEFAULTS } from "../constants";
 import { buildEffectiveReadScope } from "./permissions";
 import type {
+  CallOptions,
   ChatPort,
   EmbedderPort,
   KgExpanderPort,
@@ -18,10 +19,14 @@ import type {
 } from "./ports";
 import {
   embeddingMatchesDims,
+  evaluatePreEmbedStoreIdentity,
+  type ExpectedVectorSeal,
   formatRetrievedContext,
-  isVerifiableStoreIdentity,
+  parseMinSimilarityThreshold,
+  parseTopKLimit,
   resolveSealedEmbedIdentity,
   retrieveContextChunks,
+  vectorIdentitiesCompatible,
 } from "./retrieval";
 
 /** DEC-0022: user-visible notifications are injected by the Obsidian adapter only. */
@@ -47,6 +52,8 @@ export interface PortableTurnInput {
     kg?: KgExpanderPort;
     webSearch?: WebSearchPort;
   };
+  /** DEC-0022: explicit sealed generation fields for query identity (not copied from store). */
+  expectedVectorSeal?: ExpectedVectorSeal;
   notify?: TurnNotifyFn;
 }
 
@@ -61,6 +68,18 @@ export interface PortableTurnResult {
 
 function hasWebSearchTool(agent: AgentDefinition, skill?: Skill): boolean {
   return agent.tools?.includes("web_search") || skill?.tools?.includes("web_search") || false;
+}
+
+/** DEC-0022: agent explicit model > project explicit model; empty strings ignored. */
+export function resolveChatCallOptions(
+  agent: AgentDefinition,
+  projectModel?: string,
+): CallOptions | undefined {
+  const agentModel = agent.model?.trim();
+  const projModel = projectModel?.trim();
+  const model = agentModel || projModel;
+  if (!model) return undefined;
+  return { model };
 }
 
 /**
@@ -79,6 +98,7 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
     traceId,
     tavilyQuery,
     ports,
+    expectedVectorSeal,
     notify,
   } = input;
 
@@ -91,17 +111,40 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
 
   const topK = project?.rag?.top_k ?? RAG_DEFAULTS.TOP_K;
   const minSim = project?.rag?.min_similarity ?? RAG_DEFAULTS.MIN_SIMILARITY;
+  const chatCallOptions = resolveChatCallOptions(agent, project?.model);
 
   let ragContext = "";
 
   if (!skipRag && readScope.allowed && ports.embedder.hasKeys && ports.vectorStore.count > 0) {
     const storeIdentity = ports.vectorStore.identity;
-    if (!isVerifiableStoreIdentity(storeIdentity)) {
-      notify?.("⚠ RAG: rebuild_required — índice sin identidad verificable", 8000);
+    const projectRag = project?.rag;
+    const queryIdentity =
+      projectRag && project?.id
+        ? resolveSealedEmbedIdentity(projectRag, project.id, expectedVectorSeal)
+        : null;
+    if (!queryIdentity) {
+      notify?.("⚠ RAG: proyecto sin modelo de embedding sellado", 5000);
+    } else if (!projectRag) {
+      notify?.("⚠ RAG: proyecto sin modelo de embedding sellado", 5000);
     } else {
-      const queryIdentity = resolveSealedEmbedIdentity(project?.rag, storeIdentity);
-      if (!queryIdentity) {
-        notify?.("⚠ RAG: proyecto sin modelo de embedding sellado", 5000);
+      const preEmbedDeny = evaluatePreEmbedStoreIdentity(
+        projectRag,
+        storeIdentity,
+        project!.id,
+      );
+      if (preEmbedDeny === "rebuild_required") {
+        notify?.("⚠ RAG: rebuild_required — índice sin identidad verificable", 8000);
+      } else if (preEmbedDeny === "identity_mismatch") {
+        notify?.("⚠ RAG: índice incompatible con el modelo/dimensiones del proyecto", 8000);
+      } else if (
+        storeIdentity &&
+        !vectorIdentitiesCompatible(queryIdentity, storeIdentity)
+      ) {
+        notify?.("⚠ RAG: índice incompatible con el modelo/dimensiones del proyecto", 8000);
+      } else if (parseTopKLimit(topK) === null) {
+        notify?.("⚠ RAG: top_k inválido", 5000);
+      } else if (parseMinSimilarityThreshold(minSim) === null) {
+        notify?.("⚠ RAG: umbral de similitud inválido", 5000);
       } else {
         const queryEmbedding = await ports.embedder.embed(userInput, {
           model: queryIdentity.embedModel,
@@ -125,6 +168,8 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
             notify?.("⚠ RAG: índice incompatible con el modelo/dimensiones del proyecto", 8000);
           } else if (skipReason === "rebuild_required") {
             notify?.("⚠ RAG: rebuild_required — índice sin identidad verificable", 8000);
+          } else if (skipReason === "invalid_threshold" || skipReason === "invalid_top_k") {
+            notify?.("⚠ RAG: configuración RAG inválida", 5000);
           } else if (chunks.length === 0 && skipReason !== "scope_denied") {
             notify?.("⚠ RAG: 0 resultados bajo el umbral de similitud configurado", 6000);
           }
@@ -173,7 +218,7 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
       { role: "user", content: userInput },
     ];
     const payload = buildConversationPayload(renderedPrompt, allMessages, conversationSummary);
-    result = await ports.chat.chatMessages(payload.messages);
+    result = await ports.chat.chatMessages(payload.messages, chatCallOptions);
     return {
       content: result.content,
       usage: result.usage,
@@ -184,7 +229,12 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
     };
   }
 
-  result = await ports.chat.chat(renderedPrompt, userInput, ragContext || undefined);
+  result = await ports.chat.chat(
+    renderedPrompt,
+    userInput,
+    ragContext || undefined,
+    chatCallOptions,
+  );
   return {
     content: result.content,
     usage: result.usage,

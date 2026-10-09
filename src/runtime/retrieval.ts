@@ -36,7 +36,9 @@ export type RetrievalSkipReason =
   | "identity_mismatch"
   | "empty_store"
   | "embedding_dims_mismatch"
-  | "rebuild_required";
+  | "rebuild_required"
+  | "invalid_threshold"
+  | "invalid_top_k";
 
 /** DEC-0022: positive integer embedding dimensions only. */
 export function isValidVectorDims(dims: unknown): dims is number {
@@ -64,18 +66,25 @@ export function vectorIdentitiesCompatible(
   if (!isValidVectorDims(query.dims) || !isValidVectorDims(store.dims)) return false;
   if (query.dims !== store.dims) return false;
   if (query.embedModel !== store.embedModel) return false;
-  if (query.generationId && store.generationId && query.generationId !== store.generationId) {
-    return false;
+  if (query.generationId) {
+    if (!store.generationId || query.generationId !== store.generationId) return false;
   }
-  if (query.provenance && store.provenance && query.provenance !== store.provenance) {
-    return false;
+  if (query.provenance) {
+    if (!store.provenance || query.provenance !== store.provenance) return false;
   }
   return true;
 }
 
-function finiteThreshold(minSimilarity: number): number {
-  if (!Number.isFinite(minSimilarity)) return 1;
+/** DEC-0022: fail-closed similarity threshold (no silent fallback to 1). */
+export function parseMinSimilarityThreshold(minSimilarity: number): number | null {
+  if (!Number.isFinite(minSimilarity)) return null;
   return minSimilarity;
+}
+
+/** DEC-0022: positive finite integer top-k only. */
+export function parseTopKLimit(topK: number): number | null {
+  if (!Number.isFinite(topK) || !Number.isInteger(topK) || topK <= 0) return null;
+  return topK;
 }
 
 function scoreAuthorizedChunks(
@@ -86,7 +95,8 @@ function scoreAuthorizedChunks(
   minSimilarity: number,
 ): RetrievedChunk[] {
   if (!embeddingMatchesDims(queryEmbedding, queryDims)) return [];
-  const threshold = finiteThreshold(minSimilarity);
+  const threshold = parseMinSimilarityThreshold(minSimilarity);
+  if (threshold === null) return [];
   const scored: RetrievedChunk[] = [];
   for (const chunk of chunks) {
     const normPath = normalizeVaultPath(chunk.notePath);
@@ -150,6 +160,15 @@ export function retrieveContextChunks(params: RetrievalParams): {
     return { chunks: [], skipReason: "embedding_dims_mismatch" };
   }
 
+  const parsedTopK = parseTopKLimit(topK);
+  if (parsedTopK === null) {
+    return { chunks: [], skipReason: "invalid_top_k" };
+  }
+  const parsedThreshold = parseMinSimilarityThreshold(minSimilarity);
+  if (parsedThreshold === null) {
+    return { chunks: [], skipReason: "invalid_threshold" };
+  }
+
   const storeIdentity = store.identity;
   if (!isVerifiableStoreIdentity(storeIdentity)) {
     return { chunks: [], skipReason: "rebuild_required" };
@@ -163,9 +182,9 @@ export function retrieveContextChunks(params: RetrievalParams): {
     queryEmbedding,
     queryIdentity.dims,
     scope,
-    minSimilarity,
+    parsedThreshold,
   );
-  results = results.slice(0, topK);
+  results = results.slice(0, parsedTopK);
 
   const seedNotes = [...new Set(results.map((r) => r.notePath))];
 
@@ -173,14 +192,12 @@ export function retrieveContextChunks(params: RetrievalParams): {
     const expansion = kg.expandFromSeeds(seedNotes, queryEmbedding, scope);
     const merged = [...results];
     const seen = new Set(results.map((r) => `${r.notePath}\0${r.chunkText}`));
-    const threshold = finiteThreshold(minSimilarity);
-
     for (const ac of expansion.added_chunks) {
       const normPath = normalizeVaultPath(ac.note_path);
       if (!normPath || !isPathAuthorized(normPath, scope)) continue;
       const key = `${normPath}\0${ac.chunk_text}`;
       if (seen.has(key)) continue;
-      if (!Number.isFinite(ac.score) || ac.score < threshold) continue;
+      if (!Number.isFinite(ac.score) || ac.score < parsedThreshold) continue;
       seen.add(key);
       merged.push({
         id: "",
@@ -193,7 +210,7 @@ export function retrieveContextChunks(params: RetrievalParams): {
     }
 
     merged.sort((a, b) => b.score - a.score);
-    results = merged.slice(0, topK);
+    results = merged.slice(0, parsedTopK);
   }
 
   for (const chunk of results) {
@@ -208,22 +225,55 @@ export function formatRetrievedContext(chunks: RetrievedChunk[]): string {
   return chunks.map((r) => `[${r.notePath}]\n${r.chunkText}`).join("\n\n");
 }
 
-/** DEC-0022: resolve sealed embed model from project RAG config for query embedding. */
+export interface ExpectedVectorSeal {
+  generationId?: string;
+  provenance?: string;
+}
+
+/** DEC-0022: query identity from project RAG + active project; seal fields only when explicitly expected. */
 export function resolveSealedEmbedIdentity(
   projectRag: { embed_model: string; dims: number } | undefined,
-  storeIdentity?: VectorIdentity,
+  activeProjectId: string | undefined,
+  explicitExpected?: ExpectedVectorSeal,
 ): VectorIdentity | null {
   if (!projectRag?.embed_model?.trim()) return null;
   if (!isValidVectorDims(projectRag.dims)) return null;
+  if (!activeProjectId?.trim()) return null;
   const base: VectorIdentity = {
     embedModel: projectRag.embed_model.trim(),
     dims: projectRag.dims,
+    projectId: activeProjectId.trim(),
   };
-  if (storeIdentity?.generationId) {
-    base.generationId = storeIdentity.generationId;
+  if (explicitExpected?.generationId) {
+    base.generationId = explicitExpected.generationId;
   }
-  if (storeIdentity?.provenance) {
-    base.provenance = storeIdentity.provenance;
+  if (explicitExpected?.provenance) {
+    base.provenance = explicitExpected.provenance;
   }
   return base;
+}
+
+/** DEC-0022: gate embed on verifiable store project + model/dims before calling the provider. */
+export function evaluatePreEmbedStoreIdentity(
+  projectRag: { embed_model: string; dims: number },
+  storeIdentity: VectorIdentity | undefined,
+  activeProjectId: string,
+): RetrievalSkipReason | null {
+  if (!isVerifiableStoreIdentity(storeIdentity)) {
+    return "rebuild_required";
+  }
+  const store = storeIdentity!;
+  if (!store.projectId?.trim()) {
+    return "rebuild_required";
+  }
+  if (store.projectId.trim() !== activeProjectId.trim()) {
+    return "identity_mismatch";
+  }
+  if (
+    store.embedModel !== projectRag.embed_model.trim() ||
+    store.dims !== projectRag.dims
+  ) {
+    return "identity_mismatch";
+  }
+  return null;
 }

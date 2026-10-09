@@ -55,6 +55,14 @@ describe("permissions (DEC-0022)", () => {
     expect(scope.reason).toBe("malformed_pattern");
   });
 
+  it("rejects control chars, drive paths, and double slashes in patterns", () => {
+    expect(isValidPathPattern("/Research/")).toBe(true);
+    expect(isValidPathPattern("/**")).toBe(true);
+    expect(isValidPathPattern("Research//x/**")).toBe(false);
+    expect(isValidPathPattern("C:/Research/**")).toBe(false);
+    expect(isValidPathPattern("\x01bad/**")).toBe(false);
+  });
+
   it("selection cannot expand project scope", () => {
     const scope = buildEffectiveReadScope({
       projectReadPaths: ["/Research/**"],
