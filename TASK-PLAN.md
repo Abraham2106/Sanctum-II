@@ -91,3 +91,5 @@ T-041 incluye invoke-agent para resolver su modelo explícito y validar IDs sin 
 T-037 integrada en 8ddceb2 + c6d1fce, revisión Sol 6.1 y 24 pruebas HTTP correctas. Token/Origin se conectan al arranque en T-041. Worktree propio sin junction, retirado tras conservar evidencia.
 
 T-040 incluye embed-contract (dimensiones explícitas) y la propagación de errores list del adaptador filesystem: un fallo de recorrido no equivale a una carpeta vacía ni autoriza publicar eliminaciones. Conserva todas las protecciones de rutas.
+
+T-045 recibe después de T-036 la propiedad de runtime/turn.ts solo para conectar opciones por llamada; no hay escritores simultáneos. Investigación de EmbeddingGemma 2 y encaje local autorizada por usuario, sin activar embeddings locales ni ampliar esta implementación.
