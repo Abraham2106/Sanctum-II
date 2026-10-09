@@ -1265,7 +1265,7 @@
       "id": "T-038",
       "title": "Durabilidad por recurso",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "review",
       "deps": [],
       "seams": [
         "S-runtime-038"
@@ -1290,7 +1290,11 @@
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Draft integrated 13aa528; review REJECTED after two repair loops",
+          "Typecheck and whitespace passed; 8 suites/52 tests passed but load tests encode remaining bug",
+          "Remaining: load drops historical disk state on concurrent mutation; read-only signatures; KG append compatibility. Acceptance requires T047."
+        ]
       }
     },
     {
@@ -1335,7 +1339,8 @@
       "status": "ready",
       "deps": [
         "T-036",
-        "T-038"
+        "T-038",
+        "T-047"
       ],
       "seams": [
         "S-runtime-040"
@@ -1569,6 +1574,36 @@
         "planned": [
           "npm run typecheck",
           "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-047",
+      "title": "Reconciliación load con operaciones pendientes",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-runtime-047"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside owned files/new design/missing model"
+      ],
+      "done_when": [
+        "Read-only load merges disk baseline with local pending operations in order, preserving historical and concurrent records; clear resets remain authoritative; errors preserve pending ops",
+        "Correct adversarial tests, independent review, typecheck and storage suites pass"
+      ],
+      "notes": "Split from rejected T038 draft integrated 13aa528, source ownership transferred serially. Own src/rag/vector-store.ts, src/kg/kg-store.ts and persistence tests only; optional owned lifecycle helper. No other source/governance. Preserve API read-only load Pick<Adapter,read>; KG append-only save retains optional read compatibility. Read raw disk into staged state then reconcile semantic local pending operations (including replace-note/delete/clear) in correct order; do not early-return raw and truncate history. Local writes before/during queued load must not disappear, no load writes/read-only casts. Deterministic deferred tests loading disk-old + concurrent new retain both before and after save/reload; deletes/clear, queued load/save, read failures/retries; replace tests wrongly expecting disk-old dropped. Keep T038 reviewed pending until this accepted. Composer2.5 CLI only; no fake live evidence; max2 review loops; commit owned files.",
+      "rollback": "Revert leaf and draft in reverse; preserve vault originals",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run resource-queue, project store/YAML, VectorStore and KG persistence + preexisting regressions"
         ],
         "run": []
       }

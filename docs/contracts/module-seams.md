@@ -68,3 +68,5 @@ S-runtime-041 incluye mcp-server/src/tools/invoke-agent.ts para configuración y
 S-runtime-040 incluye src/embeddings/embed-contract.ts y mcp-server/src/core/fs-vault-adapter.ts exclusivamente para dimensiones y errores de lectura, con regresiones; las protecciones de rutas permanecen.
 
 S-runtime-045 recibe runtime/turn.ts de T-036, serializado por dependencia, para opciones de proveedor/modelo/cancelación por llamada.
+
+| S-runtime-047 | src/rag/vector-store.ts, src/kg/kg-store.ts y tests de persistencia; transferencia serial tras borrador T-038 | accepted |
