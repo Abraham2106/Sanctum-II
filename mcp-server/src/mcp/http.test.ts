@@ -1,7 +1,10 @@
 import { describe, it, expect, afterEach } from "vitest"
 import http from "node:http"
 import { McpServer } from "./server.js"
-import { startMcpHttp } from "./http.js"
+import { startMcpHttp, validateJsonRpcRequest } from "./http.js"
+
+const TEST_TOKEN = "secret-token"
+const TEST_ORIGIN = "http://127.0.0.1:5173"
 
 function post(
   port: number,
@@ -20,6 +23,7 @@ function post(
         headers: {
           "Content-Type": "application/json",
           "Content-Length": Buffer.byteLength(data),
+          Authorization: `Bearer ${TEST_TOKEN}`,
           ...headers,
         },
       },
@@ -53,6 +57,7 @@ function postRaw(
         headers: {
           "Content-Type": "application/json",
           "Content-Length": body.length,
+          Authorization: `Bearer ${TEST_TOKEN}`,
           ...headers,
         },
       },
@@ -84,6 +89,22 @@ function get(port: number, path: string): Promise<{ status: number; body: string
   })
 }
 
+describe("validateJsonRpcRequest", () => {
+  it("acepta solicitud JSON-RPC 2.0 válida", () => {
+    expect(
+      validateJsonRpcRequest({ jsonrpc: "2.0", id: 1, method: "ping" }),
+    ).toEqual({ jsonrpc: "2.0", id: 1, method: "ping" })
+  })
+
+  it("rechaza jsonrpc distinto de 2.0", () => {
+    expect(validateJsonRpcRequest({ jsonrpc: "1.0", method: "ping" })).toBeNull()
+  })
+
+  it("rechaza id con tipo inválido", () => {
+    expect(validateJsonRpcRequest({ jsonrpc: "2.0", id: {}, method: "ping" })).toBeNull()
+  })
+})
+
 describe("startMcpHttp", () => {
   let close: (() => Promise<void>) | undefined
   let port = 0
@@ -104,12 +125,39 @@ describe("startMcpHttp", () => {
     return server
   }
 
-  async function start(token?: string): Promise<void> {
+  async function start(
+    overrides: Partial<{
+      token: string
+      host: string
+      allowedOrigins: string[]
+    }> = {},
+  ): Promise<void> {
     const server = makeServer()
-    const h = await startMcpHttp(server, { port: 0, host: "127.0.0.1", token })
+    const h = await startMcpHttp(server, {
+      port: 0,
+      host: "127.0.0.1",
+      token: TEST_TOKEN,
+      allowedOrigins: [TEST_ORIGIN],
+      ...overrides,
+    })
     port = h.port
     close = h.close
   }
+
+  it("rechaza arranque sin token o con token vacío", async () => {
+    const server = makeServer()
+    await expect(startMcpHttp(server, { port: 0 })).rejects.toThrow(/token HTTP obligatorio/)
+    await expect(startMcpHttp(server, { port: 0, token: "" })).rejects.toThrow(
+      /token HTTP obligatorio/,
+    )
+  })
+
+  it("rechaza bind fuera de loopback permitido", async () => {
+    const server = makeServer()
+    await expect(
+      startMcpHttp(server, { port: 0, token: TEST_TOKEN, host: "0.0.0.0" }),
+    ).rejects.toThrow(/loopback/)
+  })
 
   it("initialize 2025-03-26 con SSE devuelve esa versión", async () => {
     await start()
@@ -168,21 +216,62 @@ describe("startMcpHttp", () => {
     expect(postRes.status).toBe(404)
   })
 
-  it("con token, sin Authorization es 401 y Bearer correcto es 200", async () => {
-    await start("secret-token")
+  it("sin Authorization es 401 y Bearer correcto es 200", async () => {
+    await start()
     const unauthorized = await post(
       port,
       "/mcp",
       { jsonrpc: "2.0", id: 1, method: "ping" },
+      { Authorization: "" },
     )
     expect(unauthorized.status).toBe(401)
-    const authorized = await post(
+    const authorized = await post(port, "/mcp", { jsonrpc: "2.0", id: 1, method: "ping" })
+    expect(authorized.status).toBe(200)
+  })
+
+  it("Origin ausente permite cliente nativo autenticado", async () => {
+    await start()
+    const res = await post(port, "/mcp", { jsonrpc: "2.0", id: 1, method: "ping" })
+    expect(res.status).toBe(200)
+  })
+
+  it("Origin en allowlist exacta con bearer es 200", async () => {
+    await start()
+    const res = await post(
       port,
       "/mcp",
       { jsonrpc: "2.0", id: 1, method: "ping" },
-      { Authorization: "Bearer secret-token" },
+      { Origin: TEST_ORIGIN },
     )
-    expect(authorized.status).toBe(200)
+    expect(res.status).toBe(200)
+  })
+
+  it("Origin no listada devuelve 403 aunque el bearer sea correcto", async () => {
+    await start()
+    const res = await post(
+      port,
+      "/mcp",
+      { jsonrpc: "2.0", id: 1, method: "ping" },
+      { Origin: "http://evil.example" },
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it("Origin null devuelve 403 aunque el bearer sea correcto", async () => {
+    await start()
+    const res = await post(
+      port,
+      "/mcp",
+      { jsonrpc: "2.0", id: 1, method: "ping" },
+      { Origin: "null" },
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it("cuerpo JSON-RPC inválido responde 400", async () => {
+    await start()
+    const res = await post(port, "/mcp", { jsonrpc: "1.0", id: 1, method: "ping" })
+    expect(res.status).toBe(400)
   })
 
   it("notificación sin id responde 202 vacío", async () => {

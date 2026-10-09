@@ -1,12 +1,34 @@
 // DEC-0020: Grok Bot usa el MCP por POST /mcp
+// DEC-0022: bind loopback estricto, token obligatorio, Origin exact allowlist, JSON-RPC 2.0
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { McpServer } from "./server.js"
 import type { JsonRpcRequest } from "./types.js"
 
-// ponytail: sin allowlist de Origin; el bind es localhost. Subir cuando escuche en una interfaz pública.
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"])
 
-// DEC-0021: el MCP anuncia el uso y lista notas
+/** Límite de cuerpo POST según DEC-0022. */
 const MAX_POST_BODY_BYTES = 1048576
+
+/** Opciones públicas de {@link startMcpHttp}. */
+export interface McpHttpListenOptions {
+  /** Puerto TCP; `0` elige uno libre. */
+  port: number
+  /**
+   * Dirección de bind; solo loopback (DEC-0022): `127.0.0.1`, `::1` o `localhost`.
+   * Por defecto `127.0.0.1`.
+   */
+  host?: string
+  /**
+   * Token bearer; debe ser no vacío en el arranque o {@link startMcpHttp} rechaza (DEC-0022).
+   */
+  token?: string
+  /**
+   * Lista exacta de valores del encabezado `Origin` permitidos para clientes web.
+   * Si `Origin` está ausente, se permite cliente nativo con bearer válido.
+   * `Origin: null`, inválido u otro valor devuelve 403 aunque el bearer sea correcto.
+   */
+  allowedOrigins?: string[]
+}
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -43,19 +65,54 @@ function wantsEventStream(accept: string | undefined): boolean {
   return accept.includes("text/event-stream")
 }
 
+function isOriginAllowed(
+  originHeader: string | undefined,
+  allowedOrigins: readonly string[] | undefined,
+): boolean {
+  if (originHeader === undefined) return true
+  if (originHeader === "null" || originHeader === "") return false
+  if (!allowedOrigins || allowedOrigins.length === 0) return false
+  return allowedOrigins.includes(originHeader)
+}
+
+function isStructuredParams(value: unknown): boolean {
+  return value === null || typeof value === "object"
+}
+
+/** Valida forma de solicitud JSON-RPC 2.0 antes de despachar (DEC-0022). */
+export function validateJsonRpcRequest(parsed: unknown): JsonRpcRequest | null {
+  if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
+    return null
+  }
+  const obj = parsed as Record<string, unknown>
+  if (obj.jsonrpc !== "2.0") return null
+  if (typeof obj.method !== "string" || obj.method.length === 0) return null
+  if ("id" in obj) {
+    const id = obj.id
+    if (id !== null && typeof id !== "string" && typeof id !== "number") return null
+  }
+  if ("params" in obj && !isStructuredParams(obj.params)) return null
+  return parsed as JsonRpcRequest
+}
+
 async function handlePostMcp(
   server: McpServer,
   req: IncomingMessage,
   res: ServerResponse,
-  token?: string,
+  token: string,
+  allowedOrigins: readonly string[] | undefined,
 ): Promise<void> {
-  if (token) {
-    const auth = req.headers.authorization
-    if (auth !== `Bearer ${token}`) {
-      res.statusCode = 401
-      res.end()
-      return
-    }
+  if (!isOriginAllowed(req.headers.origin, allowedOrigins)) {
+    res.statusCode = 403
+    res.end()
+    return
+  }
+
+  const auth = req.headers.authorization
+  if (auth !== `Bearer ${token}`) {
+    res.statusCode = 401
+    res.end()
+    return
   }
 
   let raw: string
@@ -83,20 +140,13 @@ async function handlePostMcp(
     return
   }
 
-  if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
+  const rpcReq = validateJsonRpcRequest(parsed)
+  if (rpcReq === null) {
     res.statusCode = 400
     res.end()
     return
   }
 
-  const obj = parsed as Record<string, unknown>
-  if (typeof obj.method !== "string") {
-    res.statusCode = 400
-    res.end()
-    return
-  }
-
-  const rpcReq = parsed as JsonRpcRequest
   const response = await server.handleMessage(rpcReq)
 
   if (response === null) {
@@ -117,14 +167,26 @@ async function handlePostMcp(
   res.end(JSON.stringify(response))
 }
 
+/**
+ * Arranca el transporte HTTP MCP en `/mcp` (DEC-0022).
+ *
+ * @throws si el token falta o está vacío, o si `host` no es loopback permitido.
+ */
 export function startMcpHttp(
   server: McpServer,
-  opts: { port: number; host?: string; token?: string },
+  opts: McpHttpListenOptions,
 ): Promise<{ port: number; close: () => Promise<void> }> {
-  const host = opts.host ?? "127.0.0.1"
-  if (host === "0.0.0.0") {
-    return Promise.reject(new Error("bind en 0.0.0.0 no permitido"))
+  if (typeof opts.token !== "string" || opts.token.length === 0) {
+    return Promise.reject(new Error("token HTTP obligatorio y no vacío (DEC-0022)"))
   }
+
+  const host = opts.host ?? "127.0.0.1"
+  if (!LOOPBACK_HOSTS.has(host)) {
+    return Promise.reject(new Error(`bind loopback no permitido: ${host} (DEC-0022)`))
+  }
+
+  const token = opts.token
+  const allowedOrigins = opts.allowedOrigins
 
   return new Promise((resolve, reject) => {
     const httpServer = createServer((req, res) => {
@@ -138,7 +200,7 @@ export function startMcpHttp(
         }
 
         if (path === "/mcp" && req.method === "POST") {
-          await handlePostMcp(server, req, res, opts.token)
+          await handlePostMcp(server, req, res, token, allowedOrigins)
           return
         }
 
