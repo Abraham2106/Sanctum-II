@@ -1209,3 +1209,27 @@ Basado en `docs/orquestador.html` — el mockup HTML se reemplazó por la implem
 | — | Folderos UI: toggle lectura/escritura + ✕ | ✅ | Etapa 20 |
 
 ---
+
+## 2026-10-08 — Núcleo portable, generaciones de índice y CI (DEC-0022 / DEC-0023)
+
+### Cambios documentados (sin reescribir hallazgos de auditoría)
+
+- **Núcleo portable:** lógica compartida en `src/runtime/` (DAG, mesh, retrieval, embedding port, providers). Adaptadores Obsidian/MCP/Discord en bordes.
+- **Índices por generación:** publicación inmutable bajo `sanctum-logs/index/<id>/generations/<generation>/` con `commit.json`; estados `ready`, `rebuild_required`, `unavailable`, `corrupt`.
+- **MCP:** seis tools; `sanctum_query_vault` / notas exigen `project_id` o `SANCTUM_PROJECT_ID`; HTTP loopback con token y allowlist `SANCTUM_MCP_ORIGINS`.
+- **Embeddings:** Gemini por defecto; backend local opcional vía `SANCTUM_EMBED_*` / `SANCTUM_LOCAL_EMBED_*` (sidecar Python manual, no fallback).
+- **Verificación:** `npm run verify` incluye Vitest, KG (tsx), orquestación PowerShell, unittest Python de contrato si hay intérprete, build y smoke MCP con vault fixture; CI en Windows y Linux.
+
+### Diagrama (generaciones + MCP)
+
+```
+Plugin indexa ──► generación sellada (por proyecto)
+                         ▲
+MCP query_vault ──► ProjectReader + loadGeneration (refresco por llamada)
+                         │
+                   EmbedderPort (Gemini | local opcional)
+```
+
+Ver también [arquitectura-uml.md](arquitectura-uml.md) y la auditoría [2026-10-08/README.md](audits/2026-10-08/README.md) (diagnóstico histórico en `eafef22`).
+
+---
