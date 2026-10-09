@@ -70,3 +70,5 @@ S-runtime-040 incluye src/embeddings/embed-contract.ts y mcp-server/src/core/fs-
 S-runtime-045 recibe runtime/turn.ts de T-036, serializado por dependencia, para opciones de proveedor/modelo/cancelación por llamada.
 
 | S-runtime-047 | src/rag/vector-store.ts, src/kg/kg-store.ts y tests de persistencia; transferencia serial tras borrador T-038 | accepted |
+
+| S-runtime-048 | src/runtime/retrieval.ts y tests, transferencia serial tras T-036 | accepted |

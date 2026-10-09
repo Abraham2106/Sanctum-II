@@ -1195,7 +1195,7 @@
       "id": "T-036",
       "title": "Política permisos y recuperación portable",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "review",
       "deps": [
         "T-035"
       ],
@@ -1222,7 +1222,10 @@
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Draft core commits integrated; standalone identity comparison review REJECTED after two repair loops",
+          "Independent 30 runtime tests and typecheck passed; T048 required for public retrieval helper"
+        ]
       }
     },
     {
@@ -1340,7 +1343,8 @@
       "deps": [
         "T-036",
         "T-038",
-        "T-047"
+        "T-047",
+        "T-048"
       ],
       "seams": [
         "S-runtime-040"
@@ -1517,7 +1521,8 @@
       "status": "ready",
       "deps": [
         "T-035",
-        "T-036"
+        "T-036",
+        "T-048"
       ],
       "seams": [
         "S-runtime-045"
@@ -1582,7 +1587,7 @@
       "id": "T-047",
       "title": "Reconciliación load con operaciones pendientes",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
       "seams": [
         "S-runtime-047"
@@ -1604,6 +1609,36 @@
         "planned": [
           "npm run typecheck",
           "npx vitest run resource-queue, project store/YAML, VectorStore and KG persistence + preexisting regressions"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-048",
+      "title": "Identidad estricta de proyecto en recuperación pública",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [],
+      "seams": [
+        "S-runtime-048"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside retrieval identity seam"
+      ],
+      "done_when": [
+        "Standalone retrieveContextChunks rejects different or missing project identities before candidates/KG/traces; same project valid",
+        "30+runtime tests/typecheck independent review pass"
+      ],
+      "notes": "Serial ownership after T036 draft. Own src/runtime/retrieval.ts and src/runtime/retrieval.test.ts only (ports.ts only type nit if essential). vectorIdentitiesCompatible must require matching nonempty projectId on query/store, not copy unknown identity. isVerifiableStoreIdentity consistent fail-closed project identity. Add adversarial direct helper tests no KG/traces on missing/mismatched project, same exact identity yields authorized results. Update existing explicit synthetic fixtures to include valid project IDs, no permissive fallback. No provider/newlocalimplementation, no other runtime/gov. Commit owned files. This is split after two reviews, T036 remains review until accepted.",
+      "rollback": "revert leaf and core draft reverse order",
+      "verification": {
+        "planned": [
+          "npx vitest run src/runtime",
+          "npm run typecheck"
         ],
         "run": []
       }

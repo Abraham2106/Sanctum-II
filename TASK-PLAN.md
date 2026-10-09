@@ -95,3 +95,5 @@ T-040 incluye embed-contract (dimensiones explícitas) y la propagación de erro
 T-045 recibe después de T-036 la propiedad de runtime/turn.ts solo para conectar opciones por llamada; no hay escritores simultáneos. Investigación de EmbeddingGemma 2 y encaje local autorizada por usuario, sin activar embeddings locales ni ampliar esta implementación.
 
 T-038 borrador 13aa528 en REVIEW, no aceptada: 52 pruebas/typecheck pasan pero persiste pérdida de baseline en load y contratos read-only alterados. Tras dos reviews se divide T-047 (load/replay Vector/KG y regresiones correctas), base 13aa528; T-040 espera T-038 y T-047 aceptadas. Propiedad serial, sin writers simultáneos.
+
+T-036 núcleo en REVIEW tras 30 tests/typecheck; T-048 acota el bloqueo restante de identidad projectId en recuperación pública. No aceptación hasta regresiones directas correctas. T-040/T-045 esperan T-048.
