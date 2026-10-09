@@ -1269,7 +1269,7 @@
       "id": "T-038",
       "title": "Durabilidad por recurso",
       "owner_role": "worker",
-      "status": "review",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-runtime-038"
@@ -1287,7 +1287,7 @@
         "Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/core/resource-queue.ts, src/projects/store.ts, src/rag/vector-store.ts, src/kg/kg-store.ts. Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Project model absence stays empty; validate project IDs; stable locks move checks destination collision. Shared full YAML project parse/serialize allowed using existing shared frontmatter functions; do not modify shared module.",
+      "notes": "Allowed: src/core/resource-queue.ts, src/projects/store.ts, src/rag/vector-store.ts, src/kg/kg-store.ts. Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Project model absence stays empty; validate project IDs; stable locks move checks destination collision. Shared full YAML project parse/serialize allowed using existing shared frontmatter functions; do not modify shared module. Acceptance closed by T-051. Draft 13aa528 stays in history; remaining load/snapshot defects were fixed in cb95d0c.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1297,7 +1297,8 @@
         "run": [
           "Draft integrated 13aa528; review REJECTED after two repair loops",
           "Typecheck and whitespace passed; 8 suites/52 tests passed but load tests encode remaining bug",
-          "Remaining: load drops historical disk state on concurrent mutation; read-only signatures; KG append compatibility. Acceptance requires T047."
+          "Remaining: load drops historical disk state on concurrent mutation; read-only signatures; KG append compatibility. Acceptance requires T047.",
+          "Acceptance closed by T-051. Draft 13aa528 stays in history; remaining load/snapshot defects were fixed in cb95d0c."
         ]
       }
     },
@@ -1305,7 +1306,7 @@
       "id": "T-039",
       "title": "DAG y mesh común",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [
         "T-036",
         "T-045"
@@ -1524,7 +1525,7 @@
       "id": "T-045",
       "title": "Resolución proveedores portable",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [
         "T-035",
         "T-036",
@@ -1546,14 +1547,16 @@
         "Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Reuse structural ports supplied by T036; do not duplicate or edit runtime/ports.ts. Configure calls through provider resolution options. Serial additional ownership src/runtime/turn.ts after T036 integration, solely wire per-call resolved model/provider/signal into all chat and chatMessages branches (including conversation). Reuse CallOptions structural ports. Extend agent/project optional explicit provider fields/loaders only if required, with ownership handoff after T035/T038; do not infer provider from model. T049 owns embedding port/types/settings and transfers turn serially to this leaf; modify only chat options there, no embedding/config files. No agent/projecttype/store ownership; explicit provider configuration via resolverglobal/call options sufficient. Corrected serial order: this leaf NOW precedes T049. Own chat changes in turn; T049 later owns embedding-only turn changes. No embedding/config/types/store modifications.",
+      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Reuse structural ports supplied by T036; do not duplicate or edit runtime/ports.ts. Configure calls through provider resolution options. Serial additional ownership src/runtime/turn.ts after T036 integration, solely wire per-call resolved model/provider/signal into all chat and chatMessages branches (including conversation). Reuse CallOptions structural ports. Extend agent/project optional explicit provider fields/loaders only if required, with ownership handoff after T035/T038; do not infer provider from model. T049 owns embedding port/types/settings and transfers turn serially to this leaf; modify only chat options there, no embedding/config files. No agent/projecttype/store ownership; explicit provider configuration via resolverglobal/call options sufficient. Corrected serial order: this leaf NOW precedes T049. Own chat changes in turn; T049 later owns embedding-only turn changes. No embedding/config/types/store modifications. Accepted 1480c7b. Branch re-run: providers, turn, opencode client and MCP chat tests passed.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Accepted 1480c7b. Branch re-run: providers, turn, opencode client and MCP chat tests passed."
+        ]
       }
     },
     {
@@ -1594,7 +1597,7 @@
       "id": "T-047",
       "title": "Reconciliación load con operaciones pendientes",
       "owner_role": "worker",
-      "status": "review",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-runtime-047"
@@ -1610,7 +1613,7 @@
         "Read-only load merges disk baseline with local pending operations in order, preserving historical and concurrent records; clear resets remain authoritative; errors preserve pending ops",
         "Correct adversarial tests, independent review, typecheck and storage suites pass"
       ],
-      "notes": "Split from rejected T038 draft integrated 13aa528, source ownership transferred serially. Own src/rag/vector-store.ts, src/kg/kg-store.ts and persistence tests only; optional owned lifecycle helper. No other source/governance. Preserve API read-only load Pick<Adapter,read>; KG append-only save retains optional read compatibility. Read raw disk into staged state then reconcile semantic local pending operations (including replace-note/delete/clear) in correct order; do not early-return raw and truncate history. Local writes before/during queued load must not disappear, no load writes/read-only casts. Deterministic deferred tests loading disk-old + concurrent new retain both before and after save/reload; deletes/clear, queued load/save, read failures/retries; replace tests wrongly expecting disk-old dropped. Keep T038 reviewed pending until this accepted. Composer2.5 CLI only; no fake live evidence; max2 review loops; commit owned files. Split ownership explicitly covers src/rag/vector-store-*.ts and src/kg/kg-store-*.ts helper modules to keep files under400 lines; immutable semantic payloads and exact retirement needed. Review initial+repair1 rejected; final repair2 underway.",
+      "notes": "Split from rejected T038 draft integrated 13aa528, source ownership transferred serially. Own src/rag/vector-store.ts, src/kg/kg-store.ts and persistence tests only; optional owned lifecycle helper. No other source/governance. Preserve API read-only load Pick<Adapter,read>; KG append-only save retains optional read compatibility. Read raw disk into staged state then reconcile semantic local pending operations (including replace-note/delete/clear) in correct order; do not early-return raw and truncate history. Local writes before/during queued load must not disappear, no load writes/read-only casts. Deterministic deferred tests loading disk-old + concurrent new retain both before and after save/reload; deletes/clear, queued load/save, read failures/retries; replace tests wrongly expecting disk-old dropped. Keep T038 reviewed pending until this accepted. Composer2.5 CLI only; no fake live evidence; max2 review loops; commit owned files. Split ownership explicitly covers src/rag/vector-store-*.ts and src/kg/kg-store-*.ts helper modules to keep files under400 lines; immutable semantic payloads and exact retirement needed. Review initial+repair1 rejected; final repair2 underway. Acceptance closed by T-051. Draft 07e8bea stays in history; snapshot, append-only KG and split landed in cb95d0c.",
       "rollback": "Revert leaf and draft in reverse; preserve vault originals",
       "verification": {
         "planned": [
@@ -1619,7 +1622,8 @@
         ],
         "run": [
           "Source-only draft integrated; review rejected after two repair loops",
-          "75 tests/8 suites and typecheck pass but captured snapshot, append-only KG and file split pendingT051; HANDOFF excluded"
+          "75 tests/8 suites and typecheck pass but captured snapshot, append-only KG and file split pendingT051; HANDOFF excluded",
+          "Acceptance closed by T-051. Draft 07e8bea stays in history; snapshot, append-only KG and split landed in cb95d0c."
         ]
       }
     },
@@ -1659,7 +1663,7 @@
       "id": "T-050",
       "title": "Servicio local EmbeddingGemma 2 texto",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-local-service"
@@ -1676,21 +1680,23 @@
         "Local service implements secure exact wire and explicit readiness/error states with genuine model loader and test-only doubles",
         "Independent review plus executed verification; no synthetic production fallback"
       ],
-      "notes": "Own only new local-embeddings/server.py, model.py, requirements.txt, README.md, test_*.py (small helpers allowed, all files under400 lines). Implement exact DEC0023 protocol/prefixes/identity/fingerprint matching forthcoming TS port. Python stdlib HTTP loopback127.0.0.1 port8767 token mandatory fromenv, noOrigin/foreignHost/redirects,1MiB/batch16/singleinference/busy. Manual lifecycle lazyimports/backgroundload healthloading/failed/ready only afteractualfiniteprobe, missingdeps/model errors. Fixed google/embeddinggemma-2 40hexrevision textonlycachedlocal load offline trust_remote_codeFalse; CPUFP32/CUDABF16 explicit, noFP16. No weightdownload/install/model synthetic fallback. Deterministic unittest injectedfake only test, actual stdlibloopback auth/limits/readiness/identity/batchorder invalidvectors and missingdependency startup. Verify immutable modelrevision, tokenizerprefixbudget8192, dimsconfiguredMrl normalize. Full descriptor runtimeversions/dtype/device/textencoders/prefixes/normalization/preprocessing3000UTF16 and canonicalSHA256 identity. Testunittest realHTTP and missingmodel error—notliveinference. NoTS/governance/package edits. Coordinate protocol with T049 through coordinator, no changes DEC. Composer2.5 CLI only, own install optionaldeps neverautomatic.",
+      "notes": "Own only new local-embeddings/server.py, model.py, requirements.txt, README.md, test_*.py (small helpers allowed, all files under400 lines). Implement exact DEC0023 protocol/prefixes/identity/fingerprint matching forthcoming TS port. Python stdlib HTTP loopback127.0.0.1 port8767 token mandatory fromenv, noOrigin/foreignHost/redirects,1MiB/batch16/singleinference/busy. Manual lifecycle lazyimports/backgroundload healthloading/failed/ready only afteractualfiniteprobe, missingdeps/model errors. Fixed google/embeddinggemma-2 40hexrevision textonlycachedlocal load offline trust_remote_codeFalse; CPUFP32/CUDABF16 explicit, noFP16. No weightdownload/install/model synthetic fallback. Deterministic unittest injectedfake only test, actual stdlibloopback auth/limits/readiness/identity/batchorder invalidvectors and missingdependency startup. Verify immutable modelrevision, tokenizerprefixbudget8192, dimsconfiguredMrl normalize. Full descriptor runtimeversions/dtype/device/textencoders/prefixes/normalization/preprocessing3000UTF16 and canonicalSHA256 identity. Testunittest realHTTP and missingmodel error—notliveinference. NoTS/governance/package edits. Coordinate protocol with T049 through coordinator, no changes DEC. Composer2.5 CLI only, own install optionaldeps neverautomatic. Accepted f539d21+0ea1761. 23 unittest OK on the branch. Smoke stays MODEL_NOT_INSTALLED without weights.",
       "rollback": "Revert leaf, retain prior generations; local service optional",
       "verification": {
         "planned": [
           "python -m unittest discover -s local-embeddings -p test_*.py",
           "python local-embeddings/server.py missing dependency/model controlled startup smoke"
         ],
-        "run": []
+        "run": [
+          "Accepted f539d21+0ea1761. 23 unittest OK on the branch. Smoke stays MODEL_NOT_INSTALLED without weights."
+        ]
       }
     },
     {
       "id": "T-049",
       "title": "Puerto y cliente de embeddings locales compartidos",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [
         "T-036",
         "T-038",
@@ -1729,7 +1735,7 @@
       "id": "T-051",
       "title": "Snapshot capturado y compatibilidad de escrituras de stores",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-runtime-051"
@@ -1746,14 +1752,16 @@
         "KG upsert/save with append-only adapter without read compiles/runs; required-read semantic cases fail explicitly without data loss",
         "Split Vector/KG helpers under400lines; all meaningful regressions/typecheck/review pass"
       ],
-      "notes": "Split after rejected T047 draft, source-only rootintegration; serial ownership. Own src/rag/vector-store.ts and vector-store-*.ts, src/kg/kg-store.ts and kg-store-*.ts helpers and persistence tests. Freeze current semantic immutable ops reconciliation; fix precise remaining snapshot bug: materialization cannot index live this.replayLog afterawait, use capturedimmutable batch/ref for persist, preserve clear/new ops for nextsave and correct loadcurrentoverlay semantics. Restore KG save optional read adapter; append-only compatibility upsert/knowndelete must work without baseline read. For semantic cases truly needing unavailable baseline, explicit failure without writes/data loss, never castassume read. Split oversized files <400, move existing helpers notnewarchitecture. Tests deterministicclear while deferredreadmaterialization, capturedset then clear/newset survives save/reload, IOerrorretry/prefixretirement and appendonly compiletest no casts. T038/T047 remainreview untilT051 accepted. Composer2.5 CLI only, no HANDOFF/governance commit, max2 reviews.",
+      "notes": "Split after rejected T047 draft, source-only rootintegration; serial ownership. Own src/rag/vector-store.ts and vector-store-*.ts, src/kg/kg-store.ts and kg-store-*.ts helpers and persistence tests. Freeze current semantic immutable ops reconciliation; fix precise remaining snapshot bug: materialization cannot index live this.replayLog afterawait, use capturedimmutable batch/ref for persist, preserve clear/new ops for nextsave and correct loadcurrentoverlay semantics. Restore KG save optional read adapter; append-only compatibility upsert/knowndelete must work without baseline read. For semantic cases truly needing unavailable baseline, explicit failure without writes/data loss, never castassume read. Split oversized files <400, move existing helpers notnewarchitecture. Tests deterministicclear while deferredreadmaterialization, capturedset then clear/newset survives save/reload, IOerrorretry/prefixretirement and appendonly compiletest no casts. T038/T047 remainreview untilT051 accepted. Composer2.5 CLI only, no HANDOFF/governance commit, max2 reviews. Accepted cb95d0c. Branch re-run: vector/kg persistence tests passed. Snapshot is captured before await.",
       "rollback": "Revert leaf and drafts reverse; preserve vault",
       "verification": {
         "planned": [
           "npx vitest run storage/runtime/preexisting suites",
           "npm run typecheck"
         ],
-        "run": []
+        "run": [
+          "Accepted cb95d0c. Branch re-run: vector/kg persistence tests passed. Snapshot is captured before await."
+        ]
       }
     }
   ]

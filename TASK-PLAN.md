@@ -105,3 +105,5 @@ T-048 e2ba2dc aceptada; núcleo T-036 queda aceptado tras 35 pruebas de runtime 
 T-047 propiedad de split explícita en helpers vector-store-*.ts/kg-store-*.ts; revisión detecta intents mutables, retiro incompleto y orden incorrecto de tombstones, última corrección de la hoja en curso. T-050 revisión requiere descriptor congelado, offline/revisión/prefijos reales y schemas adversos; contrato no aceptado todavía.
 
 T-047 borrador de código integrado excluyendo HANDOFF, sigue REVIEW: 75 tests/typecheck pasan pero faltan snapshot capturado, KG append-only y split. T-051 acota estos tres casos de lifecycle/split, prerequisito de aceptación T-038/T-047 y de T-040/T-049. T-045 se adelanta (deps T-036/T-048); T-049 recibe turn después, sin writes simultáneos.
+
+T-051 `cb95d0c`, T-045 `1480c7b` y T-050 `f539d21`+`0ea1761` aceptadas en la rama. 92 pruebas de las hojas y 23 unittest del sidecar pasan sobre el HEAD integrado. T-038 y T-047 quedan cerradas por T-051. Siguiente paralelo: T-039 (DAG/mesh) y T-049 (cliente local). T-049 solo añade propósito e identidad de embedding en `turn.ts`; no reescribe la resolución de chat de T-045. Composer nativo, sin CLI headless.
