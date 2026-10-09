@@ -56,3 +56,7 @@ Un seam agrupa una frontera explícita; las dependencias serializan sus adaptado
 | S-runtime-043 | src/ui/chain-view.ts, src/ui/chain-canvas.ts, src/ui/projects-view.ts, src/ui/projects/**, src/ui/kg-view.ts, src/ui/kg-scene.ts, src/ui/kg-inspector.ts, src/ui/chat-view.ts, src/ui/chat-types.ts | accepted |
 | S-runtime-044 | package.json, .github/workflows/ci.yml, mcp-server/test/**, vitest.config.ts, scripts/**, README.md, mcp-server/README.md, .env.example, docs/audits/2026-10-08/reproduce.test.ts, docs/registro-arquitectura.md, docs/arquitectura-uml.md | accepted |
 | S-runtime-045 | src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts | accepted |
+
+| S-runtime-046 | src/skills/authoring/mesh.ts, src/orchestrator/note-resolver.ts, src/orchestrator/note-generator.ts, src/core/note-writer.ts and owned tests | accepted |
+
+T036 additionally owns runtime/turn.ts and ports.ts; T043 owns chat-right/composer index-state to present all statuses. T042 consumes scoped note resolver. No overlapping writers.

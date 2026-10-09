@@ -77,3 +77,5 @@ DEC-0022 gobierna el nuevo alcance. JSON canónico. Coordinator escribe gobierno
 - T-045: Resolución proveedores portable — ready; deps T-035
 
 Cada hoja: planner→worker→reviewer/verificador→judge. Entry ready+deps done+worktree; output commit owned+tests+handoff; stop nueva DEC/seam/hecho; DONE exige review sin P1/P2, commands_run reales, evidencia y docs sincronizadas. Live Obsidian unavailable bloquea declaración de producción, no entrega automatizada.
+
+- T-046: Skills/notas permisos y proveedores — ready; deps T036,T040,T045. T042 waits for T046. T036 includes portable turn/ports; T043 includes all mesh state labels.

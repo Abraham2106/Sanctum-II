@@ -1158,7 +1158,7 @@
       "id": "T-035",
       "title": "Frontmatter portable CRLF/BOM",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
       "seams": [
         "S-runtime-035"
@@ -1210,7 +1210,7 @@
         "Intersección project/agent/selection antes de ranking/context/KG/traces; umbral sin fallback. Núcleo sin Obsidian, turn usa puertos estructurales y wrapper notificaciones. Tests de permisos y ranking. No indexer/main/MCP.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/runtime/permissions.ts, src/runtime/retrieval.ts, src/orchestrator/agent-turn.ts. Intersección project/agent/selection antes de ranking/context/KG/traces; umbral sin fallback. Núcleo sin Obsidian, turn usa puertos estructurales y wrapper notificaciones. Tests de permisos y ranking. No indexer/main/MCP. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "notes": "Allowed: src/runtime/permissions.ts, src/runtime/retrieval.ts, src/orchestrator/agent-turn.ts. Intersección project/agent/selection antes de ranking/context/KG/traces; umbral sin fallback. Núcleo sin Obsidian, turn usa puertos estructurales y wrapper notificaciones. Tests de permisos y ranking. No indexer/main/MCP. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned portable files src/runtime/turn.ts and src/runtime/ports.ts allowed. Extract execution logic into portable runtime/turn with notification callback; orchestrator/agent-turn remains compatibility wrapper. TurnResult provenance/projectId fields optional backward compatibility. Retrieval must handle agent selection without leaking denied KG paths. Agent embed query must use sealed model when available.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1224,7 +1224,7 @@
       "id": "T-037",
       "title": "HTTP autenticado loopback",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
       "seams": [
         "S-runtime-037"
@@ -1256,7 +1256,7 @@
       "id": "T-038",
       "title": "Durabilidad por recurso",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
       "seams": [
         "S-runtime-038"
@@ -1274,7 +1274,7 @@
         "Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/core/resource-queue.ts, src/projects/store.ts, src/rag/vector-store.ts, src/kg/kg-store.ts. Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "notes": "Allowed: src/core/resource-queue.ts, src/projects/store.ts, src/rag/vector-store.ts, src/kg/kg-store.ts. Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Project model absence stays empty; validate project IDs; stable locks move checks destination collision. Shared full YAML project parse/serialize allowed using existing shared frontmatter functions; do not modify shared module.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1397,7 +1397,8 @@
       "deps": [
         "T-039",
         "T-040",
-        "T-045"
+        "T-045",
+        "T-046"
       ],
       "seams": [
         "S-runtime-042"
@@ -1415,7 +1416,7 @@
         "Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/main.ts, src/plugin/**, src/app/services.ts, src/app/chat-orchestrator.ts, src/app/pending-turn.ts, src/app/write-turn.ts. Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "notes": "Allowed: src/main.ts, src/plugin/**, src/app/services.ts, src/app/chat-orchestrator.ts, src/app/pending-turn.ts, src/app/write-turn.ts. Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. All note writes must intersect project AND initiating agent scope using permission service; passthrough read scope to resolver; do not auto-write needs_review mesh output. Capture all clients/model/project in request snapshots; cancel lifecycle methods for UI. Notice callbacks injected where needed.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1449,7 +1450,7 @@
         "Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS.",
         "Focused tests pass; independent review; integration evidence"
       ],
-      "notes": "Allowed: src/ui/chain-view.ts, src/ui/chain-canvas.ts, src/ui/projects-view.ts, src/ui/projects/**, src/ui/kg-view.ts, src/ui/kg-scene.ts, src/ui/kg-inspector.ts, src/ui/chat-view.ts, src/ui/chat-types.ts. Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "notes": "Allowed: src/ui/chain-view.ts, src/ui/chain-canvas.ts, src/ui/projects-view.ts, src/ui/projects/**, src/ui/kg-view.ts, src/ui/kg-scene.ts, src/ui/kg-inspector.ts, src/ui/chat-view.ts, src/ui/chat-types.ts. Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/ui/chat-right.ts src/ui/chat-composer.ts src/ui/projects/index-state.ts; correct all nonaccepted mesh labels; cancel buttons wired to service. Read modern-web-guidance SKILL before client JS/DOM edits and follow official API guidance without redesign.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
       "verification": {
         "planned": [
@@ -1520,6 +1521,39 @@
       ],
       "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
       "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": []
+      }
+    },
+    {
+      "id": "T-046",
+      "title": "Skills y notas usan permisos y proveedores comunes",
+      "owner_role": "worker",
+      "status": "ready",
+      "deps": [
+        "T-036",
+        "T-040",
+        "T-045"
+      ],
+      "seams": [
+        "S-runtime-046"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Change outside seam/new design"
+      ],
+      "done_when": [
+        "skill retrieval uses project+context analyst scope+selection before context/traces; note resolver scoped before candidates/read; note generator model per call, writer queue create/update safe; focused tests"
+      ],
+      "notes": "Own src/skills/authoring/mesh.ts, src/orchestrator/note-resolver.ts, src/orchestrator/note-generator.ts, src/core/note-writer.ts, own tests. Use runtime permissions/retrieval and pinned generation identity; agent model per call via provider API. Optional scope param resolver backward compat but plugin wiring required T042. Do not edit app/main/ui/runtime contracts. Explicit synthetic doubles tests only. Commit owned files.",
+      "rollback": "revert leaf, preserve notes",
       "verification": {
         "planned": [
           "npm run typecheck",
