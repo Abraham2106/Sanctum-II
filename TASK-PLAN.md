@@ -123,3 +123,7 @@ T-046 `5dea018` aceptada: 22 pruebas. Skills y notas usan el ámbito efectivo, y
 T-042 `344c3b0` aceptada. `main.ts` queda en 338 líneas. Abrir un proyecto no rellena permisos, un evento del vault no genera embeddings, y `needs_review` no escribe notas. Siguiente: T-043, vistas.
 
 T-043 aceptada en `cb07fea` y `f1714a2`. Las vistas quedan bajo 400 líneas y el canvas recibe cancelación e índice. Siguiente y última hoja de implementación: T-044, CI, smoke y documentación.
+
+T-044 `48d0787` aceptada, con el doble de `note-flow` en `4fb2d5e`. Vitest: 66 archivos, 450 pruebas. CI cubre Windows y Linux. La validación manual dentro de Obsidian sigue pendiente; eso no es un cierre de producción.
+
+T-011 a T-016 quedan bloqueadas: DEC-0022 ya extrajo los servicios y partió las vistas. No se reabren.

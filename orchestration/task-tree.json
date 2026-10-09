@@ -363,7 +363,7 @@
       "id": "T-011",
       "title": "Sacar turno, sesión y diagnósticos de main",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-main"
@@ -383,7 +383,7 @@
         "Hay que cambiar una firma que la UI ya llama",
         "Hay que tocar un archivo fuera del seam"
       ],
-      "notes": "Ponytail. Mismos nombres públicos. No restyles. No dependencias. No corras tests. Cita DEC-0008 en cada archivo nuevo.",
+      "notes": "Ponytail. Mismos nombres públicos. No restyles. No dependencias. No corras tests. Cita DEC-0008 en cada archivo nuevo. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -396,7 +396,7 @@
       "id": "T-012",
       "title": "Sacar confirmación y escritura del orquestador",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-chat"
@@ -415,7 +415,7 @@
         "Hay que editar executeTurn o services.ts",
         "El comportamiento del turno cambia"
       ],
-      "notes": "Ponytail. No corras tests. Cita DEC-0008.",
+      "notes": "Ponytail. No corras tests. Cita DEC-0008. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -428,7 +428,7 @@
       "id": "T-013",
       "title": "Partir la vista de proyectos en tres trabajos",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-projects"
@@ -448,7 +448,7 @@
         "Hay que cambiar el DOM para poder partir",
         "Hay que tocar otra vista"
       ],
-      "notes": "Ponytail. Mismo DOM y mismas clases CSS. No corras tests. Cita DEC-0008.",
+      "notes": "Ponytail. Mismo DOM y mismas clases CSS. No corras tests. Cita DEC-0008. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -461,7 +461,7 @@
       "id": "T-014",
       "title": "Sacar el lienzo de la vista de cadenas",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-chain"
@@ -479,7 +479,7 @@
         "Hay que editar chain-types.ts o chains/executor.ts",
         "Cambia el DOM"
       ],
-      "notes": "Ponytail. No corras tests. Cita DEC-0008.",
+      "notes": "Ponytail. No corras tests. Cita DEC-0008. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -492,7 +492,7 @@
       "id": "T-015",
       "title": "Sacar escena e inspector del grafo",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-kg"
@@ -510,7 +510,7 @@
         "Hay que editar src/kg",
         "Cambia el DOM o las clases CSS"
       ],
-      "notes": "Ponytail. No corras tests. Cita DEC-0008.",
+      "notes": "Ponytail. No corras tests. Cita DEC-0008. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -523,7 +523,7 @@
       "id": "T-016",
       "title": "Borrar los cuatro símbolos que quedaron",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-prune-symbols"
@@ -542,7 +542,7 @@
         "Un símbolo tiene un llamador",
         "Hace falta borrar AgentAuthoringLLM todavía usado"
       ],
-      "notes": "Ponytail. Rebusca. Archivos: src/shared/mesh/core.ts, src/kg/types.ts, src/agents/authoring/types.ts, src/chains/executor.ts. Quita imports huérfanos. No toques executeTurn ni KgOptions. No corras tests.",
+      "notes": "Ponytail. Rebusca. Archivos: src/shared/mesh/core.ts, src/kg/types.ts, src/agents/authoring/types.ts, src/chains/executor.ts. Quita imports huérfanos. No toques executeTurn ni KgOptions. No corras tests. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -1500,7 +1500,7 @@
       "id": "T-044",
       "title": "CI smoke auditoría y documentación",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [
         "T-041",
         "T-043"
@@ -1528,7 +1528,9 @@
           "npm run typecheck",
           "npx vitest run <owned tests>"
         ],
-        "run": []
+        "run": [
+          "Accepted 48d0787 plus note-flow mock 4fb2d5e. Full vitest 66 files / 450 tests passed. Obsidian vault validation still pending."
+        ]
       }
     },
     {
