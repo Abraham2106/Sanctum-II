@@ -1,7 +1,7 @@
 import type { ToolDef } from "../mcp/types.js"
 import type { VaultAdapter } from "../../../src/core/vault-adapter.js"
 import { log } from "../mcp/logger.js"
-import { parseFrontmatter } from "../../../src/shared/agents/frontmatter.js"
+import { FrontmatterError, splitFrontmatter } from "../../../src/shared/agents/frontmatter.js"
 
 interface AgentMeta {
   id: string
@@ -19,9 +19,7 @@ function loadAgents(vault: VaultAdapter): Promise<AgentMeta[]> {
     for (const f of mdFiles) {
       try {
         const content = await vault.read(f)
-        const mc = content.match(/^---\s*\n([\s\S]*?)\n---/)
-        if (!mc) continue
-        const fm = parseFrontmatter(mc[1])
+        const { frontmatter: fm } = splitFrontmatter(content)
         const id = fm.id
         if (!id || typeof id !== "string") continue
 
@@ -34,7 +32,8 @@ function loadAgents(vault: VaultAdapter): Promise<AgentMeta[]> {
           fixed: !internal,
         })
       } catch (err) {
-        log.warn("error leyendo agente", { file: f, error: String(err) })
+        const code = err instanceof FrontmatterError ? err.code : undefined
+        log.warn("error leyendo agente", { file: f, code, error: String(err) })
       }
     }
 

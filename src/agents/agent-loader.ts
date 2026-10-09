@@ -1,6 +1,11 @@
 import type { AgentDefinition } from "./types";
-import { AGENTS_DIR, DEFAULT_MODEL } from "../constants";
+import { AGENTS_DIR } from "../constants";
 import { splitFrontmatter } from "../shared/agents/frontmatter";
+
+/** DEC-0022: loader keeps absent model as empty string for downstream resolution. */
+function modelFromFrontmatter(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
 
 function parseAgentMd(content: string): AgentDefinition {
   const { frontmatter, body: bodyRaw } = splitFrontmatter(content);
@@ -12,7 +17,7 @@ function parseAgentMd(content: string): AgentDefinition {
     id: frontmatter.id || "unknown",
     name: frontmatter.name || "Sin nombre",
     avatar: frontmatter.avatar || "🤖",
-    model: frontmatter.model || DEFAULT_MODEL,
+    model: modelFromFrontmatter(frontmatter.model),
     description: frontmatter.description || "",
     triggers: frontmatter.triggers || [],
     tools: frontmatter.tools || [],
