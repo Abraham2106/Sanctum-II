@@ -2,6 +2,12 @@ import type { Chain, ChainEdge, ChainNode } from "./types";
 import type { AgentDefinition } from "../agents/types";
 import { executeTurn } from "../orchestrator/agent-turn";
 import type { TurnDeps } from "../orchestrator/agent-turn";
+import {
+  DagValidationError,
+  executeDag,
+  stableTopologicalOrder,
+  validateDag,
+} from "../runtime/dag";
 
 interface ExecutionResult {
   nodeId: string;
@@ -10,30 +16,13 @@ interface ExecutionResult {
   usage: { prompt: number; completion: number };
 }
 
-/** Topological sort of a directed graph. Returns node IDs in execution order. */
+/** Topological sort with strict validation (DEC-0022). */
 export function topologicalOrder(nodes: ChainNode[], edges: ChainEdge[]): string[] {
-  const indeg: Record<string, number> = {};
-  const adj: Record<string, string[]> = {};
-  for (const n of nodes) { indeg[n.id] = 0; adj[n.id] = []; }
-  for (const e of edges) {
-    if (adj[e.from]) { adj[e.from].push(e.to); indeg[e.to] = (indeg[e.to] || 0) + 1; }
-  }
-  const q = nodes.filter(n => indeg[n.id] === 0).map(n => n.id);
-  const seen = new Set<string>();
-  const order: string[] = [];
-  while (q.length) {
-    const id = q.shift()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    order.push(id);
-    for (const t of (adj[id] || [])) {
-      indeg[t]--;
-      if (indeg[t] <= 0) q.push(t);
-    }
-  }
-  for (const n of nodes) if (!seen.has(n.id)) order.push(n.id);
-  return order;
+  validateDag({ nodes, edges });
+  return stableTopologicalOrder(nodes, edges);
 }
+
+export { DagValidationError };
 
 export async function executeChain(
   chain: Chain,
@@ -41,40 +30,46 @@ export async function executeChain(
   getAgent: (agentId: string) => Promise<AgentDefinition>,
   userInput: string,
   pathFilter?: string[],
+  signal?: AbortSignal,
 ): Promise<{ order: string[]; results: ExecutionResult[]; finalOutput: string }> {
-  // DEC-0006: el tamaño de chunk y el filtro de carpeta tienen un solo camino
-  const order = topologicalOrder(chain.nodes, chain.edges);
-  const results: ExecutionResult[] = [];
-  const scratchpad: Record<string, string> = {};
-
-  for (const nodeId of order) {
-    const node = chain.nodes.find(n => n.id === nodeId);
-    if (!node) continue;
-    const agent = await getAgent(node.agentId);
-
-    // Build context: project + chat + previous nodes
-    let enrichedInput = userInput;
-    if (Object.keys(scratchpad).length > 0) {
-      const prevContext = Object.entries(scratchpad)
-        .map(([nid, out]) => {
-          const n = chain.nodes.find(x => x.id === nid);
-          return `[${n?.agentId || nid}]: ${out.slice(0, 1000)}`;
-        })
-        .join("\n\n");
-      enrichedInput = `${userInput}\n\n--- Contexto acumulado de la cadena ---\n${prevContext}`;
-    }
-
-    const result = await executeTurn(
-      { ...baseDeps, agent },
-      enrichedInput,
-      false,
-      pathFilter,
-    );
-
-    results.push({ nodeId, agentId: node.agentId, output: result.content, usage: result.usage });
-    scratchpad[nodeId] = result.content;
+  const agentByNode = new Map<string, string>();
+  for (const node of chain.nodes) {
+    agentByNode.set(node.id, node.agentId);
   }
 
-  const finalOutput = results.length > 0 ? results[results.length - 1].output : "";
-  return { order, results, finalOutput };
+  const dagResult = await executeDag({
+    graph: { nodes: chain.nodes, edges: chain.edges },
+    userMessage: userInput,
+    projectId: chain.projectId,
+    provenance: "sanctum.chain",
+    agentIdForNode: (nodeId) => agentByNode.get(nodeId),
+    signal,
+    runNode: async (ctx) => {
+      const node = chain.nodes.find((n) => n.id === ctx.nodeId);
+      if (!node) {
+        throw new Error(`Nodo no encontrado: ${ctx.nodeId}`);
+      }
+      const agent = await getAgent(node.agentId);
+      const result = await executeTurn(
+        { ...baseDeps, agent },
+        ctx.userMessage,
+        false,
+        pathFilter,
+      );
+      return { output: result.content, usage: result.usage };
+    },
+  });
+
+  if (dagResult.status === "failed" || dagResult.status === "cancelled") {
+    throw new Error(dagResult.error ?? `Cadena ${dagResult.status}`);
+  }
+
+  const results: ExecutionResult[] = dagResult.results.map((row) => ({
+    nodeId: row.nodeId,
+    agentId: row.agentId ?? agentByNode.get(row.nodeId) ?? "",
+    output: row.output,
+    usage: row.usage,
+  }));
+
+  return { order: dagResult.order, results, finalOutput: dagResult.finalOutput };
 }

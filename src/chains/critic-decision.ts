@@ -1,34 +1,19 @@
-export function criticAttemptDecision(raw: string): {
+import { parseCriticJSON } from "../shared/mesh/parse";
+import { MESH_DEFAULTS } from "../shared/mesh/types";
+import { passesAcceptGate } from "../runtime/mesh";
+
+export function criticAttemptDecision(
+  raw: string,
+  threshold: number = MESH_DEFAULTS.ACCEPT_THRESHOLD,
+): {
   score: number;
   verdict: "accept" | "reject";
   accepted: boolean;
 } {
-  // DEC-0014: sin score ni accept explícito la cadena no aprueba
-  let score = 0;
-  let verdict: "accept" | "reject" = "reject";
-
-  try {
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start >= 0 && end >= start) {
-      const json = JSON.parse(raw.substring(start, end + 1));
-      const ev = json.evaluation || json;
-
-      const ts = ev.total_score;
-      if (typeof ts === "number" && Number.isFinite(ts)) {
-        score = ts;
-      }
-
-      if (ev.verdict === "accept") {
-        verdict = "accept";
-      } else if (ev.verdict === "reject") {
-        verdict = "reject";
-      }
-    }
-  } catch {
-    // missing or invalid JSON → reject, score 0
-  }
-
-  const accepted = score >= 80 || verdict === "accept";
-  return { score, verdict, accepted };
+  const evaluation = parseCriticJSON(raw);
+  return {
+    score: evaluation.total_score,
+    verdict: evaluation.verdict,
+    accepted: passesAcceptGate(evaluation, threshold),
+  };
 }

@@ -6,19 +6,9 @@ import { TraceWriter } from "../observability/trace-writer.js"
 import { log } from "../mcp/logger.js"
 import { readToolContext } from "./tool-context.js"
 
-// Shared mesh module — single source of truth for types and parsing
-import { parseCriticJSON } from "../../../src/shared/mesh/parse.js"
-import { buildCriticInput } from "../../../src/shared/mesh/core.js"
-import type { CriticEvaluation } from "../../../src/shared/mesh/types.js"
-
-const MAX_ATTEMPTS = 3
-const DEFAULT_THRESHOLD = 80
-const ESCALATE_THRESHOLD = 40
-
-function buildResearcherInput(foragerOutput: string, feedbackList: string[]): string {
-  if (feedbackList.length === 0) return foragerOutput
-  return `${foragerOutput}\n\n---\nFeedback del Critic para regeneración:\n${feedbackList.map(f => `- ${f}`).join("\n")}\n\nPor favor, regenera tu respuesta teniendo en cuenta todo el feedback acumulado. Especialmente mejora los criterios con puntuación más baja.`
-}
+import { MESH_DEFAULTS } from "../../../src/shared/mesh/types.js"
+import type { MeshRunResult } from "../../../src/shared/mesh/types.js"
+import { runMeshCore } from "../../../src/runtime/mesh.js"
 
 export function createRunMeshTool(
   vault: VaultAdapter,
@@ -28,7 +18,6 @@ export function createRunMeshTool(
 ): ToolDef {
   return {
     name: "sanctum_run_mesh",
-    // DEC-0021: el MCP anuncia el uso y lista notas
     description:
       "Corre Forager, Researcher y Critic. No lee el vault. context es el contexto de Forager. Gasta OPENCODE_GO_API_KEY.",
     annotations: { readOnlyHint: false, openWorldHint: true },
@@ -53,7 +42,7 @@ export function createRunMeshTool(
     async handler(args) {
       const prompt = String(args.prompt ?? "").trim()
       if (!prompt) throw new Error("'prompt' es obligatorio")
-      const threshold = typeof args.threshold === "number" ? args.threshold : DEFAULT_THRESHOLD
+      const threshold = typeof args.threshold === "number" ? args.threshold : MESH_DEFAULTS.ACCEPT_THRESHOLD
 
       if (!opencodeApiKey) {
         return {
@@ -63,140 +52,85 @@ export function createRunMeshTool(
       }
 
       const meshTimeoutMs = parseInt(process.env.SANCTUM_MESH_TIMEOUT_MS ?? "120000", 10)
-
       const foragerRag = readToolContext(args)
 
-      const result = await Promise.race([
-        runMesh(prompt, threshold, foragerRag, vault, opencodeBaseUrl, opencodeApiKey, tracer),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`MESH_TIMEOUT - El mesh superó el límite de ${meshTimeoutMs}ms`)), meshTimeoutMs),
-        ),
-      ])
+      const result = await runMeshCore(
+        {
+          runForager: async (userPrompt, signal) => {
+            const forager = await loadAgentFromVault(vault, "forager.md")
+            const foragerBody = renderSystemPrompt(forager, foragerRag, userPrompt)
+            return opencodeChat(foragerBody, userPrompt, opencodeBaseUrl, opencodeApiKey, { signal })
+          },
+          runResearcher: async (input, signal) => {
+            const researcher = await loadAgentFromVault(vault, "researcher.md")
+            const researcherBody = renderSystemPrompt(researcher, "", input)
+            return opencodeChat(researcherBody, input, opencodeBaseUrl, opencodeApiKey, { signal })
+          },
+          runCritic: async (input, signal) => {
+            const critic = await loadAgentFromVault(vault, "critic.md")
+            const criticBody = renderSystemPrompt(critic, "", input)
+            return opencodeChat(criticBody, input, opencodeBaseUrl, opencodeApiKey, { signal })
+          },
+        },
+        {
+          userPrompt: prompt,
+          provenance: "sanctum.mcp.mesh",
+          acceptThreshold: threshold,
+          timeoutMs: meshTimeoutMs,
+        },
+      )
 
-      log.info("sanctum_run_mesh", { traceId: result.trace_id })
+      const traceId = await tracer.writeTrace({
+        type: "mesh_run",
+        agent_id: "orchestrator",
+        input: { user_prompt: prompt },
+        output: result.selectedAttempt?.output ?? "",
+        duration_ms: 0,
+        metadata: {
+          status: result.status,
+          final_score: result.selectedAttempt?.score,
+          attempts: result.attempts.length,
+          attempt_history: result.attempts.map((a) => ({
+            attempt: a.attempt,
+            score: a.evaluation.total_score,
+          })),
+        },
+      })
+
+      log.info("sanctum_run_mesh", { traceId, status: result.status })
 
       return {
-        content: [{ type: "text", text: formatMeshResult(result) }],
+        content: [{ type: "text", text: formatMeshResult(result, traceId) }],
+        isError: result.status === "failed",
       }
     },
   }
 }
 
-async function runMesh(
-  prompt: string,
-  threshold: number,
-  foragerRag: string,
-  vault: VaultAdapter,
-  baseUrl: string,
-  apiKey: string,
-  tracer: TraceWriter,
-): Promise<{
-  status: "accepted" | "escalated"
-  output: string
-  final_score: number
-  attempts: number
-  rejection_reason?: string[]
-  trace_id: string
-}> {
-  const startTime = Date.now()
-
-  const forager = await loadAgentFromVault(vault, "forager.md")
-  const researcher = await loadAgentFromVault(vault, "researcher.md")
-  const critic = await loadAgentFromVault(vault, "critic.md")
-
-  const foragerBody = renderSystemPrompt(forager, foragerRag, prompt)
-  const foragerResult = await opencodeChat(foragerBody, prompt, baseUrl, apiKey)
-
-  let bestOutput = ""
-  let bestScore = 0
-  let lastFeedback: string[] = []
-  const attemptHistory: Array<{ attempt: number; score: number }> = []
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const researcherInput = buildResearcherInput(foragerResult.content, attempt > 1 ? lastFeedback : [])
-    const researcherBody = renderSystemPrompt(researcher, "", researcherInput)
-    const researcherResult = await opencodeChat(researcherBody, researcherInput, baseUrl, apiKey)
-    const output = researcherResult.content
-    bestOutput = output
-
-    const criticInput = buildCriticInput(prompt, output)
-    const criticBody = renderSystemPrompt(critic, "", criticInput)
-    const criticResult = await opencodeChat(criticBody, criticInput, baseUrl, apiKey)
-    const evaluation = parseCriticJSON(criticResult.content)
-
-    const score = evaluation.total_score
-    const feedback = evaluation.feedback_for_regeneration
-    attemptHistory.push({ attempt, score })
-
-    let status: "accepted" | "escalated"
-    let reason: string[] | undefined
-
-    if (score >= threshold) {
-      status = "accepted"
-    } else if (score <= ESCALATE_THRESHOLD) {
-      status = "escalated"
-      reason = feedback.length > 0 ? feedback : [`Score ${score} está por debajo del umbral de escalate (${ESCALATE_THRESHOLD})`]
-    } else if (attempt >= MAX_ATTEMPTS) {
-      status = "accepted"
-    } else if (attempt > 1 && score <= bestScore) {
-      status = "accepted"
-    } else {
-      if (score > bestScore) {
-        bestScore = score
-        bestOutput = output
-      }
-      lastFeedback = feedback
-      continue
-    }
-
-    const traceId = await tracer.writeTrace({
-      type: "mesh_run",
-      agent_id: "orchestrator",
-      input: { system_prompt: foragerBody, user_prompt: prompt },
-      output: bestOutput,
-      duration_ms: Date.now() - startTime,
-      metadata: {
-        status,
-        final_score: score,
-        attempts: attempt,
-        attempt_history: attemptHistory,
-        feedback: reason,
-      },
-    })
-
-    return { status, output: bestOutput, final_score: score, attempts: attempt, rejection_reason: reason, trace_id: traceId }
-  }
-
-  // Fallback (should not normally reach)
-  const traceId = await tracer.writeTrace({
-    type: "mesh_run",
-    agent_id: "orchestrator",
-    input: { user_prompt: prompt },
-    output: bestOutput,
-    duration_ms: Date.now() - startTime,
-    metadata: { status: "accepted", final_score: bestScore, attempts: MAX_ATTEMPTS },
-  })
-  return { status: "accepted", output: bestOutput, final_score: bestScore, attempts: MAX_ATTEMPTS, trace_id: traceId }
-}
-
-function formatMeshResult(r: {
-  status: string
-  output: string
-  final_score: number
-  attempts: number
-  rejection_reason?: string[]
-  trace_id: string
-}): string {
+function formatMeshResult(r: MeshRunResult, traceId: string): string {
   const lines: string[] = []
-  lines.push(`## Mesh ${r.status === "accepted" ? "✅ Aceptado" : "⚠️ Escalado"}`)
-  lines.push(`\`\`\`trace_id: ${r.trace_id}\`\`\``)
-  lines.push(`- **Score final:** ${r.final_score}/100`)
-  lines.push(`- **Intentos:** ${r.attempts}`)
-  if (r.rejection_reason?.length) {
+  const headline =
+    r.status === "accepted"
+      ? "✅ Aceptado"
+      : r.status === "escalated"
+        ? "⚠️ Escalado"
+        : r.status === "needs_review"
+          ? "🔍 Needs review"
+          : r.status === "timed_out"
+            ? "⏱️ Timed out"
+            : r.status === "cancelled"
+              ? "🛑 Cancelado"
+              : "❌ Fallido"
+  lines.push(`## Mesh ${headline}`)
+  lines.push(`\`\`\`trace_id: ${traceId}\`\`\``)
+  lines.push(`- **Estado:** ${r.status}`)
+  lines.push(`- **Score final:** ${r.selectedAttempt?.score ?? "N/A"}/100`)
+  lines.push(`- **Intentos:** ${r.attempts.length}`)
+  if (r.escalationReason?.length) {
     lines.push(`- **Motivo de escalación:**`)
-    for (const reason of r.rejection_reason) lines.push(`  - ${reason}`)
+    for (const reason of r.escalationReason) lines.push(`  - ${reason}`)
   }
   lines.push(``)
-  lines.push(`### Output\n${r.output}`)
+  lines.push(`### Output\n${r.selectedAttempt?.output ?? ""}`)
   return lines.join("\n")
 }

@@ -57,6 +57,16 @@ describe("parseCriticJSON (DEC-0010)", () => {
     expect(ev.verdict).toBe("reject");
   });
 
+  it("defaults missing verdict to reject (DEC-0022)", () => {
+    const raw = JSON.stringify({
+      evaluation: {
+        total_score: 95,
+      },
+    });
+    const ev = parseCriticJSON(raw);
+    expect(ev.verdict).toBe("reject");
+  });
+
   it("defaults threshold to 80 when absent", () => {
     const raw = JSON.stringify({
       evaluation: {
