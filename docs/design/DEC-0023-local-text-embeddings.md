@@ -17,6 +17,30 @@ Nuevo `src/runtime/embedding.ts`: propósito `query|document`, dimensiones, iden
 
 Identidad JSON: `{version:1,backend,model,revision,dims,configFingerprint,descriptor}`. Descriptor efectivo incluye versiones de runtime/librerías, precisión/dispositivo, encoders de texto, revisión de tokenizer, prefijos, pooling/proyección, normalización y preparación/truncado. Fingerprint SHA-256 de JSON canónico con claves ordenadas, UTF-8, sin espacios. Backend, modelo, revisión y dimensiones se comprueban junto al hash. Token, puerto, timeout y scheduling no integran identidad.
 
+Descriptor local exacto (todos los campos obligatorios; sin campos extra):
+
+```json
+{
+  "backend": "sentence-transformers",
+  "model": "google/embeddinggemma-2",
+  "revision": "<40 hex lowercase>",
+  "dims": 768,
+  "runtime": {"python":"<version>","torch":"<version>","transformers":"<version>","sentence_transformers":"<version>"},
+  "device": "cpu",
+  "dtype": "float32",
+  "encoders": ["text"],
+  "tokenizerRevision": "<same immutable revision>",
+  "queryPrefix": "task: search result | query: ",
+  "documentPrefix": "title: none | text: ",
+  "pooling": "model-default",
+  "projection": "model-default",
+  "normalize": true,
+  "preprocessing": {"maxChars":3000,"units":"utf16-code-units","maxTokens":8192,"overflow":"reject"}
+}
+```
+
+device admite cpu/cuda; dtype float32/bfloat16, combinaciones conforme política anterior. dims admite las cuatro dimensiones locales. Fingerprint incluye precisamente este objeto. Gemini usa el mismo shape con backend gemini, revisión `api`, runtime `{adapter:"gemini-v1"}`, device remote, dtype provider, tokenizerRevision provider-managed, prefijos vacíos, normalize false (coseno), maxTokens null y overflow provider; sin pretender revisionar internamente la API remota. La identidad exterior debe coincidir con sus campos duplicados en descriptor.
+
 Prefijos locales exactos, aplicados una sola vez mediante prompt explícito de encode: query `task: search result | query: `; document `title: none | text: `. Normalización L2 obligatoria. Dimensiones locales configuradas al iniciar: 768/512/256/128; cada petición debe coincidir. Preparación compartida en cliente: primeros 3000 code units UTF-16, registrada en descriptor; servidor no añade un segundo truncado. Rechazar entradas que superen 8192 tokens contando prefijo/tokens especiales, sin truncado implícito adicional.
 
 Vectors: batch ordenado y atómico, cantidad exacta, números finitos (booleanos no), dimensión exacta y norma no nula. Proyecto y generación se mantienen separados de identidad del proveedor. Comparación pública de recuperación verifica también fingerprint. Gemini usa adaptador explícito hacia el mismo puerto; mantiene overload compatible modelo/dimensiones, sin fallback entre modelos cuando se fija identidad.

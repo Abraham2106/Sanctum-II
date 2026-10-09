@@ -99,3 +99,5 @@ T-038 borrador 13aa528 en REVIEW, no aceptada: 52 pruebas/typecheck pasan pero p
 T-036 núcleo en REVIEW tras 30 tests/typecheck; T-048 acota el bloqueo restante de identidad projectId en recuperación pública. No aceptación hasta regresiones directas correctas. T-040/T-045 esperan T-048.
 
 DEC-0023 amplía alcance por usuario: T-050 sidecar Python seguro solo texto (independiente), T-049 puerto/cliente/config compartido tras T-036/T-038/T-047/T-048. T-040/T-041/T-042/T-043/T-044 consumen contrato nuevo. T-045 recibe turn después de T-049 sin writer compartido. Gemini default, local explícito, sin descargas/fallback remoto. Validación de modelo real/recursos/calidad pendiente de cache y runtime; tests de contrato separados.
+
+T-048 e2ba2dc aceptada; núcleo T-036 queda aceptado tras 35 pruebas de runtime y typecheck sobre rama integrada. Worktree T-048 retirado/podado con dependencias propias. Descriptor JSON exacto de DEC-0023 congelado para paridad Python/TS.

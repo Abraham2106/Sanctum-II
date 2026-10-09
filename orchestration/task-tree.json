@@ -1195,7 +1195,7 @@
       "id": "T-036",
       "title": "Política permisos y recuperación portable",
       "owner_role": "worker",
-      "status": "review",
+      "status": "done",
       "deps": [
         "T-035"
       ],
@@ -1224,7 +1224,8 @@
         ],
         "run": [
           "Draft core commits integrated; standalone identity comparison review REJECTED after two repair loops",
-          "Independent 30 runtime tests and typecheck passed; T048 required for public retrieval helper"
+          "Independent 30 runtime tests and typecheck passed; T048 required for public retrieval helper",
+          "T048 integrated e2ba2dc; root35 runtime tests and typecheck passed; identity review accepted"
         ]
       }
     },
@@ -1623,7 +1624,7 @@
       "id": "T-048",
       "title": "Identidad estricta de proyecto en recuperación pública",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [],
       "seams": [
         "S-runtime-048"
@@ -1646,14 +1647,16 @@
           "npx vitest run src/runtime",
           "npm run typecheck"
         ],
-        "run": []
+        "run": [
+          "T048 integrated e2ba2dc; root35 runtime tests and typecheck passed; identity review accepted"
+        ]
       }
     },
     {
       "id": "T-050",
       "title": "Servicio local EmbeddingGemma 2 texto",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [],
       "seams": [
         "S-local-service"
