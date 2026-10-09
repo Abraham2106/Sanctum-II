@@ -1698,7 +1698,7 @@
       "id": "T-049",
       "title": "Puerto y cliente de embeddings locales compartidos",
       "owner_role": "worker",
-      "status": "in_progress",
+      "status": "done",
       "deps": [
         "T-036",
         "T-038",
@@ -1730,7 +1730,9 @@
           "npm run typecheck",
           "npm run build"
         ],
-        "run": []
+        "run": [
+          "Accepted 9b9069c and split 2294834. 31 tests passed before the split; worker re-ran 31 and typecheck after. All identity files under 400 lines."
+        ]
       }
     },
     {
@@ -1770,7 +1772,7 @@
       "id": "T-052",
       "title": "AbortSignal en turnos del mesh del plugin",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "in_progress",
       "deps": [
         "T-039",
         "T-049"
@@ -1787,10 +1789,11 @@
         "Editing indexer, UI, or MCP HTTP"
       ],
       "done_when": [
-        "runPortableTurn and executeTurn accept AbortSignal and pass it into chat calls used by Forager, Researcher, and Critic",
-        "Cancel stops new provider calls and ignores late requestUrl results; focused tests and typecheck pass"
+        "TurnDeps.signal reaches runPortableTurn chat CallOptions and the query embed call",
+        "Plugin mesh and chain executor pass that signal and no longer discard it",
+        "An aborted signal prevents the chat port call; focused tests and typecheck pass"
       ],
-      "notes": "Split from T-039 alarm. Own src/runtime/turn.ts and src/orchestrator/agent-turn.ts only to thread an existing AbortSignal. Do not change T-045 provider resolution or T-049 embedding purpose/identity. DAG between-node cancel already exists. Composer 2.5 only. No governance commit.",
+      "notes": "Split from T-039 alarm. Own src/runtime/turn.ts and src/orchestrator/agent-turn.ts only to thread an existing AbortSignal. Do not change T-045 provider resolution or T-049 embedding purpose/identity. DAG between-node cancel already exists. Composer 2.5 only. No governance commit. Also own src/orchestrator/mesh.ts and src/chains/executor.ts only to pass the signal into executeTurn. Put signal on TurnDeps, merge it into chat CallOptions and the query embed call. Do not edit provider resolution, embedding identity, or OpenCodeClient.",
       "rollback": "Revert the leaf commit",
       "verification": {
         "planned": [

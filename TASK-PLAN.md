@@ -109,3 +109,5 @@ T-047 borrador de código integrado excluyendo HANDOFF, sigue REVIEW: 75 tests/t
 T-051 `cb95d0c`, T-045 `1480c7b` y T-050 `f539d21`+`0ea1761` aceptadas en la rama. 92 pruebas de las hojas y 23 unittest del sidecar pasan sobre el HEAD integrado. T-038 y T-047 quedan cerradas por T-051. Siguiente paralelo: T-039 (DAG/mesh) y T-049 (cliente local). T-049 solo añade propósito e identidad de embedding en `turn.ts`; no reescribe la resolución de chat de T-045. Composer nativo, sin CLI headless.
 
 T-039 `8d9a6f2` aceptada: 36 pruebas de DAG, mesh, crítico y parse. La aceptación exige score válido y veredicto explícito. El abort del mesh del plugin, dentro de `executeTurn`, queda en T-052 y espera a que T-049 suelte `turn.ts`.
+
+T-049 aceptada en `9b9069c` y partida en `2294834`. Los archivos de identidad quedan bajo 400 líneas. T-052 puede cablear `AbortSignal` en `TurnDeps` y pasarlo desde el mesh y el ejecutor de cadenas.
