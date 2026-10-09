@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm-build.local/schemas/task-tree.json",
+  "title": "swarm-build task tree",
+  "type": "object",
+  "required": ["version", "feature_id", "gate", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "feature_id": { "type": "string" },
+    "gate": {
+      "type": "object",
+      "required": ["feature_preparation", "implementation_allowed"],
+      "additionalProperties": false,
+      "properties": {
+        "feature_preparation": {
+          "type": "string",
+          "enum": ["blocked", "ready"]
+        },
+        "implementation_allowed": { "type": "boolean" }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/task" }
+    }
+  },
+  "$defs": {
+    "task": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "owner_role",
+        "status",
+        "deps",
+        "seams",
+        "decisions",
+        "max_review_loops"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^T-[0-9]{3}$" },
+        "title": { "type": "string" },
+        "owner_role": {
+          "type": "string",
+          "enum": ["planner", "worker", "reviewer", "judge"]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "blocked",
+            "ready",
+            "in_progress",
+            "review",
+            "done",
+            "killed"
+          ]
+        },
+        "deps": { "type": "array", "items": { "type": "string" } },
+        "seams": { "type": "array", "items": { "type": "string" } },
+        "decisions": { "type": "array", "items": { "type": "string" } },
+        "max_review_loops": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "stop_when": { "type": "array", "items": { "type": "string" } },
+        "done_when": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" },
+        "rollback": { "type": "string" },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "planned": { "type": "array", "items": { "type": "string" } },
+            "run": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

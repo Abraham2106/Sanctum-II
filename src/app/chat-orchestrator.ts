@@ -99,6 +99,7 @@ export class ChatOrchestrator {
       catch (err: any) { console.warn("[Chain] Agent load failed:", err.message); return { id: "fallback", name: "Fallback", avatar: "🤖", model: DEFAULT_MODEL, description: "", triggers: [], tools: [], permissions: { read_paths: [], write_paths: [] }, system_prompt: "" }; }
             },
             chainMsg,
+            snap.pathFilter,
           );
           return { content: `⛓️ Cadena "${chain.name}" (${order.length} pasos):\n\n${result.finalOutput}` };
         } catch (err: any) {
@@ -174,16 +175,25 @@ export class ChatOrchestrator {
         return { content };
       }
       if (action === "modify_note") {
-        const noteName = decision.noteName; // optional, used by resolver
+        const named = typeof decision.noteName === "string" ? decision.noteName.trim() : "";
         const threadData = (snap.projectId && snap.threadId)
           ? await this.svc.projectStore.loadThreadData(snap.projectId, snap.threadId).catch(() => null)
           : null;
-        const resolution = await resolveNoteReference(
-          userMessage,
+        // DEC-0017: noteName manda; el mensaje solo si ese nombre no está
+        let resolution = await resolveNoteReference(
+          named || userMessage,
           threadData?.createdNotes,
           snap.vectorStore,
           snap.geminiBalancer,
         );
+        if (named && resolution.method === "not_found") {
+          resolution = await resolveNoteReference(
+            userMessage,
+            threadData?.createdNotes,
+            snap.vectorStore,
+            snap.geminiBalancer,
+          );
+        }
         if (resolution.method === "not_found") {
           return { content: "No encontré ninguna nota que coincida. ¿Podrías decirme el nombre exacto?" };
         }

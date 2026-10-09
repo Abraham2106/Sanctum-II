@@ -1,10 +1,14 @@
 import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import { VectorStore, type Chunk } from "../rag/vector-store";
-import type { Project } from "./types";
+import { DEFAULT_PROJECT_RAG, type Project } from "./types";
 import { isInternalPath } from "../utils";
 import { ensureVaultDirectory } from "../core/vault-fs";
 
-const CHUNK_MAX_WORDS = 400;
+// DEC-0006: el tamaño de chunk y el filtro de carpeta tienen un solo camino
+function chunkWordsFor(project: Project): number {
+  const n = project.rag?.chunk_words;
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_PROJECT_RAG.chunk_words;
+}
 
 function simpleHash(text: string): string {
   let h = 0;
@@ -15,11 +19,11 @@ function simpleHash(text: string): string {
   return (h >>> 0).toString(36);
 }
 
-function chunkText(text: string): string[] {
+function chunkText(text: string, maxWords: number): string[] {
   const words = text.split(/\s+/).filter((w) => w.length > 0);
   const chunks: string[] = [];
-  for (let i = 0; i < words.length; i += CHUNK_MAX_WORDS) {
-    chunks.push(words.slice(i, i + CHUNK_MAX_WORDS).join(" "));
+  for (let i = 0; i < words.length; i += maxWords) {
+    chunks.push(words.slice(i, i + maxWords).join(" "));
   }
   if (chunks.length === 0) chunks.push("");
   return chunks;
@@ -51,7 +55,8 @@ function isWithinPath(filePath: string, directory: string): boolean {
 }
 
 function isAllowedPath(candidate: string, allowed: string[]): boolean {
-  return allowed.some(root => isWithinPath(candidate, root) || isWithinPath(root, candidate));
+  // DEC-0013: la carpeta pedida tiene que caber en un read_path
+  return allowed.some(root => isWithinPath(candidate, root));
 }
 
 async function loadManifest(adapter: { read: (p: string) => Promise<string>; exists: (p: string) => Promise<boolean> }, projectId: string): Promise<Record<string, string>> {
@@ -139,7 +144,7 @@ async function indexProjectInternal(
         continue;
       }
 
-      const textChunks = chunkText(content);
+      const textChunks = chunkText(content, chunkWordsFor(project));
       console.log(`[KG] 🔄 Indexando: ${noteName} (${textChunks.length} chunks)`);
       const newChunks: Chunk[] = [];
       for (let ci = 0; ci < textChunks.length; ci++) {

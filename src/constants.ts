@@ -1,9 +1,15 @@
 export const VIEW_TYPE_SANCTUM = "sanctum-ii-chat";
 export const RESEARCH_PATH = "Research";
 
+export type LlmProvider = "openai" | "anthropic";
+
 export interface SanctumSettings {
   opencodeApiKey: string;
   opencodeBaseUrl: string;
+  llmProvider: LlmProvider;
+  llmModel: string;
+  anthropicApiKey: string;
+  anthropicBaseUrl: string;
   geminiApiKeys: string;
   tavilyApiKey: string;
   kgEnabled: boolean;
@@ -24,6 +30,10 @@ export interface SanctumSettings {
 export const DEFAULT_SETTINGS: SanctumSettings = {
   opencodeApiKey: "",
   opencodeBaseUrl: "https://api.opencode.ai",
+  llmProvider: "openai",
+  llmModel: "",
+  anthropicApiKey: "",
+  anthropicBaseUrl: "https://api.anthropic.com",
   geminiApiKeys: "",
   tavilyApiKey: "",
   kgEnabled: true,
@@ -46,11 +56,7 @@ export const DEFAULT_SETTINGS: SanctumSettings = {
 export const AGENTS_DIR = "sanctum-agents";
 export const PROJECTS_DIR = "sanctum-projects";
 export const TRACES_DIR = "sanctum-logs/traces";
-export const THREADS_DIR_BASE = "sanctum-logs/threads";
-export const INDEX_DIR_BASE = "sanctum-logs/index";
-export const MEMORY_DIR_BASE = "sanctum-memory";
 export const CHAINS_DIR = "sanctum-chains";
-export const KG_DIR = "sanctum-logs/kg";
 
 export const DEFAULT_MODEL = "deepseek-v4-flash";
 
@@ -59,12 +65,6 @@ export const BUILTIN_AGENTS = {
   RESEARCHER: "researcher",
   CRITIC: "critic",
   ORCHESTRATOR: "orchestrator",
-} as const;
-
-export const MESH_THRESHOLDS = {
-  ACCEPT: 80,
-  ESCALATE: 40,
-  MAX_ATTEMPTS: 3,
 } as const;
 
 export const RAG_DEFAULTS = {

@@ -4,8 +4,7 @@ import type { VectorStore } from "../rag/vector-store";
 import type { AgentDefinition } from "../agents/types";
 import { renderSystemPrompt } from "../agents/agent-loader";
 import { fallbackAgent } from "../agents/fallback";
-
-const MIN_SIMILARITY = 0.65;
+import { RAG_DEFAULTS } from "../constants"; // DEC-0003: un solo dueño para este valor
 
 export async function testEmbeddings(balancer: GeminiBalancer): Promise<string> {
   if (!balancer.hasKeys) return "No hay GEMINI_API_KEYS configuradas";
@@ -35,7 +34,7 @@ export async function ragQuery(
   if (!balancer.hasKeys || store.count === 0) return "";
   try {
     const queryEmbedding = await balancer.embed(query);
-    let results = store.search(queryEmbedding, 5).filter((r) => r.score >= MIN_SIMILARITY);
+    let results = store.search(queryEmbedding, 5).filter((r) => r.score >= RAG_DEFAULTS.MIN_SIMILARITY);
     const agentPerms = agent?.permissions?.read_paths;
     if (pathFilter && pathFilter.length > 0) {
       results = store.filterByPaths(results, pathFilter);

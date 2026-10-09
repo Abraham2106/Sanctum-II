@@ -1,5 +1,4 @@
 import type { CriticEvaluation, CriteriaScore, AttemptRecord, HistoryEntry, LoopState } from "./types";
-import { MESH_DEFAULTS } from "./types";
 
 export function buildResearcherInput(foragerOutput: string, history: HistoryEntry[], attempt: number): string {
   let input = foragerOutput;
@@ -66,24 +65,4 @@ export function buildAttemptHistory(state: LoopState) {
     total_score: a.total_score,
     criteria: a.criteria,
   }));
-}
-
-export function shouldRegenerate(
-  evaluation: CriticEvaluation,
-  state: LoopState,
-  orchestratorAction?: "accept" | "escalate" | "regenerate",
-): boolean {
-  if (orchestratorAction === "accept") return false;
-  if (orchestratorAction === "escalate") return false;
-  if (orchestratorAction === "regenerate") return true;
-
-  if (evaluation.total_score >= MESH_DEFAULTS.ACCEPT_THRESHOLD) return false;
-  if (evaluation.total_score <= MESH_DEFAULTS.ESCALATE_THRESHOLD) return false;
-  if (state.attempt >= state.max_attempts) return false;
-  const bestScore = state.attempts.length > 1
-    ? Math.max(...state.attempts.slice(0, -1).map(a => a.total_score))
-    : 0;
-  if (state.attempt > 1 && evaluation.total_score <= bestScore) return false;
-
-  return true;
 }

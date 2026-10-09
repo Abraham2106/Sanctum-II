@@ -3,8 +3,7 @@ export type { TraceChunk, TraceInput, TraceRecord } from "../shared/observabilit
 import { generateTraceId } from "../shared/observability/trace-types";
 import type { VaultAdapter } from "../core/vault-adapter";
 import { ensureVaultDirectory } from "../core/vault-fs";
-
-const TRACES_DIR = "sanctum-logs/traces";
+import { TRACES_DIR } from "../constants"; // DEC-0003: un solo dueño para este valor
 
 interface ActiveTrace {
   trace: Partial<TraceRecord>;

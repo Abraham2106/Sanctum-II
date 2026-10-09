@@ -4,6 +4,10 @@ import * as path from "path";
 export interface SanctumEnv {
   OPENCODE_GO_API_KEY: string;
   OPENCODE_GO_BASE_URL: string;
+  LLM_PROVIDER: string;
+  LLM_MODEL: string;
+  ANTHROPIC_API_KEY: string;
+  ANTHROPIC_BASE_URL: string;
   GEMINI_API_KEYS: string;
   TAVILY_API_KEY: string;
 }
@@ -36,12 +40,21 @@ export function getEnv(): SanctumEnv {
 
   const opencodeApiKey = envFile.OPENCODE_GO_API_KEY || process.env.OPENCODE_GO_API_KEY || "";
   const opencodeBaseUrl = envFile.OPENCODE_GO_BASE_URL || process.env.OPENCODE_GO_BASE_URL || "https://api.opencode.ai";
+  const llmProvider = envFile.LLM_PROVIDER || process.env.LLM_PROVIDER || "openai";
+  const llmModel = envFile.LLM_MODEL || process.env.LLM_MODEL || "";
+  const anthropicApiKey = envFile.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "";
+  const anthropicBaseUrl =
+    envFile.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
   const geminiKeys = envFile.GEMINI_API_KEYS || process.env.GEMINI_API_KEYS || "";
   const tavilyKey = envFile.TAVILY_API_KEY || process.env.TAVILY_API_KEY || "";
 
   return {
     OPENCODE_GO_API_KEY: opencodeApiKey,
     OPENCODE_GO_BASE_URL: opencodeBaseUrl,
+    LLM_PROVIDER: llmProvider,
+    LLM_MODEL: llmModel,
+    ANTHROPIC_API_KEY: anthropicApiKey,
+    ANTHROPIC_BASE_URL: anthropicBaseUrl,
     GEMINI_API_KEYS: geminiKeys,
     TAVILY_API_KEY: tavilyKey,
   };

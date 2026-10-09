@@ -3,6 +3,7 @@ import { InputModal } from "./input-modal";
 import type { Chain, ChainNode, ChainEdge } from "../chains/types";
 import { ChainStore } from "../chains/store";
 import { topologicalOrder } from "../chains/executor";
+import { criticAttemptDecision } from "../chains/critic-decision";
 import { loadAgentFromVault } from "../agents/agent-loader";
 import type { TurnDeps } from "../orchestrator/agent-turn";
 import type { VaultAdapter } from "../core/vault-adapter";
@@ -263,17 +264,7 @@ export class ChainView extends ItemView {
           const critRes = await this.executeNode(nid, node, input, scratchpad, baseDeps, attempt, MAX_ATTEMPTS);
           if (!critRes) { hasError = true; break; }
 
-          // Parse critic JSON
-          let verdict = "accept"; let score = 80;
-          try {
-            const start = critRes.indexOf('{'), end = critRes.lastIndexOf('}');
-            if (start >= 0 && end >= 0) {
-              const json = JSON.parse(critRes.substring(start, end + 1));
-              const ev = json.evaluation || json;
-              verdict = ev.verdict || "accept";
-              score = ev.total_score ?? 80;
-            }
-          } catch {}
+          const { score, verdict, accepted: criticAccepted } = criticAttemptDecision(critRes);
 
           criticAttempts.set(nid, attempt);
           this.results.set(nid, { nodeId: nid, agentId: node.agentId, output: critRes, status: "ok" });
@@ -286,7 +277,7 @@ export class ChainView extends ItemView {
             if (badge) { badge.textContent = `R${attempt}`; badge.style.background = verdict === "accept" ? "var(--green)" : "var(--orange)"; }
           }
 
-          if (score >= 80 || verdict === "accept") {
+          if (criticAccepted) {
             accepted = true;
           } else if (attempt < MAX_ATTEMPTS) {
             // Regenerate predecessor with feedback

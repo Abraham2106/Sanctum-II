@@ -5,6 +5,7 @@ import { resolvePermissions } from "../mcp/permission-resolver.js"
 import { opencodeChat } from "../llm/opencode-chat.js"
 import { TraceWriter } from "../observability/trace-writer.js"
 import { log } from "../mcp/logger.js"
+import { readToolContext } from "./tool-context.js"
 
 export function createInvokeAgentTool(
   vault: VaultAdapter,
@@ -14,8 +15,10 @@ export function createInvokeAgentTool(
 ): ToolDef {
   return {
     name: "sanctum_invoke_agent",
+    // DEC-0021: el MCP anuncia el uso y lista notas
     description:
-      "Invoca un agente puntual (no el mesh completo) con un prompt. Carga la definición del agente desde sanctum-agents/, resuelve sus permisos, renderiza el system prompt con el cuerpo del agente, y llama al modelo de lenguaje configurado (deepseek-v4-flash). Devuelve el output crudo del agente + trace_id para correlación.",
+      "Llama al agente con su prompt. No busca en el vault. context entra como contexto. Gasta OPENCODE_GO_API_KEY.",
+    annotations: { readOnlyHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
@@ -26,6 +29,10 @@ export function createInvokeAgentTool(
         prompt: {
           type: "string",
           description: "Prompt del usuario. Se inyecta como {{user_prompt}} en el system prompt del agente.",
+        },
+        context: {
+          type: "string",
+          description: "Texto ya recuperado del vault. Entra como contexto.",
         },
       },
       required: ["agent_id", "prompt"],
@@ -49,7 +56,7 @@ export function createInvokeAgentTool(
 
       const agent = await loadAgentFromVault(vault, `${agentId}.md`)
 
-      const systemPrompt = renderSystemPrompt(agent, "", prompt)
+      const systemPrompt = renderSystemPrompt(agent, readToolContext(args), prompt)
 
       const result = await opencodeChat(systemPrompt, prompt, opencodeBaseUrl, opencodeApiKey)
 

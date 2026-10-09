@@ -1,23 +1,47 @@
 import { requestUrl } from "obsidian";
-import { DEFAULT_MODEL } from "../constants";
+import {
+  buildAnthropicWire,
+  buildOpenAiWire,
+  parseAnthropicWire,
+  parseOpenAiWire,
+  resolveChatModel,
+  type ChatMessage,
+  type LlmProvider,
+} from "./chat-wire";
 
-const MODEL = DEFAULT_MODEL;
-
-interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+export interface OpenCodeClientOptions {
+  provider?: LlmProvider;
+  model?: string;
+  anthropicApiKey?: string;
+  anthropicBaseUrl?: string;
 }
+
+const DEFAULT_ANTHROPIC_BASE = "https://api.anthropic.com";
 
 export class OpenCodeClient {
   private baseUrl: string;
   private apiKey: string;
+  private provider: LlmProvider;
+  private model: string;
+  private anthropicApiKey: string;
+  private anthropicBaseUrl: string;
 
-  constructor(baseUrl: string, apiKey: string) {
+  constructor(baseUrl: string, apiKey: string, opts?: OpenCodeClientOptions) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.apiKey = apiKey;
+    this.provider = opts?.provider ?? "openai";
+    this.model = resolveChatModel(opts?.model);
+    this.anthropicApiKey = opts?.anthropicApiKey ?? "";
+    this.anthropicBaseUrl = (opts?.anthropicBaseUrl ?? DEFAULT_ANTHROPIC_BASE).replace(
+      /\/+$/,
+      "",
+    );
   }
 
   get configured(): boolean {
+    if (this.provider === "anthropic") {
+      return this.anthropicApiKey.length > 0;
+    }
     return this.apiKey.length > 0;
   }
 
@@ -26,9 +50,9 @@ export class OpenCodeClient {
     userPrompt: string,
     injectedContext?: string
   ): Promise<{ content: string; usage: { prompt: number; completion: number } }>;
-  async chat(messages: { role: "system" | "user" | "assistant"; content: string }[]): Promise<{ content: string; usage: { prompt: number; completion: number } }>;
+  async chat(messages: ChatMessage[]): Promise<{ content: string; usage: { prompt: number; completion: number } }>;
   async chat(
-    arg1: string | { role: "system" | "user" | "assistant"; content: string }[],
+    arg1: string | ChatMessage[],
     arg2?: string,
     arg3?: string,
   ): Promise<{ content: string; usage: { prompt: number; completion: number } }> {
@@ -36,32 +60,36 @@ export class OpenCodeClient {
       throw new Error("OPENCODE_GO_API_KEY no configurada");
     }
 
-    let messages: { role: "system" | "user" | "assistant"; content: string }[];
+    let messages: ChatMessage[];
 
     if (typeof arg1 === "string") {
-      // Legacy mode: systemPrompt, userPrompt, injectedContext
       const userContent = arg3
         ? `${arg2}\n\nContexto del vault:\n${arg3}`
         : arg2 || "";
       messages = [
-        { role: "system" as const, content: arg1 },
-        { role: "user" as const, content: userContent },
+        { role: "system", content: arg1 },
+        { role: "user", content: userContent },
       ];
     } else {
-      // Messages array mode
       messages = arg1;
     }
 
-    const url = `${this.baseUrl}/chat/completions`;
-    const body = { model: MODEL, messages };
+    const wire =
+      this.provider === "anthropic"
+        ? buildAnthropicWire(
+            this.anthropicBaseUrl,
+            this.anthropicApiKey,
+            this.model,
+            messages,
+          )
+        : buildOpenAiWire(this.baseUrl, this.apiKey, this.model, messages);
+
     const response = await requestUrl({
-      url,
-      method: "POST",
+      url: wire.url,
+      method: wire.method,
       contentType: "application/json",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(body),
+      headers: wire.headers,
+      body: wire.body,
     });
 
     if (response.status !== 200) {
@@ -70,22 +98,19 @@ export class OpenCodeClient {
       );
     }
 
-    const data = response.json;
-    if (!data.choices?.[0]?.message) {
-      throw new Error(`Respuesta sin choices: ${JSON.stringify(data).slice(0, 200)}`);
+    const parsed =
+      this.provider === "anthropic"
+        ? parseAnthropicWire(response.json)
+        : parseOpenAiWire(response.json);
+
+    if (
+      parsed.content &&
+      (parsed.content.includes("does not support") ||
+        parsed.content.startsWith("Cannot read"))
+    ) {
+      console.warn("Sanctum: el modelo devolvió un mensaje de error:", parsed.content);
     }
 
-    const content = data.choices[0].message.content;
-    if (content && (content.includes("does not support") || content.startsWith("Cannot read"))) {
-      console.warn("Sanctum: el modelo devolvió un mensaje de error:", content);
-    }
-
-    return {
-      content: content || "",
-      usage: {
-        prompt: data.usage?.prompt_tokens || 0,
-        completion: data.usage?.completion_tokens || 0,
-      },
-    };
+    return parsed;
   }
 }

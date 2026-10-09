@@ -25,7 +25,10 @@ export function parseCriticJSON(raw: string): CriticEvaluation {
       }
     }
 
-    const totalScore = ev.total_score ?? 80;
+    // DEC-0010: sin total_score numérico el crítico no aprueba
+    const rawTotal = ev.total_score;
+    const totalScore =
+      typeof rawTotal === "number" && Number.isFinite(rawTotal) ? rawTotal : 0;
     const threshold = ev.threshold ?? 80;
     const verdict = ev.verdict === "reject" ? ("reject" as const) : ("accept" as const);
     const feedback = Array.isArray(ev.feedback_for_regeneration) ? ev.feedback_for_regeneration : [];

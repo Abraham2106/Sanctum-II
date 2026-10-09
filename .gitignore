@@ -4,3 +4,8 @@ main.js.map
 .env
 *.env.local
 docs-local/
+# swarm-build:begin
+# Local worker checkouts and run notices. Commit the rest of orchestration/.
+orchestration/worktrees/
+orchestration/runs/
+# swarm-build:end

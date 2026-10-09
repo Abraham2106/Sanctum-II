@@ -7380,7 +7380,9 @@ var log = {
 };
 
 // mcp-server/src/mcp/server.ts
-var PROTOCOL_VERSION = "2024-11-05";
+var SUPPORTED_PROTOCOL_VERSIONS = /* @__PURE__ */ new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
+var INITIALIZE_INSTRUCTIONS = "Sanctum es un vault local de notas Markdown. Para verlo: sanctum_list_notes, sanctum_get_note y sanctum_query_vault. La b\xFAsqueda exige \xEDndice y GEMINI_API_KEYS. sanctum_list_agents enumera agentes. sanctum_invoke_agent y sanctum_run_mesh no leen el vault: pasan context a {{rag_context}} y gastan OPENCODE_GO_API_KEY.";
+var DEFAULT_PROTOCOL_VERSION = "2025-03-26";
 var RpcError = class extends Error {
   constructor(code, message) {
     super(message);
@@ -7416,6 +7418,21 @@ var McpServer = class {
   send(res) {
     process.stdout.write(JSON.stringify(res) + "\n");
   }
+  async handleMessage(req) {
+    const id = req.id ?? null;
+    const isNotification = req.id === void 0 || req.id === null;
+    try {
+      const result = await this.dispatch(req);
+      if (isNotification) return null;
+      return { jsonrpc: "2.0", id, result };
+    } catch (err) {
+      const code = err instanceof RpcError ? err.code : -32e3;
+      const message = err instanceof Error ? err.message : String(err);
+      log.error("fallo en request", { method: req.method, code, message });
+      if (isNotification) return null;
+      return { jsonrpc: "2.0", id, error: { code, message } };
+    }
+  }
   async handleLine(line) {
     let req;
     try {
@@ -7424,17 +7441,10 @@ var McpServer = class {
       log.error("linea json-rpc invalida", { line });
       return;
     }
-    const id = req.id ?? null;
-    const isNotification = req.id === void 0 || req.id === null;
     this.pending++;
     try {
-      const result = await this.dispatch(req);
-      if (!isNotification) this.send({ jsonrpc: "2.0", id, result });
-    } catch (err) {
-      const code = err instanceof RpcError ? err.code : -32e3;
-      const message = err instanceof Error ? err.message : String(err);
-      log.error("fallo en request", { method: req.method, code, message });
-      if (!isNotification) this.send({ jsonrpc: "2.0", id, error: { code, message } });
+      const res = await this.handleMessage(req);
+      if (res) this.send(res);
     } finally {
       this.pending--;
       if (this.closing && this.pending === 0) process.exit(0);
@@ -7446,10 +7456,13 @@ var McpServer = class {
       case "initialize": {
         const params = req.params ?? {};
         this.clientInfo = params.clientInfo ?? null;
+        const pv = params.protocolVersion;
+        const protocolVersion = pv && SUPPORTED_PROTOCOL_VERSIONS.has(pv) ? pv : DEFAULT_PROTOCOL_VERSION;
         return {
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion,
           capabilities: { tools: { listChanged: false } },
-          serverInfo: this.info
+          serverInfo: this.info,
+          instructions: INITIALIZE_INSTRUCTIONS
         };
       }
       case "notifications/initialized":
@@ -7458,11 +7471,15 @@ var McpServer = class {
         return {};
       case "tools/list":
         return {
-          tools: [...this.tools.values()].map((t) => ({
-            name: t.name,
-            description: t.description,
-            inputSchema: t.inputSchema
-          }))
+          tools: [...this.tools.values()].map((t) => {
+            const entry = {
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema
+            };
+            if (t.annotations !== void 0) entry.annotations = t.annotations;
+            return entry;
+          })
         };
       case "tools/call": {
         const params = req.params ?? {};
@@ -7604,16 +7621,22 @@ var FsVaultAdapter = class {
 function globMatch(path3, pattern) {
   const p = pattern.startsWith("/") ? pattern.slice(1) : pattern;
   if (p === "**" || p === "") return true;
-  const regex = new RegExp(
-    "^" + p.replace(/\*\*/g, "___DS___").replace(/\*/g, "[^/]*").replace(/___DS___/g, ".*").replace(/\//g, "\\/").replace(/\./g, "\\.")
-  );
-  return regex.test(path3);
+  const DS = "___DS___";
+  const SS = "___SS___";
+  const body = p.replace(/\*\*/g, DS).replace(/\*/g, SS).replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(new RegExp(DS, "g"), ".*").replace(new RegExp(SS, "g"), "[^/]*");
+  const regexSource = p.endsWith("/") ? `^${body}` : `^${body}$`;
+  return new RegExp(regexSource).test(path3);
 }
 function pathMatchesAny(filePath, patterns) {
   if (!patterns) return true;
   if (patterns.length === 0) return false;
   if (patterns.includes("/**") || patterns.includes("**")) return true;
   return patterns.some((p) => globMatch(filePath, p));
+}
+var SYSTEM_PREFIXES = ["sanctum-", "docs/"];
+function isInternalPath(filePath) {
+  const normalized = filePath.startsWith("/") ? filePath.slice(1) : filePath;
+  return SYSTEM_PREFIXES.some((p) => normalized.startsWith(p));
 }
 
 // src/core/vault-fs.ts
@@ -7626,8 +7649,10 @@ function isNotFoundError(error) {
 // src/rag/vector-store.ts
 var DEFAULT_STORE_PATH = "sanctum-logs/vector-store.jsonl";
 function cosineSimilarity(a, b) {
+  if (a.length !== b.length || a.length === 0) return 0;
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i++) {
+    if (!Number.isFinite(a[i]) || !Number.isFinite(b[i])) return 0;
     dot += a[i] * b[i];
     na += a[i] * a[i];
     nb += b[i] * b[i];
@@ -7876,6 +7901,7 @@ function createListAgentsTool(vault) {
       type: "object",
       properties: {}
     },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     async handler() {
       const agents = await loadAgents(vault);
       log.info("sanctum_list_agents", { count: agents.length });
@@ -7946,6 +7972,7 @@ function createGetNoteTool(vault) {
       },
       required: ["agent_id", "path"]
     },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     async handler(args) {
       const agentId = String(args.agent_id ?? "").trim();
       if (!agentId) throw new Error("'agent_id' es obligatorio");
@@ -7983,21 +8010,29 @@ ${content}` }]
   };
 }
 
-// mcp-server/src/embeddings/gemini-embed.ts
-var GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-var PRIORITY_MODELS = ["gemini-embedding-2", "gemini-embedding-001"];
+// src/embeddings/embed-contract.ts
+var PRIORITY_MODELS = [
+  "gemini-embedding-2",
+  "gemini-embedding-001"
+];
 var OUTPUT_DIMS = 768;
 var MAX_TEXT_LENGTH = 3e3;
+function embedContentJsonBody(model, text) {
+  return {
+    model: `models/${model}`,
+    content: { parts: [{ text }] },
+    outputDimensionality: OUTPUT_DIMS
+  };
+}
+
+// mcp-server/src/embeddings/gemini-embed.ts
+var GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 async function callEmbed(key, model, text) {
   const url = `${GEMINI_BASE}/${model}:embedContent?key=${key}`;
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: `models/${model}`,
-      content: { parts: [{ text }] },
-      outputDimensionality: OUTPUT_DIMS
-    })
+    body: JSON.stringify(embedContentJsonBody(model, text))
   });
   if (!response.ok) {
     const err = new Error(`Gemini API error [${response.status}] modelo "${model}"`);
@@ -8011,28 +8046,42 @@ async function callEmbed(key, model, text) {
   return data.embedding.values;
 }
 async function embedText(text, apiKey) {
+  const keys = apiKey.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
   const truncated = text.slice(0, MAX_TEXT_LENGTH);
   let lastError = null;
   for (const model of PRIORITY_MODELS) {
-    try {
-      const result = await callEmbed(apiKey, model, truncated);
-      log.debug("gemini embed ok", { model, dims: result.length });
-      return result;
-    } catch (err) {
-      const status = err?.status;
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (status === 404 || status === 400) {
-        log.warn("gemini model no disponible, saltando", { model, status });
-        continue;
+    for (const key of keys) {
+      try {
+        const result = await callEmbed(key, model, truncated);
+        log.debug("gemini embed ok", { model, dims: result.length });
+        return result;
+      } catch (err) {
+        const status = err?.status;
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (status === 429 || status === 403) {
+          continue;
+        }
+        if (status === 404 || status === 400) {
+          log.warn("gemini model no disponible, saltando", { model, status });
+          break;
+        }
+        throw lastError;
       }
-      throw lastError;
     }
   }
   throw lastError ?? new Error("Todos los modelos de Gemini fallaron");
 }
 
+// src/constants.ts
+var AGENTS_DIR = "sanctum-agents";
+var TRACES_DIR = "sanctum-logs/traces";
+var DEFAULT_MODEL = "deepseek-v4-flash";
+var RAG_DEFAULTS = {
+  MIN_SIMILARITY: 0.65,
+  TOP_K: 5
+};
+
 // mcp-server/src/tools/query-vault.ts
-var MIN_SIMILARITY = 0.65;
 function createQueryVaultTool(vault, store, geminiApiKey) {
   return {
     name: "sanctum_query_vault",
@@ -8055,6 +8104,7 @@ function createQueryVaultTool(vault, store, geminiApiKey) {
       },
       required: ["agent_id", "query"]
     },
+    annotations: { readOnlyHint: true, openWorldHint: true },
     async handler(args) {
       const agentId = String(args.agent_id ?? "").trim();
       if (!agentId) throw new Error("'agent_id' es obligatorio");
@@ -8078,7 +8128,7 @@ function createQueryVaultTool(vault, store, geminiApiKey) {
       const perms = await resolvePermissions(vault, agentId);
       const embedding = await embedText(query, geminiApiKey);
       const rawResults = store.search(embedding, limit);
-      const filtered = rawResults.filter((r) => r.score >= MIN_SIMILARITY);
+      const filtered = rawResults.filter((r) => r.score >= RAG_DEFAULTS.MIN_SIMILARITY);
       const permitted = store.filterByPaths(filtered, perms.readPaths);
       log.info("sanctum_query_vault", {
         agentId,
@@ -8105,10 +8155,6 @@ ${excerpt}${r.chunk.chunk_text.length > 400 ? "..." : ""}`;
     }
   };
 }
-
-// src/constants.ts
-var AGENTS_DIR = "sanctum-agents";
-var DEFAULT_MODEL = "deepseek-v4-flash";
 
 // src/agents/agent-loader.ts
 function parseAgentMd(content) {
@@ -8143,55 +8189,134 @@ function renderSystemPrompt(agent, ragContext, userPrompt) {
   return agent.system_prompt.replace(/\{\{rag_context\}\}/g, ragContext).replace(/\{\{user_prompt\}\}/g, userPrompt);
 }
 
-// mcp-server/src/llm/opencode-chat.ts
-var MODEL = "deepseek-v4-flash";
-async function opencodeChat(systemPrompt, userPrompt, baseUrl, apiKey) {
-  if (!apiKey) {
-    throw new Error("OPENCODE_GO_API_KEY no configurada");
-  }
+// src/llm/chat-wire.ts
+function resolveChatModel(model) {
+  const trimmed = (model ?? "").trim();
+  return trimmed.length > 0 ? trimmed : DEFAULT_MODEL;
+}
+function buildOpenAiWire(baseUrl, apiKey, model, messages) {
   const url = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  const body = {
-    model: MODEL,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ]
-  };
-  const response = await fetch(url, {
+  return {
+    url,
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ model, messages })
+  };
+}
+function parseOpenAiWire(data) {
+  const d = data;
+  if (!d.choices?.[0]?.message) {
+    throw new Error(`Respuesta sin choices: ${JSON.stringify(data).slice(0, 200)}`);
+  }
+  const content = d.choices[0].message.content ?? "";
+  return {
+    content,
+    usage: {
+      prompt: d.usage?.prompt_tokens ?? 0,
+      completion: d.usage?.completion_tokens ?? 0
+    }
+  };
+}
+function buildAnthropicWire(anthropicBaseUrl, anthropicApiKey, model, messages) {
+  const url = `${anthropicBaseUrl.replace(/\/+$/, "")}/v1/messages`;
+  const systemParts = messages.filter((m) => m.role === "system").map((m) => m.content);
+  const apiMessages = messages.filter((m) => m.role === "user" || m.role === "assistant").map((m) => ({ role: m.role, content: m.content }));
+  const body = {
+    model,
+    max_tokens: 4096,
+    messages: apiMessages
+  };
+  if (systemParts.length > 0) {
+    body.system = systemParts.join("\n\n");
+  }
+  return {
+    url,
+    method: "POST",
+    headers: {
+      "x-api-key": anthropicApiKey,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json"
     },
     body: JSON.stringify(body)
+  };
+}
+function parseAnthropicWire(data) {
+  const d = data;
+  const block = d.content?.find((c) => c.type === "text") ?? d.content?.[0];
+  const content = block?.text ?? "";
+  return {
+    content,
+    usage: {
+      prompt: d.usage?.input_tokens ?? 0,
+      completion: d.usage?.output_tokens ?? 0
+    }
+  };
+}
+
+// mcp-server/src/llm/opencode-chat.ts
+function readProvider() {
+  const p = (process.env.LLM_PROVIDER ?? "openai").trim().toLowerCase();
+  return p === "anthropic" ? "anthropic" : "openai";
+}
+async function opencodeChat(systemPrompt, userPrompt, baseUrl, apiKey) {
+  const provider = readProvider();
+  const model = resolveChatModel(process.env.LLM_MODEL);
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY ?? "";
+  const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt }
+  ];
+  if (provider === "anthropic") {
+    if (!anthropicApiKey) {
+      throw new Error("ANTHROPIC_API_KEY no configurada");
+    }
+  } else if (!apiKey) {
+    throw new Error("OPENCODE_GO_API_KEY no configurada");
+  }
+  const wire = provider === "anthropic" ? buildAnthropicWire(anthropicBaseUrl, anthropicApiKey, model, messages) : buildOpenAiWire(baseUrl, apiKey, model, messages);
+  const response = await fetch(wire.url, {
+    method: wire.method,
+    headers: wire.headers,
+    body: wire.body
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "sin cuerpo");
     throw new Error(`OpenCode API error [${response.status}] \u2014 ${text.slice(0, 300)}`);
   }
   const data = await response.json();
-  if (!data.choices?.[0]?.message) {
-    throw new Error(`Respuesta sin choices: ${JSON.stringify(data).slice(0, 200)}`);
-  }
-  const content = data.choices[0].message.content ?? "";
+  const parsed = provider === "anthropic" ? parseAnthropicWire(data) : parseOpenAiWire(data);
   log.debug("opencode chat ok", {
-    promptTokens: data.usage?.prompt_tokens,
-    completionTokens: data.usage?.completion_tokens
+    provider,
+    model,
+    promptTokens: parsed.usage.prompt,
+    completionTokens: parsed.usage.completion
   });
-  return {
-    content,
-    usage: {
-      prompt: data.usage?.prompt_tokens ?? 0,
-      completion: data.usage?.completion_tokens ?? 0
-    }
-  };
+  return parsed;
+}
+
+// mcp-server/src/tools/tool-context.ts
+function readToolContext(args) {
+  const context = args.context;
+  if (typeof context !== "string") {
+    return "";
+  }
+  if (context.length > 8e3) {
+    return context.slice(0, 8e3);
+  }
+  return context;
 }
 
 // mcp-server/src/tools/invoke-agent.ts
 function createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
   return {
     name: "sanctum_invoke_agent",
-    description: "Invoca un agente puntual (no el mesh completo) con un prompt. Carga la definici\xF3n del agente desde sanctum-agents/, resuelve sus permisos, renderiza el system prompt con el cuerpo del agente, y llama al modelo de lenguaje configurado (deepseek-v4-flash). Devuelve el output crudo del agente + trace_id para correlaci\xF3n.",
+    // DEC-0021: el MCP anuncia el uso y lista notas
+    description: "Llama al agente con su prompt. No busca en el vault. context entra como contexto. Gasta OPENCODE_GO_API_KEY.",
+    annotations: { readOnlyHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
@@ -8202,6 +8327,10 @@ function createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
         prompt: {
           type: "string",
           description: "Prompt del usuario. Se inyecta como {{user_prompt}} en el system prompt del agente."
+        },
+        context: {
+          type: "string",
+          description: "Texto ya recuperado del vault. Entra como contexto."
         }
       },
       required: ["agent_id", "prompt"]
@@ -8220,7 +8349,7 @@ function createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
       const startTime = Date.now();
       await resolvePermissions(vault, agentId);
       const agent = await loadAgentFromVault(vault, `${agentId}.md`);
-      const systemPrompt = renderSystemPrompt(agent, "", prompt);
+      const systemPrompt = renderSystemPrompt(agent, readToolContext(args), prompt);
       const result = await opencodeChat(systemPrompt, prompt, opencodeBaseUrl, opencodeApiKey);
       const traceId = await tracer.writeTrace({
         type: "agent_invocation",
@@ -8264,7 +8393,8 @@ function parseCriticJSON(raw) {
         });
       }
     }
-    const totalScore = ev.total_score ?? 80;
+    const rawTotal = ev.total_score;
+    const totalScore = typeof rawTotal === "number" && Number.isFinite(rawTotal) ? rawTotal : 0;
     const threshold2 = ev.threshold ?? 80;
     const verdict = ev.verdict === "reject" ? "reject" : "accept";
     const feedback = Array.isArray(ev.feedback_for_regeneration) ? ev.feedback_for_regeneration : [];
@@ -8315,7 +8445,9 @@ Por favor, regenera tu respuesta teniendo en cuenta todo el feedback acumulado. 
 function createRunMeshTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
   return {
     name: "sanctum_run_mesh",
-    description: "Dispara el loop completo Forager \u2192 Researcher \u2192 Critic. Forager reformula el prompt y re\xFAne contexto; Researcher produce la investigaci\xF3n; Critic eval\xFAa con score 0-100 y decide aceptar o regenerar (m\xE1x. 3 intentos). Devuelve el resultado final o escalado.",
+    // DEC-0021: el MCP anuncia el uso y lista notas
+    description: "Corre Forager, Researcher y Critic. No lee el vault. context es el contexto de Forager. Gasta OPENCODE_GO_API_KEY.",
+    annotations: { readOnlyHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
@@ -8326,6 +8458,10 @@ function createRunMeshTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
         threshold: {
           type: "number",
           description: "Score m\xEDnimo para aceptar (0-100, default 80). Por debajo se regenera o escala."
+        },
+        context: {
+          type: "string",
+          description: "Texto ya recuperado del vault. Entra como contexto."
         }
       },
       required: ["prompt"]
@@ -8341,8 +8477,9 @@ function createRunMeshTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
         };
       }
       const meshTimeoutMs = parseInt(process.env.SANCTUM_MESH_TIMEOUT_MS ?? "120000", 10);
+      const foragerRag = readToolContext(args);
       const result = await Promise.race([
-        runMesh(prompt, threshold2, vault, opencodeBaseUrl, opencodeApiKey, tracer),
+        runMesh(prompt, threshold2, foragerRag, vault, opencodeBaseUrl, opencodeApiKey, tracer),
         new Promise(
           (_, reject) => setTimeout(() => reject(new Error(`MESH_TIMEOUT - El mesh super\xF3 el l\xEDmite de ${meshTimeoutMs}ms`)), meshTimeoutMs)
         )
@@ -8354,12 +8491,12 @@ function createRunMeshTool(vault, opencodeBaseUrl, opencodeApiKey, tracer) {
     }
   };
 }
-async function runMesh(prompt, threshold2, vault, baseUrl, apiKey, tracer) {
+async function runMesh(prompt, threshold2, foragerRag, vault, baseUrl, apiKey, tracer) {
   const startTime = Date.now();
   const forager = await loadAgentFromVault(vault, "forager.md");
   const researcher = await loadAgentFromVault(vault, "researcher.md");
   const critic = await loadAgentFromVault(vault, "critic.md");
-  const foragerBody = renderSystemPrompt(forager, "", prompt);
+  const foragerBody = renderSystemPrompt(forager, foragerRag, prompt);
   const foragerResult = await opencodeChat(foragerBody, prompt, baseUrl, apiKey);
   let bestOutput = "";
   let bestScore = 0;
@@ -8439,8 +8576,101 @@ ${r.output}`);
   return lines.join("\n");
 }
 
+// mcp-server/src/tools/list-notes.ts
+var MAX_ENTRIES = 200;
+var MORE_LINE = "hay m\xE1s; afina el folder";
+function isPathDenied(folder) {
+  return folder.includes("..") || folder.startsWith("/") || folder.includes("\\");
+}
+function childLabel(fullPath, folder) {
+  const base = folder.replace(/\/$/, "");
+  const prefix = base ? `${base}/` : "";
+  if (prefix && fullPath.startsWith(prefix)) return fullPath.slice(prefix.length);
+  const slash = fullPath.lastIndexOf("/");
+  return slash >= 0 ? fullPath.slice(slash + 1) : fullPath;
+}
+function folderIsInternal(folderPath) {
+  const name = folderPath.replace(/\/$/, "").split("/").pop() ?? folderPath;
+  return isInternalPath(name) || isInternalPath(`${name}/`);
+}
+function createListNotesTool(vault) {
+  return {
+    name: "sanctum_list_notes",
+    description: "Lista un nivel de notas .md que el agente puede leer. Sin folder, devuelve sus read_paths.",
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        agent_id: {
+          type: "string",
+          description: "ID del agente; sus read_paths definen qu\xE9 carpetas puede listar."
+        },
+        folder: {
+          type: "string",
+          description: "Carpeta relativa dentro del vault (un nivel). Vac\xEDo: solo read_paths."
+        }
+      },
+      required: ["agent_id"]
+    },
+    async handler(args) {
+      const agentId = String(args.agent_id ?? "").trim();
+      if (!agentId) throw new Error("'agent_id' es obligatorio");
+      const folder = String(args.folder ?? "").trim();
+      const perms = await resolvePermissions(vault, agentId);
+      if (!folder) {
+        const lines2 = perms.readPaths;
+        const text = lines2.length > 0 ? lines2.join("\n") : "(sin read_paths)";
+        log.info("sanctum_list_notes", { agentId, mode: "read_paths" });
+        return { content: [{ type: "text", text }] };
+      }
+      if (isPathDenied(folder)) {
+        return {
+          content: [{ type: "text", text: "Error: PATH_DENIED" }],
+          isError: true
+        };
+      }
+      const folderNorm = folder.replace(/\/$/, "");
+      const allowed = checkPathPermission(folder, perms) || checkPathPermission(`${folderNorm}/a.md`, perms);
+      if (!allowed) {
+        return {
+          content: [{ type: "text", text: "Error: PERMISSION_DENIED" }],
+          isError: true
+        };
+      }
+      let listed;
+      try {
+        listed = await vault.list(folder);
+      } catch {
+        return {
+          content: [{ type: "text", text: "Error: PATH_DENIED" }],
+          isError: true
+        };
+      }
+      const lines = [];
+      for (const f of listed.files) {
+        if (!f.toLowerCase().endsWith(".md")) continue;
+        if (isInternalPath(f)) continue;
+        lines.push(childLabel(f, folder));
+      }
+      for (const d of listed.folders) {
+        if (isInternalPath(d) || folderIsInternal(d)) continue;
+        lines.push(`${childLabel(d, folder)}/`);
+      }
+      lines.sort((a, b) => a.localeCompare(b));
+      let output = lines;
+      if (output.length > MAX_ENTRIES) {
+        output = output.slice(0, MAX_ENTRIES);
+        output.push(MORE_LINE);
+      }
+      log.info("sanctum_list_notes", { agentId, folder, count: lines.length });
+      return {
+        content: [{ type: "text", text: output.join("\n") || "" }]
+      };
+    }
+  };
+}
+
 // mcp-server/src/observability/trace-writer.ts
-var TRACES_DIR = "sanctum-logs/traces";
 function generateTraceId() {
   const now = /* @__PURE__ */ new Date();
   const ts = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -8469,6 +8699,145 @@ var TraceWriter = class {
   }
 };
 
+// mcp-server/src/mcp/http.ts
+var import_node_http = require("node:http");
+var MAX_POST_BODY_BYTES = 1048576;
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    let stopped = false;
+    const onData = (chunk) => {
+      if (stopped) return;
+      total += chunk.length;
+      if (total > MAX_POST_BODY_BYTES) {
+        stopped = true;
+        req.removeListener("data", onData);
+        req.on("data", () => {
+        });
+        req.resume();
+        reject(new Error("BODY_TOO_LARGE"));
+        return;
+      }
+      chunks.push(chunk);
+    };
+    req.on("data", onData);
+    req.on("end", () => {
+      if (!stopped) resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", (err) => {
+      if (!stopped) reject(err);
+    });
+  });
+}
+function wantsEventStream(accept) {
+  if (!accept) return true;
+  return accept.includes("text/event-stream");
+}
+async function handlePostMcp(server, req, res, token) {
+  if (token) {
+    const auth = req.headers.authorization;
+    if (auth !== `Bearer ${token}`) {
+      res.statusCode = 401;
+      res.end();
+      return;
+    }
+  }
+  let raw;
+  try {
+    raw = await readBody(req);
+  } catch (err) {
+    if (err instanceof Error && err.message === "BODY_TOO_LARGE") {
+      res.statusCode = 413;
+      res.end(() => {
+        req.destroy();
+      });
+      return;
+    }
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  const obj = parsed;
+  if (typeof obj.method !== "string") {
+    res.statusCode = 400;
+    res.end();
+    return;
+  }
+  const rpcReq = parsed;
+  const response = await server.handleMessage(rpcReq);
+  if (response === null) {
+    res.statusCode = 202;
+    res.end();
+    return;
+  }
+  if (wantsEventStream(req.headers.accept)) {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.end(`event: message
+data: ${JSON.stringify(response)}
+
+`);
+    return;
+  }
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(response));
+}
+function startMcpHttp(server, opts) {
+  const host = opts.host ?? "127.0.0.1";
+  if (host === "0.0.0.0") {
+    return Promise.reject(new Error("bind en 0.0.0.0 no permitido"));
+  }
+  return new Promise((resolve, reject) => {
+    const httpServer = (0, import_node_http.createServer)((req, res) => {
+      void (async () => {
+        const path3 = (req.url ?? "").split("?")[0];
+        if (path3 === "/mcp" && req.method === "GET") {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+        if (path3 === "/mcp" && req.method === "POST") {
+          await handlePostMcp(server, req, res, opts.token);
+          return;
+        }
+        res.statusCode = 404;
+        res.end();
+      })().catch(() => {
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.end();
+        }
+      });
+    });
+    httpServer.once("error", reject);
+    httpServer.listen(opts.port, host, () => {
+      const addr = httpServer.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : opts.port;
+      resolve({
+        port,
+        close: () => new Promise((res, rej) => {
+          httpServer.close((err) => err ? rej(err) : res());
+        })
+      });
+    });
+  });
+}
+
 // mcp-server/index.ts
 async function main() {
   const vaultRoot = process.env.SANCTUM_VAULT_PATH ?? import_node_path2.default.resolve(process.cwd(), "notes");
@@ -8477,7 +8846,8 @@ async function main() {
   const server = new McpServer({ name: "sanctum-mcp", version: "0.1.0" });
   server.registerTool(createListAgentsTool(vault));
   server.registerTool(createGetNoteTool(vault));
-  const geminiApiKey = process.env.GEMINI_API_KEYS?.split(",")[0]?.trim();
+  const geminiApiKeyJoined = process.env.GEMINI_API_KEYS?.split(",").map((k) => k.trim()).filter((k) => k.length > 0).join(",");
+  const geminiApiKey = geminiApiKeyJoined || void 0;
   const vectorStore = new VectorStore();
   await vectorStore.load(vault);
   log.info("vector store cargado", { chunks: vectorStore.count, hasKey: !!geminiApiKey });
@@ -8488,7 +8858,17 @@ async function main() {
   log.info("opencode config", { hasKey: !!opencodeApiKey, baseUrl: opencodeBaseUrl });
   server.registerTool(createInvokeAgentTool(vault, opencodeBaseUrl, opencodeApiKey, tracer));
   server.registerTool(createRunMeshTool(vault, opencodeBaseUrl, opencodeApiKey, tracer));
-  server.start();
+  server.registerTool(createListNotesTool(vault));
+  if (process.env.SANCTUM_MCP_HTTP === "1") {
+    await startMcpHttp(server, {
+      port: Number(process.env.SANCTUM_MCP_PORT || 8787) || 8787,
+      host: "127.0.0.1",
+      token: (process.env.SANCTUM_MCP_TOKEN ?? "").trim() || void 0
+    });
+    log.info("sanctum mcp listo (http)", { port: process.env.SANCTUM_MCP_PORT || 8787 });
+  } else {
+    server.start();
+  }
 }
 main().catch((err) => {
   log.error("error fatal en main", { error: String(err) });

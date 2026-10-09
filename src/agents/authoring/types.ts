@@ -1,5 +1,3 @@
-import type { VaultAdapter } from "../../core/vault-adapter";
-
 export const SUPPORTED_AGENT_TOOLS = [
   "rag_query",
   "web_search",
@@ -79,11 +77,6 @@ export interface AgentGenerationResult {
 
 export interface AgentAuthoringLLM {
   chat(messages: { role: "system" | "user"; content: string }[]): Promise<{ content: string }>;
-}
-
-export interface AgentAuthoringOptions {
-  llm?: AgentAuthoringLLM;
-  adapter?: VaultAdapter;
 }
 
 export interface SaveAgentOptions {

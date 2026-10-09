@@ -28,5 +28,6 @@ export interface ToolDef {
   name: string
   description: string
   inputSchema: JsonSchema
+  annotations?: { readOnlyHint?: boolean; openWorldHint?: boolean }
   handler: (args: Record<string, unknown>) => Promise<ToolResult> | ToolResult
 }
