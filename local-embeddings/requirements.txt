@@ -1,3 +1,4 @@
-# Optional runtime dependencies (install manually; service never auto-downloads weights).
-sentence-transformers>=3.0.0
-torch>=2.0.0
+# Optional manual install only. Contract tests use stubs; no pin implies compatibility.
+sentence-transformers
+torch
+transformers

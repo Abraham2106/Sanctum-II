@@ -16,12 +16,33 @@ def hf_hub_cache_dir() -> str:
     return os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
 
 
+def _cache_namespace() -> str:
+    return "models--" + MODEL_ID.replace("/", "--")
+
+
+def _expected_snapshot_rel(revision: str) -> str:
+    return os.path.join(_cache_namespace(), "snapshots", revision)
+
+
+def _has_required_cache_metadata(snap_dir: str) -> bool:
+    config_path = os.path.join(snap_dir, "config.json")
+    modules_path = os.path.join(snap_dir, "modules.json")
+    tokenizer_path = os.path.join(snap_dir, "tokenizer_config.json")
+    return os.path.isfile(config_path) or os.path.isfile(modules_path) or os.path.isfile(tokenizer_path)
+
+
 def snapshot_path_for_revision(revision: str) -> str:
-    cache_name = "models--" + MODEL_ID.replace("/", "--")
-    snap = os.path.join(hf_hub_cache_dir(), cache_name, "snapshots", revision)
+    cache_root = hf_hub_cache_dir()
+    rel = _expected_snapshot_rel(revision)
+    snap = os.path.join(cache_root, rel)
     if not os.path.isdir(snap):
         raise OSError(ERROR_MODEL_NOT_INSTALLED)
-    basename = os.path.basename(os.path.normpath(snap))
-    if basename != revision:
+    expected_real = os.path.realpath(snap)
+    if os.path.basename(expected_real) != revision:
         raise OSError(ERROR_MODEL_NOT_INSTALLED)
-    return snap
+    parent_ns = os.path.basename(os.path.dirname(os.path.dirname(expected_real)))
+    if parent_ns != _cache_namespace():
+        raise OSError(ERROR_MODEL_NOT_INSTALLED)
+    if not _has_required_cache_metadata(expected_real):
+        raise OSError(ERROR_MODEL_NOT_INSTALLED)
+    return expected_real

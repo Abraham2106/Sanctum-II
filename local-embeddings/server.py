@@ -7,7 +7,8 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Optional
 
-from config import ServiceConfig, configured_for_load, validate_bind_config
+from config import ERROR_INVALID_CONFIG, configured_for_load, safe_config_from_env, validate_bind_config
+from errors import client_error_from_value_error
 from http_validation import (
     bearer_authorized,
     host_rejected,
@@ -30,13 +31,27 @@ SMOKE_JOIN_SECONDS = 30.0
 REQUEST_TIMEOUT_SECONDS = 120.0
 
 
+class SafeThreadingHTTPServer(ThreadingHTTPServer):
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        sys.stderr.write("sanctum-local-embed: request error\n")
+
+
 class EmbedHTTPRequestHandler(BaseHTTPRequestHandler):
     server_version = "SanctumLocalEmbed/1"
-    config: ServiceConfig
+    config: Any
     timeout = REQUEST_TIMEOUT_SECONDS
 
     def log_message(self, format: str, *args: Any) -> None:
         sys.stderr.write("sanctum-local-embed: request handled\n")
+
+    def handle_one_request(self) -> None:
+        try:
+            super().handle_one_request()
+        except (TimeoutError, OSError, ConnectionError, BrokenPipeError):
+            try:
+                self._send_json(408, {"version": 1, "error": {"code": "REQUEST_TIMEOUT"}})
+            except Exception:
+                pass
 
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode(
@@ -74,80 +89,94 @@ class EmbedHTTPRequestHandler(BaseHTTPRequestHandler):
         return True
 
     def do_GET(self) -> None:
-        if not self._gate_request():
-            return
-        if self.path.split("?", 1)[0] != "/health":
-            self._send_json(404, {"version": 1, "error": {"code": "NOT_FOUND"}})
-            return
-        state = get_load_state().value
-        payload: dict[str, Any] = {"version": 1, "state": state}
-        code = get_failure_code()
-        if code:
-            payload["code"] = code
-        identity = get_identity()
-        if state == "ready" and identity is not None:
-            payload["identity"] = identity
-        self._send_json(200, payload)
+        try:
+            if not self._gate_request():
+                return
+            if self.path.split("?", 1)[0] != "/health":
+                self._send_json(404, {"version": 1, "error": {"code": "NOT_FOUND"}})
+                return
+            state = get_load_state().value
+            payload: dict[str, Any] = {"version": 1, "state": state}
+            code = get_failure_code()
+            if code:
+                payload["code"] = code
+            identity = get_identity()
+            if state == "ready" and identity is not None:
+                payload["identity"] = identity
+            self._send_json(200, payload)
+        except (TimeoutError, OSError, ConnectionError, BrokenPipeError):
+            self._send_json(408, {"version": 1, "error": {"code": "REQUEST_TIMEOUT"}})
+        except Exception:
+            self._send_json(500, {"version": 1, "error": {"code": "INTERNAL"}})
 
     def do_POST(self) -> None:
-        if not self._gate_request():
-            return
-        if self.path.split("?", 1)[0] != "/embed":
-            self._send_json(404, {"version": 1, "error": {"code": "NOT_FOUND"}})
-            return
-
-        raw, err = self._read_body()
-        if err:
-            status = 413 if err == "BODY_TOO_LARGE" else 400
-            self._send_json(status, {"version": 1, "error": {"code": err}})
-            return
-
-        doc, schema_err = parse_embed_document(raw or b"", self.config)
-        if schema_err:
-            self._send_json(400, {"version": 1, "error": {"code": schema_err}})
-            return
-        assert doc is not None
-
         try:
-            embeddings = embed_request(
-                self.config,
-                doc["purpose"],
-                doc["texts"],
-                doc["identity"],
-            )
-        except RuntimeError as exc:
-            code = str(exc)
-            if code == "BUSY":
-                self._send_json(503, {"version": 1, "error": {"code": "BUSY"}})
+            if not self._gate_request():
                 return
-            if code == "NOT_READY":
+            if self.path.split("?", 1)[0] != "/embed":
+                self._send_json(404, {"version": 1, "error": {"code": "NOT_FOUND"}})
+                return
+
+            raw, err = self._read_body()
+            if err:
+                status = 413 if err == "BODY_TOO_LARGE" else 400
+                self._send_json(status, {"version": 1, "error": {"code": err}})
+                return
+
+            doc, schema_err = parse_embed_document(raw or b"", self.config)
+            if schema_err:
+                self._send_json(400, {"version": 1, "error": {"code": schema_err}})
+                return
+            assert doc is not None
+
+            try:
+                embeddings = embed_request(
+                    self.config,
+                    doc["purpose"],
+                    doc["texts"],
+                    doc["identity"],
+                )
+            except RuntimeError as exc:
+                code = str(exc)
+                if code == "BUSY":
+                    self._send_json(503, {"version": 1, "error": {"code": "BUSY"}})
+                    return
+                if code == "NOT_READY":
+                    self._send_json(503, {"version": 1, "error": {"code": "NOT_READY"}})
+                    return
+                self._send_json(500, {"version": 1, "error": {"code": "INTERNAL"}})
+                return
+            except ValueError as exc:
+                code, status = client_error_from_value_error(exc)
+                self._send_json(status, {"version": 1, "error": {"code": code}})
+                return
+            except Exception:
+                self._send_json(500, {"version": 1, "error": {"code": "INTERNAL"}})
+                return
+
+            server_identity = get_identity()
+            if server_identity is None:
                 self._send_json(503, {"version": 1, "error": {"code": "NOT_READY"}})
                 return
+
+            self._send_json(
+                200,
+                {
+                    "version": 1,
+                    "identity": server_identity,
+                    "embeddings": embeddings,
+                },
+            )
+        except (TimeoutError, OSError, ConnectionError, BrokenPipeError):
+            self._send_json(408, {"version": 1, "error": {"code": "REQUEST_TIMEOUT"}})
+        except Exception:
             self._send_json(500, {"version": 1, "error": {"code": "INTERNAL"}})
-            return
-        except ValueError as exc:
-            self._send_json(400, {"version": 1, "error": {"code": str(exc)}})
-            return
-
-        server_identity = get_identity()
-        if server_identity is None:
-            self._send_json(503, {"version": 1, "error": {"code": "NOT_READY"}})
-            return
-
-        self._send_json(
-            200,
-            {
-                "version": 1,
-                "identity": server_identity,
-                "embeddings": embeddings,
-            },
-        )
 
     def do_OPTIONS(self) -> None:
         self._send_json(403, {"version": 1, "error": {"code": "FORBIDDEN"}})
 
 
-def make_handler(config: ServiceConfig) -> type[EmbedHTTPRequestHandler]:
+def make_handler(config: Any) -> type[EmbedHTTPRequestHandler]:
     class Handler(EmbedHTTPRequestHandler):
         pass
 
@@ -155,13 +184,13 @@ def make_handler(config: ServiceConfig) -> type[EmbedHTTPRequestHandler]:
     return Handler
 
 
-def serve(config: ServiceConfig) -> None:
+def serve(config: Any) -> None:
     validate_bind_config(config)
     if not configured_for_load(config):
         raise SystemExit("SANCTUM_LOCAL_EMBED_TOKEN is required")
     start_background_load(config)
     handler = make_handler(config)
-    httpd = ThreadingHTTPServer((config.host, config.port), handler)
+    httpd = SafeThreadingHTTPServer((config.host, config.port), handler)
     httpd.serve_forever()
 
 
@@ -173,7 +202,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Wait bounded for background load; print sanitized health JSON to stderr.",
     )
     args = parser.parse_args(argv)
-    config = ServiceConfig.from_env()
+    config, cfg_err = safe_config_from_env()
+    if cfg_err or config is None:
+        print(json.dumps({"version": 1, "state": "unconfigured", "code": ERROR_INVALID_CONFIG}), file=sys.stderr)
+        return 2
     try:
         validate_bind_config(config)
     except ValueError:

@@ -13,6 +13,10 @@ ALLOWED_DIMS = frozenset({768, 512, 256, 128})
 MAX_TOKEN_BUDGET = 8192
 PREPROCESS_MAX_UTF16 = 3000
 
+OUTER_IDENTITY_KEYS = frozenset(
+    {"version", "backend", "model", "revision", "dims", "configFingerprint", "descriptor"}
+)
+
 DESCRIPTOR_KEYS = frozenset(
     {
         "backend",
@@ -32,6 +36,9 @@ DESCRIPTOR_KEYS = frozenset(
         "preprocessing",
     }
 )
+
+RUNTIME_KEYS = frozenset({"python", "torch", "transformers", "sentence_transformers"})
+PREPROCESSING_KEYS = frozenset({"maxChars", "units", "maxTokens", "overflow"})
 
 
 def canonical_json_bytes(obj: Any) -> bytes:
@@ -82,7 +89,7 @@ def build_descriptor(
             "overflow": "reject",
         },
     }
-    if set(desc.keys()) != DESCRIPTOR_KEYS:
+    if not descriptor_schema_valid(desc):
         raise ValueError("descriptor shape")
     return desc
 
@@ -105,6 +112,49 @@ def build_identity(
         "configFingerprint": fp,
         "descriptor": descriptor,
     }
+
+
+def descriptor_schema_valid(desc: Any) -> bool:
+    if not isinstance(desc, dict) or set(desc.keys()) != DESCRIPTOR_KEYS:
+        return False
+    if desc["backend"] != BACKEND or desc["model"] != MODEL_ID:
+        return False
+    if type(desc["dims"]) is not int or isinstance(desc["dims"], bool):
+        return False
+    if desc["dims"] not in ALLOWED_DIMS:
+        return False
+    if desc["revision"] != desc["tokenizerRevision"]:
+        return False
+    if not isinstance(desc["revision"], str) or len(desc["revision"]) != 40:
+        return False
+    if desc["device"] not in ("cpu", "cuda"):
+        return False
+    if desc["dtype"] not in ("float32", "bfloat16"):
+        return False
+    if desc["encoders"] != ["text"]:
+        return False
+    if desc["queryPrefix"] != QUERY_PREFIX or desc["documentPrefix"] != DOCUMENT_PREFIX:
+        return False
+    if desc["pooling"] != "model-default" or desc["projection"] != "model-default":
+        return False
+    if desc["normalize"] is not True:
+        return False
+    prep = desc["preprocessing"]
+    if not isinstance(prep, dict) or set(prep.keys()) != PREPROCESSING_KEYS:
+        return False
+    if prep != {
+        "maxChars": PREPROCESS_MAX_UTF16,
+        "units": "utf16-code-units",
+        "maxTokens": MAX_TOKEN_BUDGET,
+        "overflow": "reject",
+    }:
+        return False
+    runtime = desc["runtime"]
+    if not isinstance(runtime, dict) or set(runtime.keys()) != RUNTIME_KEYS:
+        return False
+    if not all(isinstance(runtime[k], str) for k in RUNTIME_KEYS):
+        return False
+    return True
 
 
 def purpose_prefix(purpose: str) -> str:
@@ -142,18 +192,62 @@ def utf16_code_unit_len(text: str) -> int:
     return length
 
 
-def identities_match(expected: dict[str, Any], actual: dict[str, Any]) -> bool:
-    if expected.get("version") != 1 or actual.get("version") != 1:
+def identity_document_valid(doc: Any) -> bool:
+    if not isinstance(doc, dict) or set(doc.keys()) != OUTER_IDENTITY_KEYS:
         return False
-    if type(expected.get("version")) is not int or type(actual.get("version")) is not int:
+    if type(doc["version"]) is not int or isinstance(doc["version"], bool) or doc["version"] != 1:
         return False
-    for key in ("backend", "model", "revision", "dims", "configFingerprint"):
-        if expected.get(key) != actual.get(key):
+    if type(doc["dims"]) is not int or isinstance(doc["dims"], bool):
+        return False
+    for key in ("backend", "model", "revision", "configFingerprint"):
+        if not isinstance(doc[key], str):
             return False
-    if type(expected.get("dims")) is not int or type(actual.get("dims")) is not int:
+    desc = doc["descriptor"]
+    if not descriptor_schema_valid(desc):
         return False
-    exp_desc = expected.get("descriptor")
-    act_desc = actual.get("descriptor")
-    if not isinstance(exp_desc, dict) or not isinstance(act_desc, dict):
+    for key in ("backend", "model", "revision", "dims"):
+        if desc[key] != doc[key]:
+            return False
+    try:
+        return config_fingerprint(desc) == doc["configFingerprint"]
+    except (TypeError, ValueError, OverflowError):
         return False
-    return canonical_json_bytes(exp_desc) == canonical_json_bytes(act_desc)
+
+
+def identities_match(expected: dict[str, Any], actual: dict[str, Any]) -> bool:
+    if not isinstance(expected, dict) or not isinstance(actual, dict):
+        return False
+    if set(expected.keys()) != OUTER_IDENTITY_KEYS or set(actual.keys()) != OUTER_IDENTITY_KEYS:
+        return False
+    if type(expected["version"]) is not int or type(actual["version"]) is not int:
+        return False
+    if expected["version"] != 1 or actual["version"] != 1:
+        return False
+    if type(expected["dims"]) is not int or type(actual["dims"]) is not int:
+        return False
+    if isinstance(expected["dims"], bool) or isinstance(actual["dims"], bool):
+        return False
+    for key in ("backend", "model", "revision", "configFingerprint"):
+        if not isinstance(expected[key], str) or not isinstance(actual[key], str):
+            return False
+        if expected[key] != actual[key]:
+            return False
+    if expected["dims"] != actual["dims"]:
+        return False
+    exp_desc = expected["descriptor"]
+    act_desc = actual["descriptor"]
+    if not descriptor_schema_valid(exp_desc) or not descriptor_schema_valid(act_desc):
+        return False
+    for key in ("backend", "model", "revision", "dims"):
+        if exp_desc[key] != expected[key]:
+            return False
+        if act_desc[key] != actual[key]:
+            return False
+    try:
+        if config_fingerprint(exp_desc) != expected["configFingerprint"]:
+            return False
+        if config_fingerprint(act_desc) != actual["configFingerprint"]:
+            return False
+        return canonical_json_bytes(exp_desc) == canonical_json_bytes(act_desc)
+    except (TypeError, ValueError, OverflowError):
+        return False

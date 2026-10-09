@@ -13,11 +13,12 @@ from config import (
     ServiceConfig,
     validate_operational_config,
 )
-from identity import build_identity, purpose_prefix, validate_revision_string
+from identity import MAX_TOKEN_BUDGET, build_identity, purpose_prefix, validate_revision_string
 from snapshot import snapshot_path_for_revision
 from vectors import coerce_embedding_rows
 
 MIN_SEQ_LEN = 8192
+_PROBE_TEXT = "sanctum readiness probe"
 
 
 class ModelRuntime:
@@ -50,7 +51,13 @@ class ModelRuntime:
         return coerce_embedding_rows(raw, len(texts), self._config.dims)
 
     def probe(self) -> None:
-        self.embed(["sanctum readiness probe"], "query")
+        for purpose in ("query", "document"):
+            prefix = purpose_prefix(purpose)
+            token_count = self.count_tokens(prefix + _PROBE_TEXT)
+            if token_count > MAX_TOKEN_BUDGET:
+                raise RuntimeError(ERROR_LOAD_FAILED)
+        self.embed([_PROBE_TEXT], "query")
+        self.embed([_PROBE_TEXT], "document")
 
     def load(self) -> dict[str, Any]:
         err = validate_operational_config(self._config)
@@ -110,7 +117,12 @@ class ModelRuntime:
         tokenizer = model.tokenizer
         self._model = model
         self._tokenizer = tokenizer
-        self.probe()
+        try:
+            self.probe()
+        except Exception:
+            self._model = None
+            self._tokenizer = None
+            raise RuntimeError(ERROR_LOAD_FAILED)
 
         import sentence_transformers as st
 
