@@ -83,3 +83,5 @@ Cada hoja: planner→worker→reviewer/verificador→judge. Entry ready+deps don
 T-039 incluye los parsers de evaluación compartidos y de cadenas: aceptación exige score válido y veredicto explícito. T-045 depende también de T-036 para reutilizar sus puertos sin duplicarlos. Tras integrar cada hoja se conserva su commit/evidencia y se retira y poda su worktree (instrucción del usuario).
 
 T-035 integrada en 44e7606: revisión independiente Sol 6.1, 11 regresiones y typecheck correctos. Validación Obsidian pendiente del hito final.
+
+Primer control de integración (44e7606): suite completa 28 archivos / 228 pruebas correctas (217 existentes + 11 nuevas). node_modules restaurado con npm ci --ignore-scripts. En Windows, desvincular junction de dependencias antes de git worktree remove; preferir instalaciones independientes.
