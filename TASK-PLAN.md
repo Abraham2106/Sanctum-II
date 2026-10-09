@@ -89,3 +89,5 @@ Primer control de integración (44e7606): suite completa 28 archivos / 228 prueb
 T-041 incluye invoke-agent para resolver su modelo explícito y validar IDs sin recuperación oculta. T-039 consume APIs de proveedor de T-045 y por eso depende de ella. Resolver MCP conserva errores YAML con archivo.
 
 T-037 integrada en 8ddceb2 + c6d1fce, revisión Sol 6.1 y 24 pruebas HTTP correctas. Token/Origin se conectan al arranque en T-041. Worktree propio sin junction, retirado tras conservar evidencia.
+
+T-040 incluye embed-contract (dimensiones explícitas) y la propagación de errores list del adaptador filesystem: un fallo de recorrido no equivale a una carpeta vacía ni autoriza publicar eliminaciones. Conserva todas las protecciones de rutas.

@@ -64,3 +64,5 @@ T036 additionally owns runtime/turn.ts and ports.ts; T043 owns chat-right/compos
 S-runtime-039 incluye src/shared/mesh/parse.ts y src/chains/critic-decision.ts, con sus regresiones. S-runtime-045 consume runtime/ports.ts de T-036 sin modificarlo.
 
 S-runtime-041 incluye mcp-server/src/tools/invoke-agent.ts para configuración y validación de IDs; no cambia el contrato de contexto suministrado.
+
+S-runtime-040 incluye src/embeddings/embed-contract.ts y mcp-server/src/core/fs-vault-adapter.ts exclusivamente para dimensiones y errores de lectura, con regresiones; las protecciones de rutas permanecen.
