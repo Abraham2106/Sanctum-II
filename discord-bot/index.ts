@@ -9,6 +9,7 @@ import {
   renderSystemPrompt,
 } from "../src/agents/agent-loader.js";
 import { parseOpenAiWire } from "../src/llm/chat-wire.js";
+import { fetchWireRequest } from "../src/runtime/providers.js";
 import {
   type DiscordLine,
   formatTail,
@@ -259,15 +260,8 @@ client.on("messageCreate", async (message) => {
         system,
         user,
       );
-      const chatRes = await fetch(wire.url, {
-        method: wire.method,
-        headers: wire.headers,
-        body: wire.body,
-      });
-      if (!chatRes.ok) {
-        throw new Error(`chat HTTP ${chatRes.status}`);
-      }
-      const parsed = parseOpenAiWire(await chatRes.json());
+      const chatJson = await fetchWireRequest(wire);
+      const parsed = parseOpenAiWire(chatJson);
       const outbound = parsed.content;
       const sendReq = buildDiscordSend(channelId, outbound, token);
       const sendRes = await fetch(sendReq.url, {

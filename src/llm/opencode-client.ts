@@ -1,13 +1,15 @@
 import { requestUrl } from "obsidian";
+import { resolveChatModel, type ChatMessage, type LlmProvider } from "./chat-wire";
+import type { CallOptions } from "../runtime/ports";
 import {
-  buildAnthropicWire,
-  buildOpenAiWire,
-  parseAnthropicWire,
-  parseOpenAiWire,
-  resolveChatModel,
-  type ChatMessage,
-  type LlmProvider,
-} from "./chat-wire";
+  buildChatWire,
+  isChatConfigured,
+  parseChatWireResponse,
+  requestUrlWithLogicalCancel,
+  resolveChatCall,
+  type ChatCredentials,
+  type ResolvedChatCall,
+} from "../runtime/providers";
 
 export interface OpenCodeClientOptions {
   provider?: LlmProvider;
@@ -21,16 +23,16 @@ const DEFAULT_ANTHROPIC_BASE = "https://api.anthropic.com";
 export class OpenCodeClient {
   private baseUrl: string;
   private apiKey: string;
-  private provider: LlmProvider;
-  private model: string;
+  private defaultProvider: LlmProvider;
+  private defaultModel: string;
   private anthropicApiKey: string;
   private anthropicBaseUrl: string;
 
   constructor(baseUrl: string, apiKey: string, opts?: OpenCodeClientOptions) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.apiKey = apiKey;
-    this.provider = opts?.provider ?? "openai";
-    this.model = resolveChatModel(opts?.model);
+    this.defaultProvider = opts?.provider ?? "openai";
+    this.defaultModel = resolveChatModel(opts?.model);
     this.anthropicApiKey = opts?.anthropicApiKey ?? "";
     this.anthropicBaseUrl = (opts?.anthropicBaseUrl ?? DEFAULT_ANTHROPIC_BASE).replace(
       /\/+$/,
@@ -38,70 +40,109 @@ export class OpenCodeClient {
     );
   }
 
+  get provider(): LlmProvider {
+    return this.defaultProvider;
+  }
+
+  get model(): string {
+    return this.defaultModel;
+  }
+
   get configured(): boolean {
-    if (this.provider === "anthropic") {
-      return this.anthropicApiKey.length > 0;
-    }
-    return this.apiKey.length > 0;
+    return isChatConfigured(this.clientGlobalResolved(), this.credentials());
+  }
+
+  private credentials(): ChatCredentials {
+    return {
+      openaiBaseUrl: this.baseUrl,
+      openaiApiKey: this.apiKey,
+      anthropicBaseUrl: this.anthropicBaseUrl,
+      anthropicApiKey: this.anthropicApiKey,
+    };
+  }
+
+  private clientGlobalResolved(): ResolvedChatCall {
+    return resolveChatCall({
+      global: { provider: this.defaultProvider, model: this.defaultModel },
+    });
+  }
+
+  private resolvePerCall(options?: CallOptions): ResolvedChatCall {
+    return resolveChatCall({
+      call: options,
+      global: { provider: this.defaultProvider, model: this.defaultModel },
+    });
   }
 
   async chat(
     systemPrompt: string,
     userPrompt: string,
-    injectedContext?: string
+    injectedContext?: string,
+    options?: CallOptions,
   ): Promise<{ content: string; usage: { prompt: number; completion: number } }>;
-  async chat(messages: ChatMessage[]): Promise<{ content: string; usage: { prompt: number; completion: number } }>;
+  async chat(
+    messages: ChatMessage[],
+    options?: CallOptions,
+  ): Promise<{ content: string; usage: { prompt: number; completion: number } }>;
   async chat(
     arg1: string | ChatMessage[],
-    arg2?: string,
+    arg2?: string | CallOptions,
     arg3?: string,
+    arg4?: CallOptions,
   ): Promise<{ content: string; usage: { prompt: number; completion: number } }> {
-    if (!this.configured) {
+    if (Array.isArray(arg1)) {
+      const options = typeof arg2 === "object" && arg2 !== null ? arg2 : undefined;
+      return this.chatMessages(arg1, options);
+    }
+
+    const userPrompt = typeof arg2 === "string" ? arg2 : "";
+    const injectedContext = typeof arg3 === "string" ? arg3 : undefined;
+    const options = arg4;
+
+    const userContent = injectedContext
+      ? `${userPrompt}\n\nContexto del vault:\n${injectedContext}`
+      : userPrompt || "";
+
+    const messages: ChatMessage[] = [
+      { role: "system", content: arg1 },
+      { role: "user", content: userContent },
+    ];
+    return this.chatMessages(messages, options);
+  }
+
+  async chatMessages(
+    messages: ChatMessage[],
+    options?: CallOptions,
+  ): Promise<{ content: string; usage: { prompt: number; completion: number } }> {
+    const resolved = this.resolvePerCall(options);
+    const creds = this.credentials();
+
+    if (!isChatConfigured(resolved, creds)) {
       throw new Error("OPENCODE_GO_API_KEY no configurada");
     }
 
-    let messages: ChatMessage[];
+    const wire = buildChatWire(resolved, creds, messages);
 
-    if (typeof arg1 === "string") {
-      const userContent = arg3
-        ? `${arg2}\n\nContexto del vault:\n${arg3}`
-        : arg2 || "";
-      messages = [
-        { role: "system", content: arg1 },
-        { role: "user", content: userContent },
-      ];
-    } else {
-      messages = arg1;
-    }
-
-    const wire =
-      this.provider === "anthropic"
-        ? buildAnthropicWire(
-            this.anthropicBaseUrl,
-            this.anthropicApiKey,
-            this.model,
-            messages,
-          )
-        : buildOpenAiWire(this.baseUrl, this.apiKey, this.model, messages);
-
-    const response = await requestUrl({
-      url: wire.url,
-      method: wire.method,
-      contentType: "application/json",
-      headers: wire.headers,
-      body: wire.body,
-    });
+    const response = await requestUrlWithLogicalCancel(
+      (req) =>
+        requestUrl({
+          url: req.url,
+          method: req.method,
+          contentType: req.contentType,
+          headers: req.headers,
+          body: req.body,
+        }),
+      wire,
+      resolved.signal,
+    );
 
     if (response.status !== 200) {
       throw new Error(
-        `OpenCode API error [${response.status}] — ${response.text.slice(0, 300)}`
+        `OpenCode API error [${response.status}] — ${response.text.slice(0, 300)}`,
       );
     }
 
-    const parsed =
-      this.provider === "anthropic"
-        ? parseAnthropicWire(response.json)
-        : parseOpenAiWire(response.json);
+    const parsed = parseChatWireResponse(resolved.provider, response.json);
 
     if (
       parsed.content &&

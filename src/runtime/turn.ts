@@ -17,6 +17,7 @@ import type {
   VectorStorePort,
   WebSearchPort,
 } from "./ports";
+import { resolveChatCall, type GlobalChatConfig } from "./providers";
 import {
   embeddingMatchesDims,
   evaluatePreEmbedStoreIdentity,
@@ -55,6 +56,9 @@ export interface PortableTurnInput {
   /** DEC-0022: explicit sealed generation fields for query identity (not copied from store). */
   expectedVectorSeal?: ExpectedVectorSeal;
   notify?: TurnNotifyFn;
+  /** DEC-0022: per-turn overrides merged with agent/project/global chat resolution. */
+  chatOptions?: CallOptions;
+  globalChat?: GlobalChatConfig;
 }
 
 export interface PortableTurnResult {
@@ -70,16 +74,24 @@ function hasWebSearchTool(agent: AgentDefinition, skill?: Skill): boolean {
   return agent.tools?.includes("web_search") || skill?.tools?.includes("web_search") || false;
 }
 
-/** DEC-0022: agent explicit model > project explicit model; empty strings ignored. */
+/** DEC-0022: agent model > project model > global; explicit provider via resolver. */
 export function resolveChatCallOptions(
   agent: AgentDefinition,
   projectModel?: string,
-): CallOptions | undefined {
-  const agentModel = agent.model?.trim();
-  const projModel = projectModel?.trim();
-  const model = agentModel || projModel;
-  if (!model) return undefined;
-  return { model };
+  globalChat?: GlobalChatConfig,
+  callOverrides?: CallOptions,
+): CallOptions {
+  const resolved = resolveChatCall({
+    call: callOverrides,
+    agentModel: agent.model,
+    projectModel,
+    global: globalChat,
+  });
+  return {
+    model: resolved.model,
+    provider: resolved.provider,
+    signal: resolved.signal,
+  };
 }
 
 /**
@@ -100,6 +112,8 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
     ports,
     expectedVectorSeal,
     notify,
+    chatOptions,
+    globalChat,
   } = input;
 
   const project = projectContext?.project;
@@ -111,7 +125,12 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
 
   const topK = project?.rag?.top_k ?? RAG_DEFAULTS.TOP_K;
   const minSim = project?.rag?.min_similarity ?? RAG_DEFAULTS.MIN_SIMILARITY;
-  const chatCallOptions = resolveChatCallOptions(agent, project?.model);
+  const chatCallOptions = resolveChatCallOptions(
+    agent,
+    project?.model,
+    globalChat,
+    chatOptions,
+  );
 
   let ragContext = "";
 

@@ -1,20 +1,18 @@
 import { log } from "../mcp/logger.js"
+import type { CallOptions } from "../../../src/runtime/ports.js"
 import {
-  buildAnthropicWire,
-  buildOpenAiWire,
-  parseAnthropicWire,
-  parseOpenAiWire,
-  resolveChatModel,
-} from "../../../src/llm/chat-wire.js"
+  buildChatWire,
+  chatCredentialsFromNode,
+  fetchWireRequest,
+  globalChatConfigFromEnv,
+  isChatConfigured,
+  parseChatWireResponse,
+  resolveChatCall,
+} from "../../../src/runtime/providers.js"
 
 export interface ChatResult {
   content: string
   usage: { prompt: number; completion: number }
-}
-
-function readProvider(): "openai" | "anthropic" {
-  const p = (process.env.LLM_PROVIDER ?? "openai").trim().toLowerCase()
-  return p === "anthropic" ? "anthropic" : "openai"
 }
 
 export async function opencodeChat(
@@ -22,48 +20,32 @@ export async function opencodeChat(
   userPrompt: string,
   baseUrl: string,
   apiKey: string,
+  callOptions?: CallOptions,
 ): Promise<ChatResult> {
-  const provider = readProvider()
-  const model = resolveChatModel(process.env.LLM_MODEL)
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY ?? ""
-  const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"
+  const env = process.env
+  const global = globalChatConfigFromEnv(env)
+  const resolved = resolveChatCall({ call: callOptions, global })
+  const creds = chatCredentialsFromNode(baseUrl, apiKey, env)
+
+  if (!isChatConfigured(resolved, creds)) {
+    if (resolved.provider === "anthropic") {
+      throw new Error("ANTHROPIC_API_KEY no configurada")
+    }
+    throw new Error("OPENCODE_GO_API_KEY no configurada")
+  }
 
   const messages = [
     { role: "system" as const, content: systemPrompt },
     { role: "user" as const, content: userPrompt },
   ]
 
-  if (provider === "anthropic") {
-    if (!anthropicApiKey) {
-      throw new Error("ANTHROPIC_API_KEY no configurada")
-    }
-  } else if (!apiKey) {
-    throw new Error("OPENCODE_GO_API_KEY no configurada")
-  }
-
-  const wire =
-    provider === "anthropic"
-      ? buildAnthropicWire(anthropicBaseUrl, anthropicApiKey, model, messages)
-      : buildOpenAiWire(baseUrl, apiKey, model, messages)
-
-  const response = await fetch(wire.url, {
-    method: wire.method,
-    headers: wire.headers,
-    body: wire.body,
-  })
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "sin cuerpo")
-    throw new Error(`OpenCode API error [${response.status}] — ${text.slice(0, 300)}`)
-  }
-
-  const data = await response.json()
-  const parsed =
-    provider === "anthropic" ? parseAnthropicWire(data) : parseOpenAiWire(data)
+  const wire = buildChatWire(resolved, creds, messages)
+  const data = await fetchWireRequest(wire, resolved.signal)
+  const parsed = parseChatWireResponse(resolved.provider, data)
 
   log.debug("opencode chat ok", {
-    provider,
-    model,
+    provider: resolved.provider,
+    model: resolved.model,
     promptTokens: parsed.usage.prompt,
     completionTokens: parsed.usage.completion,
   })

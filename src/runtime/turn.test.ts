@@ -5,7 +5,7 @@ import type { Project } from "../projects/types";
 import { DEFAULT_PROJECT_RAG } from "../projects/types";
 import type { ChatPort, EmbedderPort, VectorStorePort } from "./ports";
 import { bindEmbedderPort } from "./ports";
-import { runPortableTurn } from "./turn";
+import { resolveChatCallOptions, runPortableTurn } from "./turn";
 
 const agent: AgentDefinition = {
   id: "test",
@@ -217,6 +217,67 @@ describe("runPortableTurn (DEC-0022)", () => {
     expect(allChunks).not.toHaveBeenCalled();
     expect(tracer.addChunk).not.toHaveBeenCalled();
     expect(result.ragContext).toBe("");
+  });
+
+  it("passes resolved chat options to chat and conversation chatMessages", async () => {
+    const chat = vi.fn().mockResolvedValue({ content: "ok", usage: { prompt: 1, completion: 1 } });
+    const chatMessages = vi
+      .fn()
+      .mockResolvedValue({ content: "conv", usage: { prompt: 2, completion: 2 } });
+    const embedder: EmbedderPort = { hasKeys: false, embed: vi.fn() };
+    const store: VectorStorePort = { count: 0, allChunks: () => [] };
+
+    await runPortableTurn({
+      userInput: "plain",
+      skipRag: true,
+      agent: { ...agent, model: "agent-model" },
+      globalChat: { model: "global-model", provider: "openai" },
+      chatOptions: { provider: "openai", signal: new AbortController().signal },
+      ports: {
+        chat: { chat, chatMessages },
+        embedder,
+        vectorStore: store,
+      },
+    });
+
+    expect(chat).toHaveBeenCalledWith(
+      expect.any(String),
+      "plain",
+      undefined,
+      expect.objectContaining({ model: "agent-model", provider: "openai" }),
+    );
+
+    await runPortableTurn({
+      userInput: "follow-up",
+      skipRag: true,
+      agent: { ...agent, model: "" },
+      projectContext: {
+        project: { ...makeProject([]), model: "project-model" },
+        memory: [],
+        systemPrefix: "",
+      },
+      conversationMessages: [{ role: "user", content: "prior" }],
+      ports: {
+        chat: { chat, chatMessages },
+        embedder,
+        vectorStore: store,
+      },
+    });
+
+    expect(chatMessages).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ model: "project-model", provider: "openai" }),
+    );
+  });
+
+  it("resolveChatCallOptions prefers agent model over project and global", () => {
+    const opts = resolveChatCallOptions(
+      { ...agent, model: "agent-m" },
+      "project-m",
+      { model: "global-m", provider: "anthropic" },
+    );
+    expect(opts.model).toBe("agent-m");
+    expect(opts.provider).toBe("anthropic");
   });
 
   it("bindEmbedderPort forwards sealed model when embed has default second arg (length 1)", async () => {
