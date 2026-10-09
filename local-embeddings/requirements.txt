@@ -1,0 +1,3 @@
+# Optional runtime dependencies (install manually; service never auto-downloads weights).
+sentence-transformers>=3.0.0
+torch>=2.0.0
