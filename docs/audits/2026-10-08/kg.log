@@ -1,0 +1,67 @@
+
+--- cosineSimilarity ---
+  PASS: identical vectors → 1
+  PASS: opposite vectors → -1
+  PASS: orthogonal vectors → 0
+  PASS: collinear vectors → 1
+
+--- noteCentroid ---
+  PASS: centroidA is not null
+  PASS: centroidA[0] = 0.95 (expected 0.95)
+  PASS: centroidA[1] = 0.05 (expected 0.05)
+  PASS: centroidC[2] = 1
+  PASS: nonexistent note → null
+
+--- computeSemanticEdges ---
+  PASS: threshold 0.5 → no edges (A×B ≈ 0.14)
+  PASS: threshold 0.1 → 1 edge (got 1)
+  PASS: edge type is semantic
+  PASS: edge weight > 0
+
+--- expandFromSeeds ---
+  PASS: 1 seed note
+  PASS: seed is note-a
+  neighbor_notes: ["note-b.md"]
+  edges: ["note-a.md↔note-b.md (0.105)"]
+  added_chunks: 2
+  PASS: note-b is a neighbor of note-a
+  PASS: at least 1 edge traversed
+  PASS: at least 1 chunk added from neighbor
+  PASS: threshold 0.9 → no expansion
+  PASS: threshold 0.9 → no edges
+
+--- expandFromSeeds with explicit edges ---
+  PASS: explicit edge note-a→note-c is traversed
+  PASS: at least one explicit edge was traversed
+  PASS: explicit edge weight is 1.0
+  PASS: note-b edge exists after recomputeAllEdges
+  PASS: recomputeAllEdges produces reinforced when explicit+semantic
+  PASS: reinforced edge weight is 1.0
+  PASS: reinforced edge relation is wikilink+semantic
+  PASS: explicit expansion added chunks
+  PASS: added chunks carry relation field
+
+--- recomputeAllEdges ---
+  PASS: recomputeAllEdges created edges
+  PASS: all edges are semantic when useExplicit=false
+  PASS: note-a↔note-b edge found
+  PASS: recomputeAllEdges includes explicit edges
+
+--- recomputeNoteEdges ---
+  PASS: recomputeNoteEdges created edges for note-b
+  PASS: note-b has edges after incremental recompute
+  PASS: note-b↔note-a edge recomputed
+  PASS: recomputeNoteEdges is idempotent (no duplicate edges)
+
+--- layout ---
+  PASS: forceLayout positions all 4 nodes
+  PASS: forceLayout adjacency built
+  PASS: convolutionalLayout positions all 4 nodes
+  PASS: seed is layer 0
+  PASS: b is layer 1
+  PASS: c is layer 2 (2 hops)
+  PASS: d assigned a layer
+  PASS: neighborsOf includes self
+  PASS: neighborsOf includes direct neighbor
+
+✅ All KG tests passed!

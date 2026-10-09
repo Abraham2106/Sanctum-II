@@ -62,3 +62,13 @@ status: ready
 - scope_out: resources MCP, sesión, OAuth, otro paquete, búsqueda dentro de invoke o del mesh.
 - constraints: Ponytail. Cuatro hojas disjuntas. Suite después del merge.
 - open_questions: ninguna
+
+## SANCTUM-RUNTIME-V2
+
+status: ready
+
+Usuario autorizó implementación completa. DEC-0022 y REQ-0002 sustituyen exclusiones históricas para esta iniciativa. goal: núcleo portable, permisos únicos, generaciones inmutables, DAG/mesh común, UI separada, MCP local seguro. open_questions: ninguna. Tests por hoja e integración por hito; live Obsidian pendiente si no disponible.
+
+## SANCTUM-LOCAL-EMBEDDINGS (2026-10-08)
+Status: ready
+Usuario autorizó implementar infraestructura local. DEC-0023 fija backend, identidad, protocolo loopback y propiedad. Sin descargas automáticas ni validación real ficticia.

@@ -1,153 +1,39 @@
 import type { MemoryEntry, Project, Thread, ThreadData, PendingAction, CreatedNote } from "./types";
-import { defaultProject, DEFAULT_PROJECT_RAG } from "./types"; // DEC-0003: un solo dueño para este valor
-import { PROJECTS_DIR, DEFAULT_MODEL } from "../constants";
-import { parseScalar } from "../shared/agents/frontmatter";
+import { defaultProject } from "./types";
+import { PROJECTS_DIR } from "../constants";
 import type { VaultAdapter } from "../core/vault-adapter";
 import { ensureVaultDirectory, isNotFoundError } from "../core/vault-fs";
+import { validateVaultSegmentId, withResourceLock, withResourceLocks } from "../core/resource-queue"; // DEC-0022
+import { parseProjectMd, serializeProject } from "./project-md";
 
-/** Strip path separators and control chars from thread/project IDs to prevent path traversal */
-function sanitizeId(id: string): string {
-  if (!id) return id;
-  return id.replace(/[/\\:;!@#$%^&*()<>"'|?*~`]/g, "").slice(0, 120);
+function assertProjectId(id: string): void {
+  validateVaultSegmentId(id, "project");
 }
 
-function parseProjectMd(content: string): Project {
-  const parts = content.split("---");
-  if (parts.length < 3) {
-    throw new Error("Formato inválido: el archivo debe tener frontmatter --- separado");
-  }
-
-  const fmLines = parts[1].trim().split("\n");
-  const bodyRaw = parts.slice(2).join("---").trim();
-
-  const data: Record<string, any> = {};
-  const rag: Record<string, any> = {};
-  let inRag = false;
-  let inInstructions = false;
-  const instructions: string[] = [];
-
-  for (let i = 0; i < fmLines.length; i++) {
-    const line = fmLines[i];
-    const indent = line.length - line.trimStart().length;
-    const trimmed = line.trim();
-
-    if (trimmed === "" || trimmed === "---") continue;
-
-    if (inRag) {
-      if (indent > 0 && trimmed.includes(":")) {
-        const colonIdx = trimmed.indexOf(":");
-        const key = trimmed.slice(0, colonIdx).trim();
-        const value = trimmed.slice(colonIdx + 1).trim();
-        rag[key] = parseScalar(value);
-        continue;
-      } else {
-        inRag = false;
-      }
-    }
-
-    if (inInstructions) {
-      if (indent > 0 || trimmed === "") {
-        instructions.push(line);
-        continue;
-      } else {
-        inInstructions = false;
-      }
-    }
-
-    if (!trimmed.includes(":")) continue;
-    const colonIdx = trimmed.indexOf(":");
-    const key = trimmed.slice(0, colonIdx).trim();
-    let value = trimmed.slice(colonIdx + 1).trim();
-
-    if (key === "rag") {
-      inRag = true;
-      continue;
-    }
-
-    if (key === "instructions" && value === "|") {
-      inInstructions = true;
-      continue;
-    }
-
-    data[key] = parseScalar(value);
-  }
-
-  data.instructions = instructions.join("\n").trim();
-  if (Object.keys(rag).length > 0) data.rag = rag;
-
-  const id = data.id || "project";
-  let attachedFiles: any[] = [];
-  if (data.attachedFiles) {
-    try { attachedFiles = typeof data.attachedFiles === "string" ? JSON.parse(data.attachedFiles) : data.attachedFiles; } catch (err: any) { console.warn("[Store] attachedFiles parse:", err.message); }
-  }
-  return {
-    id,
-    name: data.name || id,
-    icon: data.icon || "◈",
-    description: data.description || "",
-    instructions: data.instructions || bodyRaw,
-    read_paths: data.read_paths || [],
-    write_paths: data.write_paths || [],
-    outputPath: data.outputPath || `Projects/${id}`,
-    model: data.model || DEFAULT_MODEL,
-    rag: {
-      embed_model: data.rag?.embed_model || "gemini-embedding-2",
-      dims: data.rag?.dims || 768,
-      chunk_words: data.rag?.chunk_words || DEFAULT_PROJECT_RAG.chunk_words,
-      top_k: data.rag?.top_k || 5,
-      min_similarity: data.rag?.min_similarity || DEFAULT_PROJECT_RAG.min_similarity,
-    },
-    files: data.files || [],
-    attachedFiles,
-    starred: data.starred === true,
-  };
+function assertThreadId(threadId: string): void {
+  validateVaultSegmentId(threadId, "thread");
+  if (threadId.length > 120) throw new Error("Invalid thread id");
 }
 
-function serializeProject(p: Project): string {
-  const lines: string[] = ["---"];
-  lines.push(`id: ${p.id}`);
-  lines.push(`name: ${p.name}`);
-  lines.push(`icon: ${p.icon}`);
-  if (p.description) lines.push(`description: ${p.description}`);
-  lines.push(`model: ${p.model}`);
-  lines.push(`read_paths: [${p.read_paths.map(x => `"${x}"`).join(", ")}]`);
-  lines.push(`write_paths: [${p.write_paths.map(x => `"${x}"`).join(", ")}]`);
-  lines.push(`outputPath: ${p.outputPath || `Projects/${p.id}`}`);
-  lines.push("rag:");
-  lines.push(`  embed_model: ${p.rag.embed_model}`);
-  lines.push(`  dims: ${p.rag.dims}`);
-  lines.push(`  chunk_words: ${p.rag.chunk_words}`);
-  lines.push(`  top_k: ${p.rag.top_k}`);
-  lines.push(`  min_similarity: ${p.rag.min_similarity}`);
-  if (p.starred) lines.push(`starred: true`);
-  if (p.files?.length) lines.push(`files: [${p.files.map(x => `"${x}"`).join(", ")}]`);
-  if (p.attachedFiles?.length) lines.push(`attachedFiles: ${JSON.stringify(p.attachedFiles)}`);
-  lines.push("instructions: |");
-  for (const line of p.instructions.split("\n")) lines.push("  " + line);
-  lines.push("---");
-  lines.push("");
-  return lines.join("\n");
+function assertThreadIdentity(thread: Thread, projectId: string, threadId: string): void {
+  if (thread.thread_id !== threadId) {
+    throw new Error(`Thread id mismatch: expected ${threadId}, got ${thread.thread_id}`);
+  }
+  if (thread.project_id !== projectId) {
+    throw new Error(`Thread project mismatch: expected ${projectId}, got ${thread.project_id}`);
+  }
+}
+
+function memoryResource(projectId: string): string {
+  return `memory:${projectId}`;
+}
+
+function threadResource(projectId: string, threadId: string): string {
+  return `thread:${projectId}/${threadId}`;
 }
 
 export class ProjectStore {
-  private threadLocks = new Map<string, Promise<void>>();
-
   constructor(private adapter: VaultAdapter) {}
-
-  private async withThreadLock<T>(id: string, threadId: string, work: () => Promise<T>): Promise<T> {
-    const key = `${id}/${sanitizeId(threadId) || threadId}`;
-    const previous = this.threadLocks.get(key) || Promise.resolve();
-    let release = () => {};
-    const current = new Promise<void>(resolve => { release = resolve; });
-    this.threadLocks.set(key, current);
-    await previous;
-    try {
-      return await work();
-    } finally {
-      release();
-      if (this.threadLocks.get(key) === current) this.threadLocks.delete(key);
-    }
-  }
 
   private projectPath(id: string): string { return `${PROJECTS_DIR}/${id}.md`; }
   private memoryDir(id: string): string { return `sanctum-memory/${id}`; }
@@ -158,27 +44,33 @@ export class ProjectStore {
     await ensureVaultDirectory(this.adapter, dir);
   }
 
-  /** Obsidian rename() refuses to replace an existing file; writes are serialized by their caller. */
   private async writeSerialized(path: string, content: string): Promise<void> {
     await this.adapter.write(path, content);
   }
 
   async loadProject(id: string): Promise<Project> {
+    assertProjectId(id);
     const path = this.projectPath(id);
     try {
       const content = await this.adapter.read(path);
-      return parseProjectMd(content);
+      const project = parseProjectMd(content);
+      if (project.id !== id) {
+        throw new Error(`Project id mismatch: requested ${id}, file has ${project.id}`);
+      }
+      return project;
     } catch (err: any) {
       throw new Error(`No se pudo leer ${path}: ${err.message}`);
     }
   }
 
   async saveProject(p: Project): Promise<void> {
+    assertProjectId(p.id);
     await this.ensureDir(PROJECTS_DIR);
     await this.writeSerialized(this.projectPath(p.id), serializeProject(p));
   }
 
   async projectExists(id: string): Promise<boolean> {
+    assertProjectId(id);
     return await this.adapter.exists(this.projectPath(id)).catch(() => false);
   }
 
@@ -190,6 +82,7 @@ export class ProjectStore {
   }
 
   async loadMemory(id: string): Promise<MemoryEntry[]> {
+    assertProjectId(id);
     try {
       const raw = await this.adapter.read(this.memoryPath(id));
       const entries: MemoryEntry[] = [];
@@ -205,14 +98,22 @@ export class ProjectStore {
   }
 
   async appendMemory(id: string, entry: MemoryEntry): Promise<void> {
-    await this.ensureDir(this.memoryDir(id));
-    const path = this.memoryPath(id);
-    let existing = "";
-    try { existing = await this.adapter.read(path); } catch (err: any) { if (!isNotFoundError(err)) console.warn("[Store] appendMemory read:", err?.message || err); }
-    await this.adapter.write(path, existing + JSON.stringify(entry) + "\n");
+    assertProjectId(id);
+    await withResourceLock(this.adapter, memoryResource(id), async () => {
+      await this.ensureDir(this.memoryDir(id));
+      const path = this.memoryPath(id);
+      let existing = "";
+      try {
+        existing = await this.adapter.read(path);
+      } catch (err: any) {
+        if (!isNotFoundError(err)) throw err;
+      }
+      await this.adapter.write(path, existing + JSON.stringify(entry) + "\n");
+    });
   }
 
   async loadThreads(id: string): Promise<Thread[]> {
+    assertProjectId(id);
     const dir = this.threadsDir(id);
     let listing;
     try {
@@ -233,35 +134,50 @@ export class ProjectStore {
   }
 
   async loadThreadData(id: string, threadId: string): Promise<ThreadData | null> {
-    const safeId = sanitizeId(threadId);
-    if (!safeId) return null;
-    const path = `${this.threadsDir(id)}/${safeId}.json`;
+    assertProjectId(id);
+    assertThreadId(threadId);
+    const path = `${this.threadsDir(id)}/${threadId}.json`;
     try {
       const content = await this.adapter.read(path);
-      return JSON.parse(content);
-    } catch {
-      return null;
+      const data = JSON.parse(content) as ThreadData;
+      assertThreadIdentity(data.thread, id, threadId);
+      return data;
+    } catch (err: any) {
+      if (isNotFoundError(err)) return null;
+      throw err;
     }
   }
 
   async saveThreadData(id: string, thread: Thread, messages: any[], extra?: { summary?: string; pendingAction?: PendingAction; createdNotes?: CreatedNote[] }): Promise<void> {
-    await this.withThreadLock(id, thread.thread_id, () => this.saveThreadDataUnlocked(id, thread, messages, extra));
+    assertProjectId(id);
+    const expectedThreadId = thread.thread_id;
+    assertThreadId(expectedThreadId);
+    await withResourceLock(this.adapter, threadResource(id, expectedThreadId), () =>
+      this.saveThreadDataUnlocked(id, thread, messages, extra, expectedThreadId)
+    );
   }
 
-  private async saveThreadDataUnlocked(id: string, thread: Thread, messages: any[], extra?: { summary?: string; pendingAction?: PendingAction; createdNotes?: CreatedNote[] }): Promise<void> {
+  private async saveThreadDataUnlocked(
+    id: string,
+    thread: Thread,
+    messages: any[],
+    extra?: { summary?: string; pendingAction?: PendingAction; createdNotes?: CreatedNote[] },
+    expectedThreadId?: string
+  ): Promise<void> {
+    const threadId = expectedThreadId ?? thread.thread_id;
+    assertThreadIdentity(thread, id, threadId);
     const dir = this.threadsDir(id);
     await this.ensureDir(dir);
     if (!thread.starred) thread.starred = false;
-    const safeTid = sanitizeId(thread.thread_id) || thread.thread_id;
     let disk: Pick<ThreadData, "summary" | "pendingAction" | "createdNotes"> = {};
     try {
-      const raw = await this.adapter.read(`${dir}/${safeTid}.json`);
+      const raw = await this.adapter.read(`${dir}/${threadId}.json`);
       const parsed = JSON.parse(raw);
       if (parsed.summary) disk.summary = parsed.summary;
       if (parsed.pendingAction) disk.pendingAction = parsed.pendingAction;
       if (parsed.createdNotes) disk.createdNotes = parsed.createdNotes;
     } catch (err: any) {
-      if (!isNotFoundError(err)) console.warn(`[Store] saveThreadData merge ${dir}/${safeTid}.json:`, err?.message || err);
+      if (!isNotFoundError(err)) throw err;
     }
     const hasExtra = (key: "summary" | "pendingAction" | "createdNotes") =>
       extra !== undefined && Object.prototype.hasOwnProperty.call(extra, key);
@@ -272,39 +188,41 @@ export class ProjectStore {
       pendingAction: hasExtra("pendingAction") ? extra?.pendingAction : disk.pendingAction,
       createdNotes: hasExtra("createdNotes") ? extra?.createdNotes : disk.createdNotes,
     };
-    await this.writeSerialized(`${dir}/${safeTid}.json`, JSON.stringify(data, null, 2));
+    await this.writeSerialized(`${dir}/${threadId}.json`, JSON.stringify(data, null, 2));
   }
 
   async deleteThread(id: string, threadId: string): Promise<void> {
-    const safeId = sanitizeId(threadId);
-    if (!safeId) return;
-    const path = `${this.threadsDir(id)}/${safeId}.json`;
-    try {
-      if (this.adapter.remove) await this.adapter.remove(path);
-      else await this.adapter.write(path, "");
-    } catch (_err: any) {}
+    assertProjectId(id);
+    assertThreadId(threadId);
+    await withResourceLock(this.adapter, threadResource(id, threadId), async () => {
+      const path = `${this.threadsDir(id)}/${threadId}.json`;
+      try {
+        if (this.adapter.remove) await this.adapter.remove(path);
+        else await this.adapter.write(path, "");
+      } catch (_err: any) {}
+    });
   }
 
-  /**
-   * Serialized read-modify-write for thread data within this process.
-   */
   async patchThreadData(id: string, threadId: string, updater: (data: ThreadData) => ThreadData): Promise<ThreadData | null> {
-    return this.withThreadLock(id, threadId, async () => {
+    assertProjectId(id);
+    assertThreadId(threadId);
+    return withResourceLock(this.adapter, threadResource(id, threadId), async () => {
       const data = await this.loadThreadData(id, threadId);
       if (!data) return null;
       const patched = updater(data);
+      assertThreadIdentity(patched.thread, id, threadId);
       await this.saveThreadDataUnlocked(id, patched.thread, patched.messages, patched);
       return patched;
     });
   }
 
-  /** Convenience: loads existing thread data or creates skeleton, then saves new messages atomically. */
   async updateThreadMessages(id: string, threadId: string, messages: any[]): Promise<void> {
-    await this.withThreadLock(id, threadId, async () => {
-      const safeId = sanitizeId(threadId) || threadId;
-      const existing = await this.loadThreadData(id, safeId);
+    assertProjectId(id);
+    assertThreadId(threadId);
+    await withResourceLock(this.adapter, threadResource(id, threadId), async () => {
+      const existing = await this.loadThreadData(id, threadId);
       const thread: any = existing?.thread || {
-        thread_id: safeId, project_id: id,
+        thread_id: threadId, project_id: id,
         title: "Nueva conversación", created_at: Date.now(), updated_at: Date.now(), starred: false,
       };
       thread.updated_at = Date.now();
@@ -315,53 +233,69 @@ export class ProjectStore {
   }
 
   async renameThread(id: string, threadId: string, newTitle: string): Promise<void> {
-    const safeId = sanitizeId(threadId);
-    if (!safeId) return;
-    const data = await this.loadThreadData(id, safeId);
-    if (!data) return;
-    data.thread.title = newTitle;
-    data.thread.updated_at = Date.now();
-    await this.saveThreadData(id, data.thread, data.messages, data);
+    assertProjectId(id);
+    assertThreadId(threadId);
+    await withResourceLock(this.adapter, threadResource(id, threadId), async () => {
+      const data = await this.loadThreadData(id, threadId);
+      if (!data) return;
+      data.thread.title = newTitle;
+      data.thread.updated_at = Date.now();
+      await this.saveThreadDataUnlocked(id, data.thread, data.messages, data);
+    });
   }
 
   async toggleStarThread(id: string, threadId: string): Promise<Thread | null> {
-    const safeId = sanitizeId(threadId);
-    if (!safeId) return null;
-    const data = await this.loadThreadData(id, safeId);
-    if (!data) return null;
-    data.thread.starred = !data.thread.starred;
-    await this.saveThreadData(id, data.thread, data.messages, data);
-    return data.thread;
+    assertProjectId(id);
+    assertThreadId(threadId);
+    return withResourceLock(this.adapter, threadResource(id, threadId), async () => {
+      const data = await this.loadThreadData(id, threadId);
+      if (!data) return null;
+      data.thread.starred = !data.thread.starred;
+      await this.saveThreadDataUnlocked(id, data.thread, data.messages, data);
+      return data.thread;
+    });
   }
 
   async moveThread(id: string, threadId: string, targetProjectId: string): Promise<void> {
-    const safeId = sanitizeId(threadId);
-    if (!safeId) return;
+    assertProjectId(id);
+    assertProjectId(targetProjectId);
+    assertThreadId(threadId);
     if (id === targetProjectId) return;
-    await this.withThreadLock(id, safeId, async () => {
-      const data = await this.loadThreadData(id, safeId);
+
+    const sourceKey = threadResource(id, threadId);
+    const targetKey = threadResource(targetProjectId, threadId);
+    await withResourceLocks(this.adapter, [sourceKey, targetKey], async () => {
+      const data = await this.loadThreadData(id, threadId);
       if (!data) return;
+
+      const destPath = `${this.threadsDir(targetProjectId)}/${threadId}.json`;
+      if (await this.adapter.exists(destPath)) {
+        throw new Error(`Thread already exists in destination project: ${targetProjectId}/${threadId}`);
+      }
+
       data.thread.project_id = targetProjectId;
       data.thread.updated_at = Date.now();
-      await this.saveThreadData(targetProjectId, data.thread, data.messages, {
+      await this.saveThreadDataUnlocked(targetProjectId, data.thread, data.messages, {
         summary: data.summary,
         pendingAction: data.pendingAction,
         createdNotes: data.createdNotes,
       });
-      const sourcePath = `${this.threadsDir(id)}/${safeId}.json`;
+
+      const sourcePath = `${this.threadsDir(id)}/${threadId}.json`;
       if (this.adapter.remove) await this.adapter.remove(sourcePath);
       else await this.adapter.write(sourcePath, "");
     });
   }
 
   async createProject(id: string, name?: string): Promise<Project> {
+    assertProjectId(id);
     const p = defaultProject(id, name || id);
     await this.saveProject(p);
     return p;
   }
 
-  /** Deletes a project's metadata file. Thread data and memory files remain orphaned. */
   async deleteProject(id: string): Promise<void> {
+    assertProjectId(id);
     const path = this.projectPath(id);
     try {
       if (this.adapter.remove) await this.adapter.remove(path);

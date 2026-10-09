@@ -1,8 +1,6 @@
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import type { VaultAdapter } from "../../../src/core/vault-adapter.js"
-import { log } from "../mcp/logger.js"
-
 const FORBIDDEN_SEGMENTS = new Set([
   ".env", ".git", "node_modules", ".obsidian",
 ])
@@ -82,12 +80,7 @@ export class FsVaultAdapter implements VaultAdapter {
     const files: string[] = []
     const folders: string[] = []
     let entries
-    try {
-      entries = await fs.readdir(full, { withFileTypes: true })
-    } catch {
-      log.warn("no se pudo leer el directorio", { path: full })
-      return { files, folders }
-    }
+    entries = await fs.readdir(full, { withFileTypes: true })
     for (const e of entries) {
       const childPath = path.posix.join(p, e.name)
       if (e.isDirectory()) {

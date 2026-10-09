@@ -81,7 +81,7 @@ const agent = {
 };
 
 function makeServices(overrides?: Record<string, any>): any {
-  return {
+  const svc: Record<string, any> = {
     activeThreadId: "test-thread",
     activeProject: project,
     agent,
@@ -96,10 +96,51 @@ function makeServices(overrides?: Record<string, any>): any {
     kgEdgeStore: mockKgEdgeStore,
     pathFilter: undefined as string[] | undefined,
     kgOptions: { enabled: false, minSimilarity: 0.75, hops: 1, maxNeighborsPerHop: 3, useExplicit: true, reinforceBoost: true },
+    embedder: { embed: vi.fn().mockResolvedValue([]) },
+    activeProjectContext: null,
+    skillContext: null,
+    indexStatus: "unavailable",
     getSkills: vi.fn().mockResolvedValue([]),
     setSkillContext: vi.fn(),
+    cancelChatRequest: vi.fn(),
+    clearChatAbort: vi.fn(),
     ...overrides,
   };
+
+  svc.captureRequestSnapshot = vi.fn((agentOverride?: typeof agent | null) => {
+    const active = svc.activeProject as typeof project | null;
+    const snapProject = active
+      ? {
+          ...active,
+          read_paths: [...active.read_paths],
+          write_paths: [...active.write_paths],
+          rag: { ...active.rag },
+          files: [...(active.files || [])],
+          attachedFiles: [...(active.attachedFiles || [])],
+        }
+      : null;
+    const snapAgent = agentOverride ?? svc.agent;
+    const kgStore = svc.kgEdgeStore;
+    return {
+      projectId: snapProject?.id,
+      threadId: svc.activeThreadId as string | undefined,
+      project: snapProject,
+      agent: snapAgent,
+      pathFilter: svc.pathFilter as string[] | undefined,
+      projectContext: svc.activeProjectContext ?? null,
+      skillContext: svc.skillContext ?? null,
+      vectorStore: svc.vectorStore,
+      geminiBalancer: svc.geminiBalancer,
+      embedder: svc.embedder,
+      kgEdgeStore:
+        kgStore && typeof kgStore.snapshot === "function" ? kgStore.snapshot() : kgStore,
+      kgOptions: svc.kgOptions,
+      indexStatus: svc.indexStatus ?? "unavailable",
+      chatAbort: new AbortController(),
+    };
+  });
+
+  return svc;
 }
 
 beforeEach(() => {

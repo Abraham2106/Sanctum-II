@@ -11,12 +11,13 @@ import type { Skill } from "../skills/types";
 import { BUILTIN_AGENTS } from "../constants";
 
 import { MESH_DEFAULTS } from "../shared/mesh/types";
-import type { CriticEvaluation, AttemptRecord, LoopState } from "../shared/mesh/types";
+import type { AttemptRecord, HistoryEntry, LoopState, MeshRunResult } from "../shared/mesh/types";
 
 import { parseCriticJSON, parseOrchestratorDecision } from "../shared/mesh/parse";
 export { parseCriticJSON } from "../shared/mesh/parse";
 
-import { buildResearcherInput, buildCriticInput, buildOrchestratorInput, pickBestAttempt, buildAttemptHistory } from "../shared/mesh/core";
+import { buildOrchestratorInput, buildAttemptHistory } from "../shared/mesh/core";
+import { runMeshCore } from "../runtime/mesh";
 
 import type { MeshResultFull } from "./mesh-types";
 export type { MeshResultFull } from "./mesh-types";
@@ -34,47 +35,8 @@ export interface MeshOptions {
   edgeStore?: KgEdgeStore;
   projectContext?: ProjectContext;
   skillContext?: Skill;
-}
-
-const ACCEPT_THRESHOLD = MESH_DEFAULTS.ACCEPT_THRESHOLD;
-const ESCALATE_THRESHOLD = MESH_DEFAULTS.ESCALATE_THRESHOLD;
-const MAX_ATTEMPTS = MESH_DEFAULTS.MAX_ATTEMPTS;
-
-async function resolveOrchestratorDecision(
-  opts: MeshOptions,
-  state: LoopState,
-  evaluation: CriticEvaluation,
-  orchestratorAgent: { system_prompt: string },
-): Promise<"accept" | "escalate" | "regenerate"> {
-  const orchestratorInput = buildOrchestratorInput(state, evaluation);
-  const renderedPrompt = renderSystemPrompt(
-    { id: "orchestrator", name: "orchestrator", avatar: "", model: "", description: "", triggers: [], tools: [], permissions: { read_paths: [], write_paths: [] }, system_prompt: orchestratorAgent.system_prompt },
-    "",
-    orchestratorInput,
-  );
-
-  try {
-    const result = await opts.opencodeClient.chat(renderedPrompt, orchestratorInput);
-    const decision = parseOrchestratorDecision(result.content);
-    if (decision) {
-      console.error(`[Mesh] Orchestrator decision: ${decision.action} — ${decision.reason}`);
-      return decision.action;
-    }
-    console.warn("[Mesh] Orchestrator response unparseable, falling back to hardcoded thresholds. Raw:", result.content.slice(0, 200));
-  } catch (err: any) {
-    console.warn("[Mesh] Orchestrator invocation failed, falling back to hardcoded thresholds:", err.message);
-  }
-
-  if (evaluation.total_score >= ACCEPT_THRESHOLD) return "accept";
-  if (evaluation.total_score <= ESCALATE_THRESHOLD) return "escalate";
-  if (state.attempt >= state.max_attempts) return "accept";
-
-  const bestScore = state.attempts.length > 1
-    ? Math.max(...state.attempts.slice(0, -1).map(a => a.total_score))
-    : 0;
-  if (state.attempt > 1 && evaluation.total_score <= bestScore) return "accept";
-
-  return "regenerate";
+  projectId?: string;
+  signal?: AbortSignal;
 }
 
 function pickTurnDeps(opts: MeshOptions) {
@@ -91,6 +53,67 @@ function pickTurnDeps(opts: MeshOptions) {
   };
 }
 
+function loopStateFromCore(userPrompt: string, coreAttempts: MeshRunResult): LoopState {
+  const attempts: AttemptRecord[] = coreAttempts.attempts.map((a) => ({
+    attempt: a.attempt,
+    researcherOutput: a.output,
+    criteria: a.evaluation.criteria,
+    total_score: a.evaluation.total_score,
+    verdict: a.evaluation.verdict,
+    feedback: a.evaluation.feedback_for_regeneration,
+    usage: a.usage,
+  }));
+
+  const history: HistoryEntry[] = [];
+  if (coreAttempts.foragerOutput) {
+    history.push({ agent: "forager", output: coreAttempts.foragerOutput });
+  }
+  for (const a of coreAttempts.attempts) {
+    history.push({ agent: "researcher", output: a.output, usage: a.usage });
+    history.push({
+      agent: "critic",
+      output: JSON.stringify(a.evaluation),
+      score: a.evaluation.total_score,
+      verdict: a.evaluation.verdict,
+      feedback: a.evaluation.feedback_for_regeneration,
+    });
+  }
+
+  const bestIdx = coreAttempts.selectedAttempt
+    ? coreAttempts.selectedAttempt.attempt - 1
+    : attempts.length > 0
+      ? 0
+      : 0;
+
+  let current_step: LoopState["current_step"] = "done";
+  if (coreAttempts.status === "escalated") {
+    current_step = "escalated";
+  }
+
+  return {
+    original_prompt: userPrompt,
+    current_step,
+    attempt: attempts.length,
+    max_attempts: MESH_DEFAULTS.MAX_ATTEMPTS,
+    history,
+    attempts,
+    best_attempt: bestIdx,
+  };
+}
+
+function mapCriticVerdict(status: MeshResultFull["meshStatus"]): MeshResultFull["criticVerdict"] {
+  if (status === "accepted") {
+    return "accept";
+  }
+  if (status === "escalated") {
+    return "escalated";
+  }
+  if (status === "needs_review") {
+    return "needs_review";
+  }
+  return "reject";
+}
+
 export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFull> {
   const { userPrompt, vaultAdapter, tracer } = opts;
 
@@ -100,156 +123,129 @@ export async function runMeshWithCritic(opts: MeshOptions): Promise<MeshResultFu
   const orchestrator = await loadAgentFromVault(vaultAdapter, `${BUILTIN_AGENTS.ORCHESTRATOR}.md`);
 
   const traceId = tracer.start("mesh-orchestrator", "", userPrompt);
-
-  const state: LoopState = {
-    original_prompt: userPrompt,
-    current_step: "forager",
-    attempt: 1,
-    max_attempts: MAX_ATTEMPTS,
-    history: [],
-    attempts: [],
-    best_attempt: 0,
-  };
+  const turnDeps = pickTurnDeps(opts);
 
   try {
-    const foragerResult = await executeTurn(
-      { agent: forager, traceId, ...pickTurnDeps(opts) },
-      userPrompt,
-      false,
-      opts.pathFilter,
+    const core = await runMeshCore(
+      {
+        runForager: async (prompt, signal) => {
+          const result = await executeTurn(
+            { agent: forager, traceId, ...turnDeps, signal },
+            prompt,
+            false,
+            opts.pathFilter,
+          );
+          return result;
+        },
+        runResearcher: async (input, signal) => {
+          const result = await executeTurn(
+            { agent: researcher, traceId, ...turnDeps, signal },
+            input,
+            false,
+            opts.pathFilter,
+          );
+          return result;
+        },
+        runCritic: async (input, signal) => {
+          const result = await executeTurn(
+            { agent: critic, traceId, ...turnDeps, signal },
+            input,
+            true,
+          );
+          return result;
+        },
+        resolveOrchestratorAction: async (attempt, evaluation, attempts) => {
+          const state: LoopState = {
+            original_prompt: userPrompt,
+            current_step: "critic_review",
+            attempt,
+            max_attempts: MESH_DEFAULTS.MAX_ATTEMPTS,
+            history: [],
+            attempts: attempts.map((a) => ({
+              attempt: a.attempt,
+              researcherOutput: a.output,
+              criteria: a.evaluation.criteria,
+              total_score: a.evaluation.total_score,
+              verdict: a.evaluation.verdict,
+              feedback: a.evaluation.feedback_for_regeneration,
+              usage: a.usage,
+            })),
+            best_attempt: 0,
+          };
+
+          const orchestratorInput = buildOrchestratorInput(state, evaluation);
+          const renderedPrompt = renderSystemPrompt(
+            {
+              id: "orchestrator",
+              name: "orchestrator",
+              avatar: "",
+              model: "",
+              description: "",
+              triggers: [],
+              tools: [],
+              permissions: { read_paths: [], write_paths: [] },
+              system_prompt: orchestrator.system_prompt,
+            },
+            "",
+            orchestratorInput,
+          );
+
+          try {
+            const result = await opts.opencodeClient.chat(renderedPrompt, orchestratorInput, undefined, {
+              signal: opts.signal,
+            });
+            const decision = parseOrchestratorDecision(result.content);
+            if (decision) {
+              console.error(`[Mesh] Orchestrator decision: ${decision.action} — ${decision.reason}`);
+              return decision.action;
+            }
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn("[Mesh] Orchestrator invocation failed:", message);
+          }
+          return null;
+        },
+      },
+      {
+        userPrompt,
+        projectId: opts.projectId ?? opts.projectContext?.project?.id ?? "",
+        provenance: "sanctum.plugin.mesh",
+        signal: opts.signal,
+      },
     );
-    state.current_step = "research";
-    state.history.push({ agent: "forager", output: foragerResult.content, usage: foragerResult.usage });
 
-    let bestResearcherOutput = "";
+    const loopState = loopStateFromCore(userPrompt, core);
+    const researcherOutput = core.selectedAttempt?.output ?? "";
+    const criticScore = core.selectedAttempt?.score;
+    const meshStatus = core.status;
+    const criticVerdict = mapCriticVerdict(meshStatus);
 
-    while (state.attempt <= state.max_attempts) {
-      const researcherInput = buildResearcherInput(foragerResult.content, state.history, state.attempt);
+    await tracer.finish(traceId, researcherOutput, {
+      loopState,
+      critic_score: criticScore,
+      critic_verdict: criticVerdict,
+      mesh_status: meshStatus,
+      attempts: core.attempts.length,
+      attempt_history: buildAttemptHistory(loopState),
+    });
 
-      const researcherResult = await executeTurn(
-        { agent: researcher, traceId, ...pickTurnDeps(opts) },
-        researcherInput,
-        false,
-        opts.pathFilter,
-      );
-      state.history.push({ agent: "researcher", output: researcherResult.content, usage: researcherResult.usage });
-      bestResearcherOutput = researcherResult.content;
-      state.current_step = "critic_review";
-
-      const criticInput = buildCriticInput(state.original_prompt, researcherResult.content);
-      const criticResult = await executeTurn(
-        { agent: critic, traceId, ...pickTurnDeps(opts) },
-        criticInput,
-        true
-      );
-      const evaluation = parseCriticJSON(criticResult.content);
-
-      const record: AttemptRecord = {
-        attempt: state.attempt,
-        researcherOutput: researcherResult.content,
-        criteria: evaluation.criteria,
-        total_score: evaluation.total_score,
-        verdict: evaluation.verdict,
-        feedback: evaluation.feedback_for_regeneration,
-        usage: researcherResult.usage,
-      };
-      state.attempts.push(record);
-      state.history.push({
-        agent: "critic",
-        output: criticResult.content,
-        score: evaluation.total_score,
-        verdict: evaluation.verdict,
-        feedback: evaluation.feedback_for_regeneration,
-        usage: criticResult.usage,
-      });
-
-      const action = await resolveOrchestratorDecision(opts, state, evaluation, orchestrator);
-
-      if (action === "accept") {
-        state.current_step = "done";
-        state.best_attempt = state.attempts.length - 1;
-        await tracer.finish(traceId, bestResearcherOutput, {
-          loopState: state,
-          critic_score: evaluation.total_score,
-          critic_verdict: "accept",
-          attempts: state.attempt,
-          attempt_history: buildAttemptHistory(state),
-        });
-        return {
-          foragerOutput: foragerResult.content,
-          researcherOutput: bestResearcherOutput,
-          criticScore: evaluation.total_score,
-          criticVerdict: "accept",
-          attempts: state.attempt,
-          loopState: state,
-        };
-      }
-
-      if (action === "escalate") {
-        state.current_step = "escalated";
-        state.best_attempt = state.attempts.length - 1;
-        await tracer.finish(traceId, bestResearcherOutput, {
-          loopState: state,
-          critic_score: evaluation.total_score,
-          critic_verdict: "escalated",
-          attempts: state.attempt,
-          feedback: evaluation.feedback_for_regeneration,
-          reason: "escalated_by_orchestrator",
-          attempt_history: buildAttemptHistory(state),
-        });
-        return {
-          foragerOutput: foragerResult.content,
-          researcherOutput: bestResearcherOutput,
-          criticScore: evaluation.total_score,
-          criticVerdict: "escalated",
-          attempts: state.attempt,
-          loopState: state,
-        };
-      }
-
-      if (state.attempt >= state.max_attempts) {
-        const best = pickBestAttempt(state);
-        if (best) bestResearcherOutput = best.researcherOutput;
-        state.current_step = "done";
-        state.best_attempt = best?.attempt ? best.attempt - 1 : 0;
-        await tracer.finish(traceId, bestResearcherOutput, {
-          loopState: state,
-          critic_score: best?.total_score ?? evaluation.total_score,
-          critic_verdict: "accept",
-          attempts: state.attempt,
-          reason: "max_attempts_reached",
-          attempt_history: buildAttemptHistory(state),
-        });
-        return {
-          foragerOutput: foragerResult.content,
-          researcherOutput: bestResearcherOutput,
-          criticScore: best?.total_score ?? evaluation.total_score,
-          criticVerdict: "accept",
-          attempts: state.attempt,
-          loopState: state,
-        };
-      }
-
-      state.attempt += 1;
-      state.current_step = "research";
+    if (core.status === "failed") {
+      throw new Error(core.error ?? "Mesh failed");
     }
 
-    state.current_step = "done";
-    const best = pickBestAttempt(state);
-    if (best) {
-      bestResearcherOutput = best.researcherOutput;
-      state.best_attempt = best.attempt - 1;
-    }
     return {
-      foragerOutput: foragerResult.content,
-      researcherOutput: bestResearcherOutput,
-      criticScore: best?.total_score,
-      criticVerdict: "accept",
-      attempts: state.attempt,
-      loopState: state,
+      foragerOutput: core.foragerOutput,
+      researcherOutput,
+      criticScore,
+      criticVerdict,
+      meshStatus,
+      attempts: core.attempts.length,
+      loopState,
+      meshCore: core,
     };
-  } catch (err: any) {
-    tracer.abort(traceId, err.message);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    tracer.abort(traceId, message);
     throw err;
   }
 }

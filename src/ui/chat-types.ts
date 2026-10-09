@@ -54,6 +54,8 @@ export interface ChatViewPlugin {
   getActiveProjectIcon(): string;
   setSkillContext?: (skillId: string | null) => void;
   clearChatHistory?: () => void;
+  cancelChatRequest?: () => void;
+  cancelMeshRequest?: () => void;
 }
 
 export function getAgentIcon(agentId: string): string {

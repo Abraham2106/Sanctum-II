@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "feature_id": "SANCTUM-REFACTOR",
+  "feature_id": "SANCTUM-RUNTIME-V2",
   "gate": {
     "feature_preparation": "ready",
     "implementation_allowed": true
@@ -363,7 +363,7 @@
       "id": "T-011",
       "title": "Sacar turno, sesión y diagnósticos de main",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-main"
@@ -383,7 +383,7 @@
         "Hay que cambiar una firma que la UI ya llama",
         "Hay que tocar un archivo fuera del seam"
       ],
-      "notes": "Ponytail. Mismos nombres públicos. No restyles. No dependencias. No corras tests. Cita DEC-0008 en cada archivo nuevo.",
+      "notes": "Ponytail. Mismos nombres públicos. No restyles. No dependencias. No corras tests. Cita DEC-0008 en cada archivo nuevo. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -396,7 +396,7 @@
       "id": "T-012",
       "title": "Sacar confirmación y escritura del orquestador",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-chat"
@@ -415,7 +415,7 @@
         "Hay que editar executeTurn o services.ts",
         "El comportamiento del turno cambia"
       ],
-      "notes": "Ponytail. No corras tests. Cita DEC-0008.",
+      "notes": "Ponytail. No corras tests. Cita DEC-0008. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -428,7 +428,7 @@
       "id": "T-013",
       "title": "Partir la vista de proyectos en tres trabajos",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-projects"
@@ -448,7 +448,7 @@
         "Hay que cambiar el DOM para poder partir",
         "Hay que tocar otra vista"
       ],
-      "notes": "Ponytail. Mismo DOM y mismas clases CSS. No corras tests. Cita DEC-0008.",
+      "notes": "Ponytail. Mismo DOM y mismas clases CSS. No corras tests. Cita DEC-0008. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -461,7 +461,7 @@
       "id": "T-014",
       "title": "Sacar el lienzo de la vista de cadenas",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-chain"
@@ -479,7 +479,7 @@
         "Hay que editar chain-types.ts o chains/executor.ts",
         "Cambia el DOM"
       ],
-      "notes": "Ponytail. No corras tests. Cita DEC-0008.",
+      "notes": "Ponytail. No corras tests. Cita DEC-0008. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -492,7 +492,7 @@
       "id": "T-015",
       "title": "Sacar escena e inspector del grafo",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-rewrite-kg"
@@ -510,7 +510,7 @@
         "Hay que editar src/kg",
         "Cambia el DOM o las clases CSS"
       ],
-      "notes": "Ponytail. No corras tests. Cita DEC-0008.",
+      "notes": "Ponytail. No corras tests. Cita DEC-0008. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -523,7 +523,7 @@
       "id": "T-016",
       "title": "Borrar los cuatro símbolos que quedaron",
       "owner_role": "worker",
-      "status": "ready",
+      "status": "blocked",
       "deps": [],
       "seams": [
         "S-prune-symbols"
@@ -542,7 +542,7 @@
         "Un símbolo tiene un llamador",
         "Hace falta borrar AgentAuthoringLLM todavía usado"
       ],
-      "notes": "Ponytail. Rebusca. Archivos: src/shared/mesh/core.ts, src/kg/types.ts, src/agents/authoring/types.ts, src/chains/executor.ts. Quita imports huérfanos. No toques executeTurn ni KgOptions. No corras tests.",
+      "notes": "Ponytail. Rebusca. Archivos: src/shared/mesh/core.ts, src/kg/types.ts, src/agents/authoring/types.ts, src/chains/executor.ts. Quita imports huérfanos. No toques executeTurn ni KgOptions. No corras tests. Superseded by DEC-0022: T-042 extracted services and T-043 split the views. Do not spawn.",
       "verification": {
         "planned": [
           "No correr vitest, tsc ni npm."
@@ -998,8 +998,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-http"],
-      "decisions": ["DEC-0020"],
+      "seams": [
+        "S-mcp-http"
+      ],
+      "decisions": [
+        "DEC-0020"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "POST /mcp initialize con protocolVersion 2025-03-26 devuelve esa versión en un evento SSE message",
@@ -1016,7 +1020,9 @@
       ],
       "notes": "Ponytail. Cita // DEC-0020: Grok Bot usa el MCP por POST /mcp. Archivos: mcp-server/src/mcp/http.ts, mcp-server/src/mcp/http.test.ts, el handleMessage y el echo de versión en mcp-server/src/mcp/server.ts, el if de arranque en mcp-server/index.ts, el script mcp:http en package.json, y las líneas SANCTUM_MCP_* en .env.example. No toques el bloque Discord salvo la frase que dice que el vault se ofrece con node mcp-server/dist/index.cjs: cámbiala a npm run mcp:http y la URL local. handleMessage(req) público devuelve JsonRpcResponse o null si es notificación. initialize: si params.protocolVersion es 2024-11-05, 2025-03-26 o 2025-06-18, devuelve esa; si no, 2025-03-26. startMcpHttp(server, {port, host, token}) escucha solo en 127.0.0.1. Puerto 0 permitido para el test; devuelve {port, close}. POST /mcp: JSON inválido o array es 400. Notificación 202 vacío. Si Accept incluye text/event-stream o falta, responde text/event-stream con event: message y data el JSON más una línea en blanco. Si Accept es solo application/json, el cuerpo es el JSON. GET /mcp 405. Otra ruta 404. Si token no vacío, Authorization debe ser Bearer más ese token o 401. No loguees el token. Comentario ponytail: sin allowlist de Origin; el bind es localhost. Subir cuando escuche en una interfaz pública. index.ts: si SANCTUM_MCP_HTTP=1, startMcpHttp con SANCTUM_MCP_PORT o 8787 y el token trim; si no, server.start() como hoy. Script mcp:http = SANCTUM_MCP_HTTP=1 tsx mcp-server/index.ts. .env.example comenta grok.com/connectors, New Connector, Custom, y que la URL pública es un túnel hacia 127.0.0.1. Variables comentadas: SANCTUM_MCP_HTTP=1, SANCTUM_MCP_PORT=8787, SANCTUM_MCP_TOKEN vacío. El test usa node:http contra port 0, sin red externa, con un McpServer y una tool de prueba. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/mcp/http.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/mcp/http.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -1027,8 +1033,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-guide"],
-      "decisions": ["DEC-0021"],
+      "seams": [
+        "S-mcp-guide"
+      ],
+      "decisions": [
+        "DEC-0021"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "initialize devuelve instructions con sanctum_list_notes y OPENCODE_GO_API_KEY",
@@ -1042,7 +1052,9 @@
       ],
       "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Solo mcp-server/src/mcp/server.ts, types.ts, server.test.ts, y el campo annotations de list-agents.ts, get-note.ts y query-vault.ts. No cambies handlers. En el result de initialize añade instructions con este texto exacto: Sanctum es un vault local de notas Markdown. Para verlo: sanctum_list_notes, sanctum_get_note y sanctum_query_vault. La búsqueda exige índice y GEMINI_API_KEYS. sanctum_list_agents enumera agentes. sanctum_invoke_agent y sanctum_run_mesh no leen el vault: pasan context a {{rag_context}} y gastan OPENCODE_GO_API_KEY. En types.ts, ToolDef gana annotations opcional con readOnlyHint y openWorldHint boolean. tools/list copia annotations solo si está definida. list_agents y get_note: readOnlyHint true, openWorldHint false. query_vault: readOnlyHint true, openWorldHint true. Test con handleMessage, sin red: initialize trae ese texto y tools/list devuelve las annotations de una tool de prueba. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/mcp/server.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/mcp/server.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -1053,8 +1065,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-notes"],
-      "decisions": ["DEC-0021"],
+      "seams": [
+        "S-mcp-notes"
+      ],
+      "decisions": [
+        "DEC-0021"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "sin folder devuelve los read_paths y no llama a list",
@@ -1068,7 +1084,9 @@
       ],
       "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Crea mcp-server/src/tools/list-notes.ts y su test. En mcp-server/index.ts solo añade el import y server.registerTool(createListNotesTool(vault)) después de createRunMeshTool, para no cambiar la primera tool. Nombre sanctum_list_notes. annotations readOnlyHint true, openWorldHint false. Args agent_id obligatorio y folder opcional. Sin folder o folder vacío: resuelve permisos y devuelve los read_paths, uno por línea, sin llamar a vault.list. Con folder: si incluye .., empieza por / o tiene barra invertida, isError PATH_DENIED y no listes. Permitido si checkPathPermission del folder o de folder/a.md. Si no, isError PERMISSION_DENIED. vault.list de un nivel. Archivos que terminen en .md y no isInternalPath. Carpetas que no sean isInternalPath, mostradas con barra final. Orden alfabético. Máximo 200 entradas; si hay más, la última línea es hay más; afina el folder. Si list lanza, isError PATH_DENIED sin pegar el mensaje. El test usa un adaptador en memoria, sin disco. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/tools/list-notes.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/tools/list-notes.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -1079,8 +1097,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-context"],
-      "decisions": ["DEC-0021"],
+      "seams": [
+        "S-mcp-context"
+      ],
+      "decisions": [
+        "DEC-0021"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "readToolContext devuelve vacío si context no es string y corta a 8000",
@@ -1094,7 +1116,9 @@
       ],
       "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Crea mcp-server/src/tools/tool-context.ts con readToolContext(args): si context no es string, vacío; si pasa de 8000 caracteres, slice(0, 8000). Comentario ponytail: el contexto se corta a 8000; subir cuando haga falta el texto entero. Test de esa función. En invoke-agent.ts usa readToolContext como rag de renderSystemPrompt. En run-mesh.ts úsalo solo en el renderSystemPrompt de Forager. Añade context opcional string al inputSchema de las dos, descripción corta: texto ya recuperado del vault. Cambia la description de invoke a: Llama al agente con su prompt. No busca en el vault. context entra como contexto. Gasta OPENCODE_GO_API_KEY. La de mesh a: Corre Forager, Researcher y Critic. No lee el vault. context es el contexto de Forager. Gasta OPENCODE_GO_API_KEY. annotations en las dos: readOnlyHint false, openWorldHint true. No cambies el bucle ni los umbrales. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/tools/tool-context.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/tools/tool-context.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
@@ -1105,8 +1129,12 @@
       "owner_role": "worker",
       "status": "done",
       "deps": [],
-      "seams": ["S-mcp-limit"],
-      "decisions": ["DEC-0021"],
+      "seams": [
+        "S-mcp-limit"
+      ],
+      "decisions": [
+        "DEC-0021"
+      ],
       "max_review_loops": 2,
       "done_when": [
         "un POST /mcp de más de 1048576 bytes responde 413",
@@ -1119,10 +1147,675 @@
       ],
       "notes": "Ponytail. Cita // DEC-0021: el MCP anuncia el uso y lista notas. Solo mcp-server/src/mcp/http.ts y un caso en mcp-server/src/mcp/http.test.ts. Si el cuerpo pasa de 1048576 bytes, responde 413 y destruye el request sin seguir concatenando. Un POST pequeño existente sigue en 200. No cambies auth, rutas ni el formato SSE. No corras la suite entera. Un commit. No incluyas HANDOFF.md ni PROMPT.md.",
       "verification": {
-        "planned": ["npx vitest run mcp-server/src/mcp/http.test.ts"],
+        "planned": [
+          "npx vitest run mcp-server/src/mcp/http.test.ts"
+        ],
         "run": []
       },
       "rollback": "Conservar worktree; revertir solo el commit de esta hoja."
+    },
+    {
+      "id": "T-035",
+      "title": "Frontmatter portable CRLF/BOM",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [],
+      "seams": [
+        "S-runtime-035"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Normalizar BOM/CRLF y extractor único, errores explícitos; conservar ausencia modelo con string vacío. Tests en archivos nuevos propios.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/shared/agents/frontmatter.ts, src/agents/agent-loader.ts, mcp-server/src/tools/list-agents.ts. Normalizar BOM/CRLF y extractor único, errores explícitos; conservar ausencia modelo con string vacío. Tests en archivos nuevos propios. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Integrated 44e7606; independent Sol 6.1 review: no blocking findings",
+          "npx vitest run three owned test files: 11 passed (2026-10-08)",
+          "npm run typecheck: passed",
+          "Vitest sandbox EPERM; rerun outside sandbox passed"
+        ]
+      }
+    },
+    {
+      "id": "T-036",
+      "title": "Política permisos y recuperación portable",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-035"
+      ],
+      "seams": [
+        "S-runtime-036"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Intersección project/agent/selection antes de ranking/context/KG/traces; umbral sin fallback. Núcleo sin Obsidian, turn usa puertos estructurales y wrapper notificaciones. Tests de permisos y ranking. No indexer/main/MCP.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/runtime/permissions.ts, src/runtime/retrieval.ts, src/orchestrator/agent-turn.ts. Intersección project/agent/selection antes de ranking/context/KG/traces; umbral sin fallback. Núcleo sin Obsidian, turn usa puertos estructurales y wrapper notificaciones. Tests de permisos y ranking. No indexer/main/MCP. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned portable files src/runtime/turn.ts and src/runtime/ports.ts allowed. Extract execution logic into portable runtime/turn with notification callback; orchestrator/agent-turn remains compatibility wrapper. TurnResult provenance/projectId fields optional backward compatibility. Retrieval must handle agent selection without leaking denied KG paths. Agent embed query must use sealed model when available.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Draft core commits integrated; standalone identity comparison review REJECTED after two repair loops",
+          "Independent 30 runtime tests and typecheck passed; T048 required for public retrieval helper",
+          "T048 integrated e2ba2dc; root35 runtime tests and typecheck passed; identity review accepted"
+        ]
+      }
+    },
+    {
+      "id": "T-037",
+      "title": "HTTP autenticado loopback",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [],
+      "seams": [
+        "S-runtime-037"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Token requerido, host loopback estricto, Origin exact allowlist. JSON-RPC validate. Tests actualizar requisito token. No index.ts/package.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: mcp-server/src/mcp/http.ts, mcp-server/src/mcp/http.test.ts. Token requerido, host loopback estricto, Origin exact allowlist. JSON-RPC validate. Tests actualizar requisito token. No index.ts/package. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Integrated 8ddceb2+c6d1fce; independent Sol6.1 review accepted after one repair",
+          "npx vitest run mcp-server/src/mcp/http.test.ts: 24 passed",
+          "npm run typecheck: passed (independent worktree)"
+        ]
+      }
+    },
+    {
+      "id": "T-038",
+      "title": "Durabilidad por recurso",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [],
+      "seams": [
+        "S-runtime-038"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/core/resource-queue.ts, src/projects/store.ts, src/rag/vector-store.ts, src/kg/kg-store.ts. Cola compartida WeakMap adapter/resource, multi locks ordenados; memory/thread completo serializado; Vector/KG lote capturado seguro; fallo/retry/reload. Tests nuevos. No indexer/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Project model absence stays empty; validate project IDs; stable locks move checks destination collision. Shared full YAML project parse/serialize allowed using existing shared frontmatter functions; do not modify shared module. Acceptance closed by T-051. Draft 13aa528 stays in history; remaining load/snapshot defects were fixed in cb95d0c.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Draft integrated 13aa528; review REJECTED after two repair loops",
+          "Typecheck and whitespace passed; 8 suites/52 tests passed but load tests encode remaining bug",
+          "Remaining: load drops historical disk state on concurrent mutation; read-only signatures; KG append compatibility. Acceptance requires T047.",
+          "Acceptance closed by T-051. Draft 13aa528 stays in history; remaining load/snapshot defects were fixed in cb95d0c."
+        ]
+      }
+    },
+    {
+      "id": "T-039",
+      "title": "DAG y mesh común",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-036",
+        "T-045"
+      ],
+      "seams": [
+        "S-runtime-039"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/runtime/dag.ts, src/runtime/mesh.ts, src/chains/executor.ts, src/orchestrator/mesh.ts, src/orchestrator/mesh-types.ts, src/shared/mesh/types.ts, mcp-server/src/tools/run-mesh.ts. DAG validación estricta, direct predecessors, terminal outputs/provenance/project, parciales. Mesh común best output/score gate states timeout cleanup. MCP y plugin adapters ambos usan núcleo. No UI/index.ts. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/shared/mesh/parse.ts and src/chains/critic-decision.ts with tests: missing explicit accept rejects; score must be finite 0..100; accepted requires both sufficient score AND explicit accept. Keep parsed best evaluation paired with output. Consume provider per-call options from T045 for all nodes/agents and AbortSignal. Agent/project/global resolution must not be bypassed in mesh adapters. Accepted 8d9a6f2. Abort through executeTurn is T-052, after T-049.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Accepted 8d9a6f2 on integration branch. 36 focused tests passed (dag 12, mesh 11, critic 6, parse 7). Plugin Forager/Researcher/Critic abort waits for T-052 because turn.ts is owned by T-049."
+        ]
+      }
+    },
+    {
+      "id": "T-040",
+      "title": "Generaciones e indexador",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-036",
+        "T-038",
+        "T-047",
+        "T-048",
+        "T-049",
+        "T-050",
+        "T-051"
+      ],
+      "seams": [
+        "S-runtime-040"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Generaciones DEC0022, SHA256 portable, seal completo, conservar legacy, recursive permissions, fingerprint exact modelo/dims/chunking, reuse/full/partial seguro, sin fallback modelo indexed. Exponer reader a MCP y plugin. Métodos embed(text,model?) compatible. Tests reales Fs fixtures + dobles explícitos. No main/UI.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/projects/index-generations.ts, src/projects/indexer.ts, src/projects/indexer.test.ts, src/embeddings/gemini-balancer.ts, mcp-server/src/embeddings/gemini-embed.ts. Generaciones DEC0022, SHA256 portable, seal completo, conservar legacy, recursive permissions, fingerprint exact modelo/dims/chunking, reuse/full/partial seguro, sin fallback modelo indexed. Exponer reader a MCP y plugin. Métodos embed(text,model?) compatible. Tests reales Fs fixtures + dobles explícitos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/embeddings/embed-contract.ts and mcp-server/src/core/fs-vault-adapter.ts with focused tests: optional exact model/dims embedding API embed(text, model?, dims?), body dims; filesystem list errors propagate so failed traversal cannot publish destructive omissions. No removal of path/symlink protections. Document strict reader snapshots ready/rebuild_required/unavailable/corrupt for downstream; fingerprint actual chunk/truncation; strict file/hash/schema/finite vector validation. Queue by adapter+project, stage stores off-side, any failure leaves previous disk/in-memory generation. Filter both KG endpoints before serialization. Real Fs temporary vault tests plus explicit synthetic embed doubles. DEC0023 local authorized: consume common EmbedderPort resolved identity and explicit purpose document/query; Gemini adapter translates options preserving overload; generation metadata contains full embedding identity/descriptor fingerprint and chunking, local health actualidentity pinned and response revalidated. Differentbackend/revision/config/dims demands full explicit rebuild; no mixed partial reuse. No localclient/server edits.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Accepted 90bec41. 22 tests re-run: indexer, generations, fs list, gemini embed."
+        ]
+      }
+    },
+    {
+      "id": "T-041",
+      "title": "MCP servicios por proyecto",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-039",
+        "T-040",
+        "T-037",
+        "T-049"
+      ],
+      "seams": [
+        "S-runtime-041"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Servicio portable ProjectReader, project_id/env/PROJECT_REQUIRED; query generation refresh/model, before-topk permissions; listar cada hijo autorizado y read efectivo. Pasar origins y token startup. No HTTP/package/main.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: mcp-server/index.ts, mcp-server/src/tools/query-vault.ts, mcp-server/src/tools/get-note.ts, mcp-server/src/tools/list-notes.ts, mcp-server/src/mcp/permission-resolver.ts, src/app/project-reader.ts. Servicio portable ProjectReader, project_id/env/PROJECT_REQUIRED; query generation refresh/model, before-topk permissions; listar cada hijo autorizado y read efectivo. Pasar origins y token startup. No HTTP/package/main. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned mcp-server/src/tools/invoke-agent.ts: agent explicit model/provider options via T045, validate agent IDs, preserve supplied context without hidden retrieval. Resolver must propagate file-specific YAML errors rather than silently empty permissions. Validate project/agent IDs before adapter reads. DEC0023 construct commonprovider using sharedresolver/env and sealed identity; local generation queried through exact local backend, no Gemini keys requirement or remote fallback. Numericport NodeHTTP transport shared.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Accepted e69ac1f. 17 owned tests re-run. T-046 working tree left unstaged."
+        ]
+      }
+    },
+    {
+      "id": "T-042",
+      "title": "Composición plugin y servicios",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-039",
+        "T-040",
+        "T-045",
+        "T-046",
+        "T-049"
+      ],
+      "seams": [
+        "S-runtime-042"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/main.ts, src/plugin/**, src/app/services.ts, src/app/chat-orchestrator.ts, src/app/pending-turn.ts, src/app/write-turn.ts. Extraer sesión/proyectos/índices/diagnósticos de main y pending/write del chat a servicios. No ampliación permisos al open. Load sealed generation legacy rebuild status, create/modify/delete/rename stale batching (no embeddings automático). Snapshot project/thread/proveedor scope. main composition ~<400 líneas; mantener métodos UI public. No src/ui. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. All note writes must intersect project AND initiating agent scope using permission service; passthrough read scope to resolver; do not auto-write needs_review mesh output. Capture all clients/model/project in request snapshots; cancel lifecycle methods for UI. Notice callbacks injected where needed. DEC0023 wire commonprovider globally/projectoverride, snapshothealth+identity; localkeysnotrequired, expose readiness/missingruntime/auth/config mismatch service states. Use shared NodeHTTP desktop transport (no renderer CORS/redirectrequestUrl). No automatic serverstart/download. Settings/types suppliedT049.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Accepted 344c3b0. main.ts 338 lines. 4 contract tests re-run: open permissions, stale without embed, snapshot scope, needs_review not written."
+        ]
+      }
+    },
+    {
+      "id": "T-043",
+      "title": "Vistas con servicios comunes",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-042"
+      ],
+      "seams": [
+        "S-runtime-043"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/ui/chain-view.ts, src/ui/chain-canvas.ts, src/ui/projects-view.ts, src/ui/projects/**, src/ui/kg-view.ts, src/ui/kg-scene.ts, src/ui/kg-inspector.ts, src/ui/chat-view.ts, src/ui/chat-types.ts. Canvas consume executeChain compartido sin propio critic loop ni [] filter. Separar vistas grandes <400 donde razonable, misma apariencia, estados rebuild/stale/error y terminales/parciales/cancelación. No lógica dominio duplicada. No main/CSS. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Additional owned src/ui/chat-right.ts src/ui/chat-composer.ts src/ui/projects/index-state.ts; correct all nonaccepted mesh labels; cancel buttons wired to service. Read modern-web-guidance SKILL before client JS/DOM edits and follow official API guidance without redesign. Additionalowned src/ui/settings-tab.ts existing controls localbackend/revision/port/token/dims and health statuses DEC0023; preserveappearance, projectprovideroverridecontrols ifneeded in projects-ownedfiles, noCSS. Offlineembeddingsdoesnotmeanofflinechat; neverdisplaytoken inerrors.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Accepted cb07fea+f1714a2. projects-view 222, chain-canvas 320. 8 UI tests re-run. Chain runtime wired in register-views."
+        ]
+      }
+    },
+    {
+      "id": "T-044",
+      "title": "CI smoke auditoría y documentación",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-041",
+        "T-043"
+      ],
+      "seams": [
+        "S-runtime-044"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Launcher HTTP Node, smoke fixture aislado sin secrets, Windows/Linux matrix, KG+orchestration en verify correspondiente, migrar/adaptar reproducciones y tests runtime. Docs six tools/project/indices/states. Benchmark synth sizes logs. No source domain.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: package.json, .github/workflows/ci.yml, mcp-server/test/**, vitest.config.ts, scripts/**, README.md, mcp-server/README.md, .env.example, docs/audits/2026-10-08/reproduce.test.ts, docs/registro-arquitectura.md, docs/arquitectura-uml.md. Launcher HTTP Node, smoke fixture aislado sin secrets, Windows/Linux matrix, KG+orchestration en verify correspondiente, migrar/adaptar reproducciones y tests runtime. Docs six tools/project/indices/states. Benchmark synth sizes logs. No source domain. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Include localPythonunittest/contractsmoke inWindowsLinuxCI whenPythonavailable; docs manualoptionalcache/requirements startup. Distinguish live inference absent/qualitycalibration pending from contracttests. No modeldownloadsCI.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Accepted 48d0787 plus note-flow mock 4fb2d5e. Full vitest 66 files / 450 tests passed. Obsidian vault validation still pending."
+        ]
+      }
+    },
+    {
+      "id": "T-045",
+      "title": "Resolución proveedores portable",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-035",
+        "T-036",
+        "T-048"
+      ],
+      "seams": [
+        "S-runtime-045"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "New design outside DEC-0022",
+        "Writing outside owned files",
+        "Missing runtime/model"
+      ],
+      "done_when": [
+        "Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI.",
+        "Focused tests pass; independent review; integration evidence"
+      ],
+      "notes": "Allowed: src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts. Puertos chat structural, model agent>project>global options por llamada overload compatible; provider explícito. Abort fetch, logical requestUrl cancel. Discord comparte wire/provider resolución conservando xAI/history, no features. Tests nuevos. No main/UI. Test doubles are explicit synthetic fixtures only; no live network/credentials; not production integration evidence. Read DEC-0022. Commit only owned files, not PROMPT/HANDOFF or governance. Do not merge. Reuse structural ports supplied by T036; do not duplicate or edit runtime/ports.ts. Configure calls through provider resolution options. Serial additional ownership src/runtime/turn.ts after T036 integration, solely wire per-call resolved model/provider/signal into all chat and chatMessages branches (including conversation). Reuse CallOptions structural ports. Extend agent/project optional explicit provider fields/loaders only if required, with ownership handoff after T035/T038; do not infer provider from model. T049 owns embedding port/types/settings and transfers turn serially to this leaf; modify only chat options there, no embedding/config files. No agent/projecttype/store ownership; explicit provider configuration via resolverglobal/call options sufficient. Corrected serial order: this leaf NOW precedes T049. Own chat changes in turn; T049 later owns embedding-only turn changes. No embedding/config/types/store modifications. Accepted 1480c7b. Branch re-run: providers, turn, opencode client and MCP chat tests passed.",
+      "rollback": "Revert leaf commit; preserve generations and legacy.",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Accepted 1480c7b. Branch re-run: providers, turn, opencode client and MCP chat tests passed."
+        ]
+      }
+    },
+    {
+      "id": "T-046",
+      "title": "Skills y notas usan permisos y proveedores comunes",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-036",
+        "T-040",
+        "T-045",
+        "T-049"
+      ],
+      "seams": [
+        "S-runtime-046"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Change outside seam/new design"
+      ],
+      "done_when": [
+        "skill retrieval uses project+context analyst scope+selection before context/traces; note resolver scoped before candidates/read; note generator model per call, writer queue create/update safe; focused tests"
+      ],
+      "notes": "Own src/skills/authoring/mesh.ts, src/orchestrator/note-resolver.ts, src/orchestrator/note-generator.ts, src/core/note-writer.ts, own tests. Use runtime permissions/retrieval and pinned generation identity; agent model per call via provider API. Optional scope param resolver backward compat but plugin wiring required T042. Do not edit app/main/ui/runtime contracts. Explicit synthetic doubles tests only. Commit owned files.",
+      "rollback": "revert leaf, preserve notes",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run <owned tests>"
+        ],
+        "run": [
+          "Accepted 5dea018. 22 tests re-run. Files under 400 lines."
+        ]
+      }
+    },
+    {
+      "id": "T-047",
+      "title": "Reconciliación load con operaciones pendientes",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [],
+      "seams": [
+        "S-runtime-047"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside owned files/new design/missing model"
+      ],
+      "done_when": [
+        "Read-only load merges disk baseline with local pending operations in order, preserving historical and concurrent records; clear resets remain authoritative; errors preserve pending ops",
+        "Correct adversarial tests, independent review, typecheck and storage suites pass"
+      ],
+      "notes": "Split from rejected T038 draft integrated 13aa528, source ownership transferred serially. Own src/rag/vector-store.ts, src/kg/kg-store.ts and persistence tests only; optional owned lifecycle helper. No other source/governance. Preserve API read-only load Pick<Adapter,read>; KG append-only save retains optional read compatibility. Read raw disk into staged state then reconcile semantic local pending operations (including replace-note/delete/clear) in correct order; do not early-return raw and truncate history. Local writes before/during queued load must not disappear, no load writes/read-only casts. Deterministic deferred tests loading disk-old + concurrent new retain both before and after save/reload; deletes/clear, queued load/save, read failures/retries; replace tests wrongly expecting disk-old dropped. Keep T038 reviewed pending until this accepted. Composer2.5 CLI only; no fake live evidence; max2 review loops; commit owned files. Split ownership explicitly covers src/rag/vector-store-*.ts and src/kg/kg-store-*.ts helper modules to keep files under400 lines; immutable semantic payloads and exact retirement needed. Review initial+repair1 rejected; final repair2 underway. Acceptance closed by T-051. Draft 07e8bea stays in history; snapshot, append-only KG and split landed in cb95d0c.",
+      "rollback": "Revert leaf and draft in reverse; preserve vault originals",
+      "verification": {
+        "planned": [
+          "npm run typecheck",
+          "npx vitest run resource-queue, project store/YAML, VectorStore and KG persistence + preexisting regressions"
+        ],
+        "run": [
+          "Source-only draft integrated; review rejected after two repair loops",
+          "75 tests/8 suites and typecheck pass but captured snapshot, append-only KG and file split pendingT051; HANDOFF excluded",
+          "Acceptance closed by T-051. Draft 07e8bea stays in history; snapshot, append-only KG and split landed in cb95d0c."
+        ]
+      }
+    },
+    {
+      "id": "T-048",
+      "title": "Identidad estricta de proyecto en recuperación pública",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [],
+      "seams": [
+        "S-runtime-048"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside retrieval identity seam"
+      ],
+      "done_when": [
+        "Standalone retrieveContextChunks rejects different or missing project identities before candidates/KG/traces; same project valid",
+        "30+runtime tests/typecheck independent review pass"
+      ],
+      "notes": "Serial ownership after T036 draft. Own src/runtime/retrieval.ts and src/runtime/retrieval.test.ts only (ports.ts only type nit if essential). vectorIdentitiesCompatible must require matching nonempty projectId on query/store, not copy unknown identity. isVerifiableStoreIdentity consistent fail-closed project identity. Add adversarial direct helper tests no KG/traces on missing/mismatched project, same exact identity yields authorized results. Update existing explicit synthetic fixtures to include valid project IDs, no permissive fallback. No provider/newlocalimplementation, no other runtime/gov. Commit owned files. This is split after two reviews, T036 remains review until accepted.",
+      "rollback": "revert leaf and core draft reverse order",
+      "verification": {
+        "planned": [
+          "npx vitest run src/runtime",
+          "npm run typecheck"
+        ],
+        "run": [
+          "T048 integrated e2ba2dc; root35 runtime tests and typecheck passed; identity review accepted"
+        ]
+      }
+    },
+    {
+      "id": "T-050",
+      "title": "Servicio local EmbeddingGemma 2 texto",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [],
+      "seams": [
+        "S-local-service"
+      ],
+      "decisions": [
+        "DEC-0022",
+        "DEC-0023"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside seam/new unfrozen design/missing Composer runtime"
+      ],
+      "done_when": [
+        "Local service implements secure exact wire and explicit readiness/error states with genuine model loader and test-only doubles",
+        "Independent review plus executed verification; no synthetic production fallback"
+      ],
+      "notes": "Own only new local-embeddings/server.py, model.py, requirements.txt, README.md, test_*.py (small helpers allowed, all files under400 lines). Implement exact DEC0023 protocol/prefixes/identity/fingerprint matching forthcoming TS port. Python stdlib HTTP loopback127.0.0.1 port8767 token mandatory fromenv, noOrigin/foreignHost/redirects,1MiB/batch16/singleinference/busy. Manual lifecycle lazyimports/backgroundload healthloading/failed/ready only afteractualfiniteprobe, missingdeps/model errors. Fixed google/embeddinggemma-2 40hexrevision textonlycachedlocal load offline trust_remote_codeFalse; CPUFP32/CUDABF16 explicit, noFP16. No weightdownload/install/model synthetic fallback. Deterministic unittest injectedfake only test, actual stdlibloopback auth/limits/readiness/identity/batchorder invalidvectors and missingdependency startup. Verify immutable modelrevision, tokenizerprefixbudget8192, dimsconfiguredMrl normalize. Full descriptor runtimeversions/dtype/device/textencoders/prefixes/normalization/preprocessing3000UTF16 and canonicalSHA256 identity. Testunittest realHTTP and missingmodel error—notliveinference. NoTS/governance/package edits. Coordinate protocol with T049 through coordinator, no changes DEC. Composer2.5 CLI only, own install optionaldeps neverautomatic. Accepted f539d21+0ea1761. 23 unittest OK on the branch. Smoke stays MODEL_NOT_INSTALLED without weights.",
+      "rollback": "Revert leaf, retain prior generations; local service optional",
+      "verification": {
+        "planned": [
+          "python -m unittest discover -s local-embeddings -p test_*.py",
+          "python local-embeddings/server.py missing dependency/model controlled startup smoke"
+        ],
+        "run": [
+          "Accepted f539d21+0ea1761. 23 unittest OK on the branch. Smoke stays MODEL_NOT_INSTALLED without weights."
+        ]
+      }
+    },
+    {
+      "id": "T-049",
+      "title": "Puerto y cliente de embeddings locales compartidos",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-036",
+        "T-038",
+        "T-047",
+        "T-048",
+        "T-051",
+        "T-045"
+      ],
+      "seams": [
+        "S-local-client"
+      ],
+      "decisions": [
+        "DEC-0022",
+        "DEC-0023"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside seam/new unfrozen design/missing Composer runtime"
+      ],
+      "done_when": [
+        "Shared port/client/config supports explicit textlocal backend with strict identities and preserved portable boundaries",
+        "Independent review plus executed verification; no synthetic production fallback"
+      ],
+      "notes": "Own new src/runtime/embedding.ts, src/embeddings/local-client.ts, local-node-transport.ts, embedding-config.ts, embedding-identity.ts helpers/tests; serial handoff src/runtime/ports.ts and runtime/retrieval.ts+tests embeddingfingerprint only, runtime/turn.ts query purpose/identity only beforeT045; src/orchestrator/agent-turn.ts embedding binding accepts commonport (notchat logic); src/projects/types.ts, project-md.ts +tests optional embedding selection; src/constants.ts src/core/env-loader.ts global optional settings/env; esbuild.config.mjs node:http external only ifneeded. No indexer/Gemini/MCPcomposition/main/UI/gov. DEC0023 fixed ports andwire, query/document, configuredalias hasKeys, batch/health/identity cancellation; strictscalar/vector/schema, canonical fingerprint; exact model/revision/dims config resolver selectionnotinferred frommodel. Project embedding?:backend/model/revision/dims noendpoint/token. Coreturn querypurpose forwards verified identity, pinfingerprint prior/queryresponse; wrapper consumes injectedprovider, fallback only explicitdefaultGemini composition—notremote on localfailure. NodeHTTP transport127.0.0.1 numericport rejectsredirects physicalsocketabort; injectedtransport tests plusreal loopbackfixtures. Validatelocalhealth andidentitydescriptor fingerprint crossPythoncontract, healthstate actionable. DefaultsGemini envnames/settings DEC, alias geminiBalancercompat preserveduntilT042. No realweightsneeded, no productiontest fallback. Tests providerconfig/identity/querydocprefix/truncation/zeroNaN/nonnumber/count/timeout/cancel/auth/redirect/no fallback; allfiles<400 splithelpers.",
+      "rollback": "Revert leaf, retain prior generations; local service optional",
+      "verification": {
+        "planned": [
+          "npx vitest run owned tests and src/runtime",
+          "npm run typecheck",
+          "npm run build"
+        ],
+        "run": [
+          "Accepted 9b9069c and split 2294834. 31 tests passed before the split; worker re-ran 31 and typecheck after. All identity files under 400 lines."
+        ]
+      }
+    },
+    {
+      "id": "T-051",
+      "title": "Snapshot capturado y compatibilidad de escrituras de stores",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [],
+      "seams": [
+        "S-runtime-051"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Outside precise storage lifecycle/split"
+      ],
+      "done_when": [
+        "Materialization uses immutable captured operations across asyncread; clear/duringIO cannot change captured batch; localnextops remainpending",
+        "KG upsert/save with append-only adapter without read compiles/runs; required-read semantic cases fail explicitly without data loss",
+        "Split Vector/KG helpers under400lines; all meaningful regressions/typecheck/review pass"
+      ],
+      "notes": "Split after rejected T047 draft, source-only rootintegration; serial ownership. Own src/rag/vector-store.ts and vector-store-*.ts, src/kg/kg-store.ts and kg-store-*.ts helpers and persistence tests. Freeze current semantic immutable ops reconciliation; fix precise remaining snapshot bug: materialization cannot index live this.replayLog afterawait, use capturedimmutable batch/ref for persist, preserve clear/new ops for nextsave and correct loadcurrentoverlay semantics. Restore KG save optional read adapter; append-only compatibility upsert/knowndelete must work without baseline read. For semantic cases truly needing unavailable baseline, explicit failure without writes/data loss, never castassume read. Split oversized files <400, move existing helpers notnewarchitecture. Tests deterministicclear while deferredreadmaterialization, capturedset then clear/newset survives save/reload, IOerrorretry/prefixretirement and appendonly compiletest no casts. T038/T047 remainreview untilT051 accepted. Composer2.5 CLI only, no HANDOFF/governance commit, max2 reviews. Accepted cb95d0c. Branch re-run: vector/kg persistence tests passed. Snapshot is captured before await.",
+      "rollback": "Revert leaf and drafts reverse; preserve vault",
+      "verification": {
+        "planned": [
+          "npx vitest run storage/runtime/preexisting suites",
+          "npm run typecheck"
+        ],
+        "run": [
+          "Accepted cb95d0c. Branch re-run: vector/kg persistence tests passed. Snapshot is captured before await."
+        ]
+      }
+    },
+    {
+      "id": "T-052",
+      "title": "AbortSignal en turnos del mesh del plugin",
+      "owner_role": "worker",
+      "status": "done",
+      "deps": [
+        "T-039",
+        "T-049"
+      ],
+      "seams": [
+        "S-runtime-052"
+      ],
+      "decisions": [
+        "DEC-0022"
+      ],
+      "max_review_loops": 2,
+      "stop_when": [
+        "Embedding identity or chat provider redesign",
+        "Editing indexer, UI, or MCP HTTP"
+      ],
+      "done_when": [
+        "TurnDeps.signal reaches runPortableTurn chat CallOptions and the query embed call",
+        "Plugin mesh and chain executor pass that signal and no longer discard it",
+        "An aborted signal prevents the chat port call; focused tests and typecheck pass"
+      ],
+      "notes": "Split from T-039 alarm. Own src/runtime/turn.ts and src/orchestrator/agent-turn.ts only to thread an existing AbortSignal. Do not change T-045 provider resolution or T-049 embedding purpose/identity. DAG between-node cancel already exists. Composer 2.5 only. No governance commit. Also own src/orchestrator/mesh.ts and src/chains/executor.ts only to pass the signal into executeTurn. Put signal on TurnDeps, merge it into chat CallOptions and the query embed call. Do not edit provider resolution, embedding identity, or OpenCodeClient.",
+      "rollback": "Revert the leaf commit",
+      "verification": {
+        "planned": [
+          "npx vitest run mesh and turn tests",
+          "npm run typecheck"
+        ],
+        "run": [
+          "Accepted 66a3724. 25 tests re-run on the branch: turn, runtime mesh, plugin mesh, executor."
+        ]
+      }
     }
   ]
 }

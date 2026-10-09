@@ -10,6 +10,13 @@ export interface SanctumEnv {
   ANTHROPIC_BASE_URL: string;
   GEMINI_API_KEYS: string;
   TAVILY_API_KEY: string;
+  SANCTUM_EMBED_BACKEND: string;
+  SANCTUM_LOCAL_EMBED_PORT: string;
+  SANCTUM_LOCAL_EMBED_TOKEN: string;
+  SANCTUM_LOCAL_EMBED_REVISION: string;
+  SANCTUM_LOCAL_EMBED_DIMS: string;
+  SANCTUM_LOCAL_EMBED_DEVICE: string;
+  SANCTUM_LOCAL_EMBED_DTYPE: string;
 }
 
 export function loadEnvFile(envPath?: string): Partial<SanctumEnv> {
@@ -47,6 +54,16 @@ export function getEnv(): SanctumEnv {
     envFile.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
   const geminiKeys = envFile.GEMINI_API_KEYS || process.env.GEMINI_API_KEYS || "";
   const tavilyKey = envFile.TAVILY_API_KEY || process.env.TAVILY_API_KEY || "";
+  const embedBackend = envFile.SANCTUM_EMBED_BACKEND || process.env.SANCTUM_EMBED_BACKEND || "";
+  const localEmbedPort = envFile.SANCTUM_LOCAL_EMBED_PORT || process.env.SANCTUM_LOCAL_EMBED_PORT || "";
+  const localEmbedToken =
+    envFile.SANCTUM_LOCAL_EMBED_TOKEN || process.env.SANCTUM_LOCAL_EMBED_TOKEN || "";
+  const localEmbedRevision =
+    envFile.SANCTUM_LOCAL_EMBED_REVISION || process.env.SANCTUM_LOCAL_EMBED_REVISION || "";
+  const localEmbedDims = envFile.SANCTUM_LOCAL_EMBED_DIMS || process.env.SANCTUM_LOCAL_EMBED_DIMS || "";
+  const localEmbedDevice =
+    envFile.SANCTUM_LOCAL_EMBED_DEVICE || process.env.SANCTUM_LOCAL_EMBED_DEVICE || "";
+  const localEmbedDtype = envFile.SANCTUM_LOCAL_EMBED_DTYPE || process.env.SANCTUM_LOCAL_EMBED_DTYPE || "";
 
   return {
     OPENCODE_GO_API_KEY: opencodeApiKey,
@@ -57,5 +74,12 @@ export function getEnv(): SanctumEnv {
     ANTHROPIC_BASE_URL: anthropicBaseUrl,
     GEMINI_API_KEYS: geminiKeys,
     TAVILY_API_KEY: tavilyKey,
+    SANCTUM_EMBED_BACKEND: embedBackend,
+    SANCTUM_LOCAL_EMBED_PORT: localEmbedPort,
+    SANCTUM_LOCAL_EMBED_TOKEN: localEmbedToken,
+    SANCTUM_LOCAL_EMBED_REVISION: localEmbedRevision,
+    SANCTUM_LOCAL_EMBED_DIMS: localEmbedDims,
+    SANCTUM_LOCAL_EMBED_DEVICE: localEmbedDevice,
+    SANCTUM_LOCAL_EMBED_DTYPE: localEmbedDtype,
   };
 }

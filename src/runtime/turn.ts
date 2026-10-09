@@ -1,0 +1,301 @@
+import { renderSystemPrompt } from "../agents/agent-loader";
+import { renderSkillPrompt } from "../skills/loader";
+import { injectProjectPrefix } from "../projects/context";
+import type { ProjectContext } from "../projects/context";
+import type { AgentDefinition } from "../agents/types";
+import type { Skill } from "../skills/types";
+import { buildConversationPayload } from "../orchestrator/conversation";
+import type { ConversationMessage } from "../orchestrator/conversation";
+import { RAG_DEFAULTS } from "../constants";
+import { buildEffectiveReadScope } from "./permissions";
+import type { EmbeddingIdentityDocument } from "../embeddings/embedding-identity";
+import type {
+  CallOptions,
+  ChatPort,
+  EmbedderPort,
+  KgExpanderPort,
+  TracerPort,
+  VectorStorePort,
+  WebSearchPort,
+} from "./ports";
+import { resolveChatCall, type GlobalChatConfig } from "./providers";
+import {
+  embeddingMatchesDims,
+  evaluatePreEmbedStoreIdentity,
+  type ExpectedVectorSeal,
+  formatRetrievedContext,
+  parseMinSimilarityThreshold,
+  parseTopKLimit,
+  resolveSealedEmbedIdentity,
+  retrieveContextChunks,
+  vectorIdentitiesCompatible,
+} from "./retrieval";
+
+/** DEC-0022: user-visible notifications are injected by the Obsidian adapter only. */
+export type TurnNotifyFn = (message: string, durationMs?: number) => void;
+
+export interface PortableTurnInput {
+  userInput: string;
+  skipRag?: boolean;
+  /** Undefined = no extra selection layer; [] denies reads. */
+  selectionPaths?: string[] | undefined;
+  agent: AgentDefinition;
+  projectContext?: ProjectContext;
+  skillContext?: Skill;
+  conversationMessages?: ConversationMessage[];
+  conversationSummary?: string;
+  traceId?: string;
+  tavilyQuery?: string;
+  ports: {
+    chat: ChatPort;
+    embedder: EmbedderPort;
+    vectorStore: VectorStorePort;
+    tracer?: TracerPort;
+    kg?: KgExpanderPort;
+    webSearch?: WebSearchPort;
+  };
+  /** DEC-0022: explicit sealed generation fields for query identity (not copied from store). */
+  expectedVectorSeal?: ExpectedVectorSeal;
+  /** DEC-0023: verified provider identity pinned before query embed (local health / gemini adapter). */
+  queryEmbeddingIdentity?: EmbeddingIdentityDocument;
+  notify?: TurnNotifyFn;
+  /** DEC-0022: per-turn overrides merged with agent/project/global chat resolution. */
+  chatOptions?: CallOptions;
+  globalChat?: GlobalChatConfig;
+  /** DEC-0022: merged into chat and query-embed call options. */
+  signal?: AbortSignal;
+}
+
+export interface PortableTurnResult {
+  content: string;
+  usage: { prompt: number; completion: number };
+  ragContext: string;
+  conversationSummary?: string;
+  projectId?: string;
+  provenance?: string;
+}
+
+function hasWebSearchTool(agent: AgentDefinition, skill?: Skill): boolean {
+  return agent.tools?.includes("web_search") || skill?.tools?.includes("web_search") || false;
+}
+
+function mergeTurnAbortSignals(...signals: (AbortSignal | undefined)[]): AbortSignal | undefined {
+  const active = signals.filter(Boolean) as AbortSignal[];
+  if (active.length === 0) {
+    return undefined;
+  }
+  if (active.length === 1) {
+    return active[0];
+  }
+  if (active.some((s) => s.aborted)) {
+    return active.find((s) => s.aborted);
+  }
+  const controller = new AbortController();
+  for (const s of active) {
+    s.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  return controller.signal;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
+/** DEC-0022: agent model > project model > global; explicit provider via resolver. */
+export function resolveChatCallOptions(
+  agent: AgentDefinition,
+  projectModel?: string,
+  globalChat?: GlobalChatConfig,
+  callOverrides?: CallOptions,
+): CallOptions {
+  const resolved = resolveChatCall({
+    call: callOverrides,
+    agentModel: agent.model,
+    projectModel,
+    global: globalChat,
+  });
+  return {
+    model: resolved.model,
+    provider: resolved.provider,
+    signal: resolved.signal,
+  };
+}
+
+/**
+ * DEC-0022: portable agent turn — authorize before embed/KG/traces; threshold without fallback.
+ */
+export async function runPortableTurn(input: PortableTurnInput): Promise<PortableTurnResult> {
+  const {
+    userInput,
+    skipRag = false,
+    selectionPaths,
+    agent,
+    projectContext,
+    skillContext,
+    conversationMessages,
+    conversationSummary,
+    traceId,
+    tavilyQuery,
+    ports,
+    expectedVectorSeal,
+    queryEmbeddingIdentity,
+    notify,
+    chatOptions,
+    globalChat,
+    signal: turnSignal,
+  } = input;
+
+  const mergedTurnSignal = mergeTurnAbortSignals(turnSignal, chatOptions?.signal);
+
+  const project = projectContext?.project;
+  const readScope = buildEffectiveReadScope({
+    projectReadPaths: project?.read_paths ?? null,
+    agentReadPaths: agent?.permissions?.read_paths,
+    selectionPaths,
+  });
+
+  const topK = project?.rag?.top_k ?? RAG_DEFAULTS.TOP_K;
+  const minSim = project?.rag?.min_similarity ?? RAG_DEFAULTS.MIN_SIMILARITY;
+  const chatCallOptions = resolveChatCallOptions(agent, project?.model, globalChat, {
+    ...chatOptions,
+    signal: mergedTurnSignal,
+  });
+
+  let ragContext = "";
+
+  if (!skipRag && readScope.allowed && ports.embedder.hasKeys && ports.vectorStore.count > 0) {
+    const storeIdentity = ports.vectorStore.identity;
+    const projectRag = project?.rag;
+    const queryIdentity =
+      projectRag && project?.id
+        ? resolveSealedEmbedIdentity(projectRag, project.id, expectedVectorSeal)
+        : null;
+    if (!queryIdentity) {
+      notify?.("⚠ RAG: proyecto sin modelo de embedding sellado", 5000);
+    } else if (!projectRag) {
+      notify?.("⚠ RAG: proyecto sin modelo de embedding sellado", 5000);
+    } else {
+      const preEmbedDeny = evaluatePreEmbedStoreIdentity(
+        projectRag,
+        storeIdentity,
+        project!.id,
+      );
+      if (preEmbedDeny === "rebuild_required") {
+        notify?.("⚠ RAG: rebuild_required — índice sin identidad verificable", 8000);
+      } else if (preEmbedDeny === "identity_mismatch") {
+        notify?.("⚠ RAG: índice incompatible con el modelo/dimensiones del proyecto", 8000);
+      } else if (
+        storeIdentity &&
+        !vectorIdentitiesCompatible(queryIdentity, storeIdentity)
+      ) {
+        notify?.("⚠ RAG: índice incompatible con el modelo/dimensiones del proyecto", 8000);
+      } else if (parseTopKLimit(topK) === null) {
+        notify?.("⚠ RAG: top_k inválido", 5000);
+      } else if (parseMinSimilarityThreshold(minSim) === null) {
+        notify?.("⚠ RAG: umbral de similitud inválido", 5000);
+      } else {
+        throwIfAborted(mergedTurnSignal);
+        const queryEmbedding = await ports.embedder.embed(userInput, {
+          model: queryIdentity.embedModel,
+          purpose: "query",
+          expectedIdentity: queryEmbeddingIdentity,
+          signal: mergedTurnSignal,
+        });
+        if (!embeddingMatchesDims(queryEmbedding, queryIdentity.dims)) {
+          notify?.("⚠ RAG: embedding incompatible con dimensiones del proyecto", 8000);
+        } else {
+          const { chunks, skipReason } = retrieveContextChunks({
+            queryEmbedding,
+            queryIdentity,
+            store: ports.vectorStore,
+            scope: readScope,
+            topK,
+            minSimilarity: minSim,
+            kg: ports.kg,
+            traceId,
+            tracer: ports.tracer,
+          });
+
+          if (skipReason === "identity_mismatch") {
+            notify?.("⚠ RAG: índice incompatible con el modelo/dimensiones del proyecto", 8000);
+          } else if (skipReason === "rebuild_required") {
+            notify?.("⚠ RAG: rebuild_required — índice sin identidad verificable", 8000);
+          } else if (skipReason === "invalid_threshold" || skipReason === "invalid_top_k") {
+            notify?.("⚠ RAG: configuración RAG inválida", 5000);
+          } else if (chunks.length === 0 && skipReason !== "scope_denied") {
+            notify?.("⚠ RAG: 0 resultados bajo el umbral de similitud configurado", 6000);
+          }
+
+          ragContext = formatRetrievedContext(chunks);
+        }
+      }
+    }
+  } else if (!skipRag) {
+    if (!readScope.allowed) {
+      // DEC-0022: no logs/traces of unauthorized paths when scope denies embed/read.
+    } else if (!ports.embedder.hasKeys) {
+      notify?.("⚠ RAG: proveedor de embeddings no configurado", 5000);
+    } else if (ports.vectorStore.count === 0) {
+      notify?.("⚠ RAG: store vacío. Indexá desde el proyecto.", 8000);
+    }
+  }
+
+  let webContext = "";
+  if (hasWebSearchTool(agent, skillContext) && ports.webSearch) {
+    notify?.("🌐 Buscando en web vía Tavily...", 2000);
+    try {
+      const searchQuery = tavilyQuery || userInput.slice(0, 400);
+      webContext = await ports.webSearch.search(searchQuery);
+    } catch {
+      // DEC-0022: portable core does not log denied or failed web paths.
+    }
+  }
+
+  let renderedPrompt = renderSystemPrompt(agent, ragContext, userInput);
+  renderedPrompt = renderedPrompt.replace(/\{\{web_context\}\}/g, webContext || "");
+
+  if (projectContext?.systemPrefix) {
+    renderedPrompt = injectProjectPrefix(renderedPrompt, projectContext.systemPrefix);
+  }
+
+  if (skillContext?.instructions) {
+    const renderedSkill = renderSkillPrompt(skillContext, ragContext, webContext, userInput);
+    renderedPrompt = `--- Skill: ${skillContext.name} ---\n${renderedSkill}\n\n---\n\n${renderedPrompt}`;
+  }
+
+  throwIfAborted(chatCallOptions.signal);
+
+  let result: { content: string; usage: { prompt: number; completion: number } };
+  if (conversationMessages && conversationMessages.length > 0) {
+    const allMessages: ConversationMessage[] = [
+      ...conversationMessages,
+      { role: "user", content: userInput },
+    ];
+    const payload = buildConversationPayload(renderedPrompt, allMessages, conversationSummary);
+    result = await ports.chat.chatMessages(payload.messages, chatCallOptions);
+    return {
+      content: result.content,
+      usage: result.usage,
+      ragContext,
+      conversationSummary: payload.newSummary,
+      projectId: project?.id,
+      provenance: ports.vectorStore.identity?.provenance,
+    };
+  }
+
+  result = await ports.chat.chat(
+    renderedPrompt,
+    userInput,
+    ragContext || undefined,
+    chatCallOptions,
+  );
+  return {
+    content: result.content,
+    usage: result.usage,
+    ragContext,
+    projectId: project?.id,
+    provenance: ports.vectorStore.identity?.provenance,
+  };
+}

@@ -1,8 +1,10 @@
 import { ItemView, WorkspaceLeaf, Notice, setIcon } from "obsidian";
 import type { KgEdge } from "../kg/types";
 import type { KgEdgeStore } from "../kg/kg-store";
-import { forceLayout, convolutionalLayout, neighborsOf } from "../kg/layout";
+import { forceLayout, convolutionalLayout } from "../kg/layout";
+import { renderKgScene } from "./kg-scene";
 import type { NodePos, LayoutResult } from "../kg/layout";
+import { renderKgInspector } from "./kg-inspector";
 
 export const VIEW_TYPE_KG = "sanctum-kg";
 
@@ -291,98 +293,16 @@ export class KgView extends ItemView {
   }
 
   private render(): void {
-    while (this.vpEl.firstChild) this.vpEl.removeChild(this.vpEl.firstChild);
     this.applyTransform();
-
-    const { positions, edges, selected, showExplicit, showReinforced, showSemantic } = this.state;
-    if (positions.size === 0) return;
-
-    const neighbors = selected ? neighborsOf(selected, this.state.adjacency) : null;
-
-    // Edges
-    for (const e of edges) {
-      if (e.type === "explicit" && !showExplicit) continue;
-      if (e.type === "reinforced" && !showReinforced) continue;
-      if (e.type === "semantic" && !showSemantic) continue;
-
-      const pa = positions.get(e.from);
-      const pb = positions.get(e.to);
-      if (!pa || !pb) continue;
-
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", String(pa.x));
-      line.setAttribute("y1", String(pa.y));
-      line.setAttribute("x2", String(pb.x));
-      line.setAttribute("y2", String(pb.y));
-
-      const isDim = neighbors && !neighbors.has(e.from) && !neighbors.has(e.to);
-      const cls = isDim ? "s-kg-edge dim" : "s-kg-edge";
-      line.setAttribute("class", cls);
-
-      if (e.type === "explicit") {
-        line.setAttribute("stroke", "rgba(255,255,255,0.22)");
-        line.setAttribute("stroke-width", "1.4");
-      } else if (e.type === "reinforced") {
-        line.setAttribute("stroke", "var(--brand)");
-        line.setAttribute("stroke-width", "3");
-      } else {
-        const w = 1.2 + e.weight * 2.2;
-        const opacity = 0.45 + e.weight * 0.4;
-        line.setAttribute("stroke", "var(--brand)");
-        line.setAttribute("stroke-width", String(w));
-        line.setAttribute("stroke-opacity", String(opacity));
-        line.setAttribute("stroke-dasharray", "5,4");
-      }
-
-      this.vpEl.appendChild(line);
-    }
-
-    // Nodes
-    for (const [id, pos] of positions) {
-      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      g.setAttribute("data-node", id);
-      g.style.cursor = "pointer";
-
-      const isSelected = id === selected;
-      const isDim = neighbors && !neighbors.has(id);
-
-      const radius = isSelected ? 10 : Math.max(5, Math.min(12, Math.sqrt(this.state.adjacency.get(id)?.length || 1) * 3));
-
-      if (isSelected) {
-        const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        ring.setAttribute("cx", String(pos.x));
-        ring.setAttribute("cy", String(pos.y));
-        ring.setAttribute("r", String(radius + 4));
-        ring.setAttribute("fill", "none");
-        ring.setAttribute("stroke", "var(--brand)");
-        ring.setAttribute("stroke-width", "2");
-        g.appendChild(ring);
-      }
-
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", String(pos.x));
-      circle.setAttribute("cy", String(pos.y));
-      circle.setAttribute("r", String(radius));
-      circle.setAttribute("fill", isSelected ? "var(--brand)" : "var(--raised)");
-      circle.setAttribute("stroke", isSelected ? "var(--brand)" : "var(--border-strong)");
-      circle.setAttribute("stroke-width", "1.5");
-      circle.style.transition = "fill .15s, opacity .15s";
-      if (isDim) circle.setAttribute("opacity", "0.13");
-      g.appendChild(circle);
-
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("x", String(pos.x));
-      label.setAttribute("y", String(pos.y + radius + 14));
-      label.setAttribute("text-anchor", "middle");
-      label.setAttribute("font-size", "10");
-      label.setAttribute("fill", isDim ? "rgba(255,255,255,0.13)" : isSelected ? "var(--text)" : "var(--text-3)");
-      label.setAttribute("font-weight", isSelected ? "700" : "400");
-      const shortName = id.replace(/\.md$/i, "").split("/").pop() || id;
-      label.textContent = shortName.length > 18 ? shortName.slice(0, 16) + "…" : shortName;
-      g.appendChild(label);
-
-      this.vpEl.appendChild(g);
-    }
+    renderKgScene(this.vpEl, {
+      positions: this.state.positions,
+      edges: this.state.edges,
+      selected: this.state.selected,
+      adjacency: this.state.adjacency,
+      showExplicit: this.state.showExplicit,
+      showReinforced: this.state.showReinforced,
+      showSemantic: this.state.showSemantic,
+    });
   }
 
   private applyTransform(): void {
@@ -399,67 +319,9 @@ export class KgView extends ItemView {
   }
 
   private updateInspector(id: string | null): void {
-    this.inspectorEl.empty();
-    this.inspectorEl.createDiv({ cls: "s-kg-inspector-title", text: "Inspector" });
-
-    if (!id) {
-      this.inspectorEl.createDiv({ cls: "s-kg-inspector-empty", text: "Seleccioná un nodo" });
-      return;
-    }
-
-    const content = this.inspectorEl.createDiv({ cls: "s-kg-inspector-content" });
-
-    // Header
-    const header = content.createDiv({ cls: "s-kg-inspector-header" });
-    header.createSpan({ text: id.replace(/\.md$/i, "").split("/").pop() || id, attr: { style: "font-weight:700;font-size:14px" } });
-    content.createDiv({ cls: "s-kg-inspector-path", text: id, attr: { style: "font-size:11px;color:var(--text-3);margin-bottom:8px" } });
-
-    // Meta chips
-    const degree = this.state.adjacency.get(id)?.length || 0;
-    const meta = content.createDiv({ cls: "s-kg-inspector-meta" });
-    meta.createSpan({ cls: "s-kg-chip", text: `Grado ${degree}` });
-
-    // Connections list
-    const neighbors = this.state.adjacency.get(id) || [];
-    if (neighbors.length > 0) {
-      content.createDiv({ text: "Conexiones", attr: { style: "font-weight:600;font-size:12px;margin:10px 0 6px;color:var(--text-2)" } });
-
-      for (const nid of neighbors) {
-        const row = content.createDiv({ cls: "s-kg-inspector-row" });
-
-        // Find the edge to get type/relation
-        const edge = this.state.edges.find(e =>
-          (e.from === id && e.to === nid) || (e.from === nid && e.to === id)
-        );
-
-        const dot = row.createSpan({ cls: "s-kg-inspector-dot" });
-        if (edge?.type === "reinforced") dot.style.background = "var(--brand)";
-        else if (edge?.type === "explicit") dot.style.background = "rgba(255,255,255,0.4)";
-        else dot.style.background = "var(--brand)";
-        dot.style.opacity = edge?.type === "semantic" ? "0.5" : "1";
-
-        const name = (nid.replace(/\.md$/i, "").split("/").pop() || nid).slice(0, 22);
-        row.createSpan({ text: name, attr: { style: "flex:1;font-size:12px;color:var(--text-2)" } });
-
-        const chip = row.createSpan({ cls: "s-kg-inspector-chip" });
-        chip.setText(edge?.relation || "wikilink");
-
-        if (edge?.type === "semantic" && edge.weight) {
-          row.createSpan({ text: edge.weight.toFixed(2), attr: { style: "font-size:10px;color:var(--text-3);width:30px;text-align:right;font-family:monospace" } });
-        }
-      }
-    }
-
-    // Actions
-    const actions = content.createDiv({ cls: "s-kg-inspector-actions" });
-    const openBtn = actions.createEl("button", { cls: "s-kg-inspector-btn", text: "Abrir nota" });
-    openBtn.onclick = () => {
-      this.deps.onSendToChat(id);
-    };
-    const chatBtn = actions.createEl("button", { cls: "s-kg-inspector-btn primary", text: "Enviar al chat" });
-    chatBtn.onclick = () => {
-      this.deps.onSendToChat(id);
-    };
+    renderKgInspector(this.inspectorEl, id, this.state.edges, this.state.adjacency, (seed) =>
+      this.deps.onSendToChat(seed),
+    );
   }
 
   private updateStats(): void {

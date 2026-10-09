@@ -8,6 +8,14 @@ export interface ProjectRag {
   min_similarity: number;
 }
 
+/** DEC-0023: optional provider selection (inherits global when absent). */
+export interface ProjectEmbedding {
+  backend: "gemini" | "sentence-transformers";
+  model: string;
+  revision: string;
+  dims: number;
+}
+
 export interface ProjectFile {
   path: string;
   name: string;
@@ -27,6 +35,7 @@ export interface Project {
   outputPath: string;
   model: string;
   rag: ProjectRag;
+  embedding?: ProjectEmbedding;
   files: string[];
   attachedFiles: ProjectFile[];
   starred?: boolean;

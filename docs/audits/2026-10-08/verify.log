@@ -1,0 +1,65 @@
+
+> sanctum-ii@0.1.0 verify
+> npm run typecheck && npm run test && npm run build && npm run mcp:smoke
+
+
+> sanctum-ii@0.1.0 typecheck
+> tsc --noEmit
+
+
+> sanctum-ii@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.10 C:/Users/solan/Documents/Personal/Desarrollo_y_Proyectos/Sanctum-II/Sanctum-II
+
+{"ts":"2026-10-09T02:16:55.005Z","level":"info","msg":"sanctum_list_notes","meta":{"agentId":"researcher","mode":"read_paths"}}
+{"ts":"2026-10-09T02:16:55.041Z","level":"info","msg":"sanctum_list_notes","meta":{"agentId":"researcher","folder":"Research","count":2}}
+{"ts":"2026-10-09T02:16:55.133Z","level":"warn","msg":"gemini model no disponible, saltando","meta":{"model":"gemini-embedding-2","status":404}}
+
+ Test Files  25 passed (25)
+      Tests  217 passed (217)
+   Start at  20:16:52
+   Duration  3.37s (transform 5.22s, setup 0ms, import 10.84s, tests 2.43s, environment 8ms)
+
+
+> sanctum-ii@0.1.0 build
+> node esbuild.config.mjs production
+
+
+> sanctum-ii@0.1.0 mcp:smoke
+> node mcp-server/test/smoke.mjs
+
+
+📋 Smoke test — 10 respuestas de 10 esperadas
+
+  ✅ initialize: protocolVersion
+  ✅ initialize: serverInfo.name
+  ✅ tools/list: primera tool
+  ✅ tools/list: 6 tools (esperado >= 5)
+  ✅ list_agents: content type is text
+  ❌ list_agents: contenido — no menciona agentes esperados: "bot **Boilerplate Agent** (`boilerplate-agent`) — *custom*
+Template para crear nuevos agentes
+
+🌐 **Web Search** (`web-search`) — *fijo del sistema*
+Búsqueda web + síntesis con el índice de conocimien"
+  ✅ tool_inexistente: code -32602
+  ✅ ping: sin error
+  ✅ get_note: forager + path bloqueado → PERMISSION_DENIED
+  ✅ get_note: agente inexistente → AGENT_NOT_FOUND
+  ✅ query_vault: vault sin índice → VAULT_NOT_INDEXED
+  ✅ invoke_agent: sin api key → LLM_NOT_CONFIGURED
+  ✅ run_mesh: sin api key → LLM_NOT_CONFIGURED
+  ✅ trace format: origin = mcp
+  ✅ trace format: trace_id
+  ✅ trace format: type
+  ✅ trace format: agent_id
+  ✅ trace format: duration_ms es número
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  17/18 tests pasaron, 1 fallaron
+
+stderr:
+[VectorStore] 📄 No existing store at sanctum-logs/vector-store.jsonl — starting empty
+{"ts":"2026-10-09T02:17:00.739Z","level":"error","msg":"fallo en request","meta":{"method":"tools/call","code":-32602,"message":"Tool desconocida: tool_inexistente"}}
+

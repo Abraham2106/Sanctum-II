@@ -1,23 +1,34 @@
 import type { ToolDef } from "../mcp/types.js"
 import type { VaultAdapter } from "../../../src/core/vault-adapter.js"
 import { log } from "../mcp/logger.js"
-import { resolvePermissions, checkPathPermission } from "../mcp/permission-resolver.js"
+import { resolvePermissions } from "../mcp/permission-resolver.js"
+import {
+  buildProjectAgentReadScope,
+  loadProject,
+  ProjectRequiredError,
+  resolveMcpProjectId,
+} from "../../../src/app/project-reader.js"
+import { isPathAuthorized } from "../../../src/runtime/permissions.js"
 
 export function createGetNoteTool(vault: VaultAdapter): ToolDef {
   return {
     name: "sanctum_get_note",
     description:
-      "Lee una nota del vault por su path relativo. Valida que el agente tenga permisos (read_paths) sobre la ruta antes de leer el archivo. Si el path no está cubierto por los read_paths del agente, devuelve PERMISSION_DENIED sin tocar el filesystem.",
+      "Lee una nota del vault por path relativo dentro de un proyecto. Valida proyecto ∩ agente read_paths antes de leer.",
     inputSchema: {
       type: "object",
       properties: {
+        project_id: {
+          type: "string",
+          description: "ID del proyecto (sanctum-projects). Si falta, usa SANCTUM_PROJECT_ID.",
+        },
         agent_id: {
           type: "string",
-          description: "ID del agente (ej. forager, researcher, critic). Sus read_paths determinan si la lectura está autorizada.",
+          description: "ID del agente; sus read_paths se intersectan con los del proyecto.",
         },
         path: {
           type: "string",
-          description: "Ruta relativa de la nota dentro del vault (ej. Research/nota.md o sanctum-agents/forager.md).",
+          description: "Ruta relativa de la nota (ej. Research/nota.md).",
         },
       },
       required: ["agent_id", "path"],
@@ -29,15 +40,30 @@ export function createGetNoteTool(vault: VaultAdapter): ToolDef {
       const notePath = String(args.path ?? "").trim()
       if (!notePath) throw new Error("'path' es obligatorio")
 
-      const perms = await resolvePermissions(vault, agentId)
+      let projectId: string
+      try {
+        projectId = resolveMcpProjectId(args)
+      } catch (err) {
+        if (err instanceof ProjectRequiredError) {
+          return {
+            content: [{ type: "text", text: "Error: PROJECT_REQUIRED" }],
+            isError: true,
+          }
+        }
+        throw err
+      }
 
-      if (!checkPathPermission(notePath, perms)) {
-        log.warn("permission denied", { agentId, notePath, readPaths: perms.readPaths })
+      const project = await loadProject(vault, projectId)
+      const perms = await resolvePermissions(vault, agentId)
+      const scope = buildProjectAgentReadScope(project, perms.readPaths)
+
+      if (!scope.allowed || !isPathAuthorized(notePath, scope)) {
+        log.warn("permission denied", { agentId, projectId, notePath })
         return {
           content: [
             {
               type: "text",
-              text: `Error: PERMISSION_DENIED - El agente '${agentId}' no tiene read_paths que cubran '${notePath}'. read_paths del agente: ${JSON.stringify(perms.readPaths)}`,
+              text: `Error: PERMISSION_DENIED - '${agentId}' no puede leer '${notePath}' en proyecto '${projectId}'.`,
             },
           ],
           isError: true,
@@ -54,7 +80,7 @@ export function createGetNoteTool(vault: VaultAdapter): ToolDef {
         }
       }
 
-      log.info("sanctum_get_note", { agentId, notePath })
+      log.info("sanctum_get_note", { agentId, projectId, notePath })
       return {
         content: [{ type: "text", text: `# ${notePath}\n\n${content}` }],
       }

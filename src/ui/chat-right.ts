@@ -1,5 +1,6 @@
 import { setIcon } from "obsidian";
 import type { MeshResultFull } from "../orchestrator/mesh";
+import { meshStatusSummaryLine } from "./mesh-status-label";
 
 export class ChatRightPanel {
   private el!: HTMLElement;
@@ -118,7 +119,7 @@ export class ChatRightPanel {
     }
 
     const summary = this.traceContent.createDiv({ attr: { style: "margin-top:12px;font-size:12px;color:var(--text-3);padding:8px;background:var(--raised);border-radius:6px;" } });
-    summary.setText(`${result.criticVerdict === "escalated" ? "⚠️ Escalado" : "✅ Aceptado"} · ${result.attempts} intento(s) · Score: ${result.criticScore}/100`);
+    summary.setText(meshStatusSummaryLine(result.meshStatus, result.attempts, result.criticScore));
   }
 
   renderSourcesPanel(sources: { note_path: string; score: number }[]): void {

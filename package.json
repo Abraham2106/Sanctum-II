@@ -10,9 +10,10 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "mcp:smoke": "node mcp-server/test/smoke.mjs",
-    "mcp:http": "SANCTUM_MCP_HTTP=1 tsx mcp-server/index.ts",
+    "mcp:http": "node scripts/mcp-http.mjs",
+    "test:kg": "node --import tsx src/kg/kg.test.ts",
     "deploy": "npm run build && powershell -File deploy.ps1",
-    "verify": "npm run typecheck && npm run test && npm run build && npm run mcp:smoke",
+    "verify": "node scripts/verify.mjs",
     "discord": "tsx discord-bot/index.ts"
   },
   "devDependencies": {

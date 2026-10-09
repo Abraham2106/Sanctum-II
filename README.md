@@ -113,7 +113,7 @@ Un chat genérico puede responder preguntas, pero normalmente desconoce cómo es
 | **Agent Creator** | Modal guiado para generar, revisar, validar y guardar agentes con iconos Lucide y una skill complementaria opcional. |
 | **Skill Creator** | Mesh contextual RAG → web → autor → crítico, con quality gate, regeneración y actualización con historial. |
 | **Cadenas visuales** | Composición y ejecución de flujos dirigidos de agentes desde Obsidian. |
-| **MCP** | Cinco tools para listar agentes, leer notas, consultar RAG, invocar agentes y ejecutar el mesh. |
+| **MCP** | Seis tools: listar agentes, listar notas del proyecto, leer nota, consultar RAG por generación de índice, invocar agente y ejecutar mesh. |
 | **Observabilidad** | Trazas JSON con origen, agente, duración, uso y estado de la ejecución. |
 
 ## Experiencia del producto
@@ -349,8 +349,8 @@ Cada proyecto mantiene su propio perímetro de contexto y persistencia:
 | Ruta | Contenido |
 |---|---|
 | `sanctum-projects/{projectId}.md` | Configuración, permisos, modelo e instrucciones del proyecto. |
-| `sanctum-logs/index/{projectId}/vector-store.jsonl` | Chunks y embeddings del índice vectorial. |
-| `sanctum-logs/index/{projectId}/manifest.json` | Estado incremental de archivos indexados. |
+| `sanctum-logs/index/{projectId}/generations/{generationId}/` | Generación sellada del índice (`metadata.json`, `manifest.json`, `vector-store.jsonl`, `kg-edges.jsonl`, `commit.json`). |
+| `sanctum-logs/index/{projectId}/stale.json` | Marca de índice obsoleto hasta reindexar. |
 | `sanctum-logs/threads/{projectId}/` | Threads, mensajes, resúmenes y acciones pendientes. |
 | `sanctum-memory/{projectId}/memory.jsonl` | Memoria persistente del proyecto. |
 | `Projects/{projectId}/` | Notas generadas para el proyecto. |
@@ -494,15 +494,24 @@ El borrador debe obtener al menos `85/100`; además, contexto, exactitud de domi
 
 El servidor MCP se ejecuta como un proceso Node independiente y se comunica mediante JSON-RPC 2.0 sobre `stdio`. `stdout` queda reservado para el protocolo; los logs estructurados se escriben exclusivamente en `stderr`.
 
-### Tools disponibles
+### Tools disponibles (6)
 
 | Tool | Dependencia | Función |
 |---|---|---|
 | `sanctum_list_agents` | Ninguna | Lista agentes fijos y personalizados. |
-| `sanctum_get_note` | Agente válido | Lee una nota aplicando sus `read_paths`. |
-| `sanctum_query_vault` | Gemini | Ejecuta búsqueda semántica sobre el índice. |
-| `sanctum_invoke_agent` | OpenCode | Invoca un agente individual. |
-| `sanctum_run_mesh` | OpenCode | Ejecuta Forager → Researcher → Critic. |
+| `sanctum_list_notes` | `project_id` o `SANCTUM_PROJECT_ID` | Lista notas bajo rutas autorizadas del proyecto. |
+| `sanctum_get_note` | Proyecto + agente válido | Lee una nota aplicando permisos proyecto ∩ agente. |
+| `sanctum_query_vault` | Proyecto + embedder (Gemini u opcional local) | Búsqueda semántica sobre la **generación publicada** del proyecto (refresco por llamada). |
+| `sanctum_invoke_agent` | OpenCode | Invoca un agente individual con el `context` que envíes (sin RAG oculto). |
+| `sanctum_run_mesh` | OpenCode | Ejecuta Forager → Researcher → Critic con el núcleo compartido del plugin. |
+
+**Selección de proyecto:** `project_id` en la tool → `SANCTUM_PROJECT_ID` → `PROJECT_REQUIRED`. El catálogo de agentes no exige proyecto.
+
+**Estados de índice:** `ready` (generación completa válida), `rebuild_required` (legacy o fingerprint distinto), `unavailable` (sin generación), `corrupt` (sellado inválido). Una indexación fallida no reemplaza la generación activa.
+
+**Embeddings locales (opcional):** backend `sentence-transformers` con servicio Python iniciado **manualmente** en loopback (`SANCTUM_LOCAL_EMBED_*`). No sustituye a Gemini ante fallos; no se descargan pesos en CI. La calibración de calidad y la inferencia en producción siguen **pendientes** de benchmark y validación en vault real.
+
+Transporte **HTTP** local (`npm run mcp:http`): bind loopback, `SANCTUM_MCP_TOKEN` obligatorio, `SANCTUM_MCP_ORIGINS` allowlist exacta para clientes web.
 
 Configuración mínima para VS Code (`.vscode/mcp.json`):
 
@@ -550,9 +559,11 @@ Los archivos, índices y trazas se almacenan localmente. Sin embargo, al usar pr
 | `npm test` | Ejecuta la suite Vitest. |
 | `npm run build` | Genera los bundles de producción. |
 | `npm run mcp:smoke` | Comprueba protocolo, tools, permisos y errores MCP. |
-| `npm run verify` | Ejecuta typecheck, tests, build y smoke test. |
+| `npm run verify` | Typecheck, Vitest, tests KG (tsx), orquestación, unittest Python local-embeddings (si hay Python), build y smoke MCP con vault fixture. |
+| `npm run mcp:http` | Arranca MCP HTTP con launcher Node portable (Windows/Linux). |
+| `npm run test:kg` | Suite del Knowledge Graph fuera de Vitest. |
 
-La integración continua vive en `.github/workflows/ci.yml` y ejecuta `npm run verify` en pushes y pull requests.
+La integración continua en `.github/workflows/ci.yml` ejecuta `npm run verify` en **Windows y Linux** (sin claves reales ni descarga de modelos).
 
 ## Estructura del repositorio
 
@@ -590,13 +601,14 @@ Implementado:
 - [x] Agent Creator con modal, revisión, permisos fail-closed e iconos Lucide.
 - [x] Skill Creator contextual con RAG, investigación web, quality gate e historial.
 - [x] Frontmatter YAML compartido y autocompletado dinámico de agentes y skills.
-- [x] Servidor MCP standalone con cinco tools.
+- [x] Servidor MCP standalone con seis tools y generaciones de índice por proyecto.
 - [x] Suite automatizada, smoke tests y CI.
 
 Próximos pasos:
 
 - [ ] Estabilizar contratos públicos y migraciones de datos.
-- [ ] Ampliar cobertura de pruebas end-to-end dentro de Obsidian.
+- [ ] Validación end-to-end en Obsidian Desktop (no afirmada en producción hasta completarla).
+- [ ] Inferencia/calibración de calidad en modelos reales (embeddings locales y mesh en vault grande).
 - [ ] Preparar distribución para Community Plugins.
 - [ ] Documentación y experiencia completa en inglés.
 

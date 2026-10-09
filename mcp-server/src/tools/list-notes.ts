@@ -2,7 +2,14 @@
 import type { ToolDef } from "../mcp/types.js"
 import type { VaultAdapter } from "../../../src/core/vault-adapter.js"
 import { log } from "../mcp/logger.js"
-import { resolvePermissions, checkPathPermission } from "../mcp/permission-resolver.js"
+import { resolvePermissions } from "../mcp/permission-resolver.js"
+import {
+  buildProjectAgentReadScope,
+  loadProject,
+  ProjectRequiredError,
+  resolveMcpProjectId,
+} from "../../../src/app/project-reader.js"
+import { isPathAuthorized } from "../../../src/runtime/permissions.js"
 import { isInternalPath } from "../../../src/utils.js"
 
 const MAX_ENTRIES = 200
@@ -25,22 +32,53 @@ function folderIsInternal(folderPath: string): boolean {
   return isInternalPath(name) || isInternalPath(`${name}/`)
 }
 
+function childPathAuthorized(fullPath: string, scope: ReturnType<typeof buildProjectAgentReadScope>): boolean {
+  if (isPathAuthorized(fullPath, scope)) return true
+  if (fullPath.endsWith("/")) {
+    return isPathAuthorized(`${fullPath}x.md`, scope)
+  }
+  return isPathAuthorized(`${fullPath}/x.md`, scope)
+}
+
+/** Listing allowed when any effective pattern targets this folder or a file beneath it. */
+function canListFolder(folderNorm: string, scope: ReturnType<typeof buildProjectAgentReadScope>): boolean {
+  if (!scope.allowed) return false
+  if (childPathAuthorized(folderNorm, scope) || childPathAuthorized(`${folderNorm}/`, scope)) {
+    return true
+  }
+  for (const layer of scope.layers) {
+    for (const pat of layer) {
+      const p = pat.startsWith("/") ? pat.slice(1) : pat
+      if (p === folderNorm || p.startsWith(`${folderNorm}/`)) return true
+      if (p.includes("*")) {
+        const prefix = p.split("*")[0].replace(/\/$/, "")
+        if (prefix === folderNorm || folderNorm.startsWith(`${prefix}/`)) return true
+      }
+    }
+  }
+  return false
+}
+
 export function createListNotesTool(vault: VaultAdapter): ToolDef {
   return {
     name: "sanctum_list_notes",
     description:
-      "Lista un nivel de notas .md que el agente puede leer. Sin folder, devuelve sus read_paths.",
+      "Lista un nivel de notas .md autorizadas (proyecto ∩ agente). Sin folder, devuelve read_paths efectivos.",
     annotations: { readOnlyHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
       properties: {
+        project_id: {
+          type: "string",
+          description: "ID del proyecto. Si falta, usa SANCTUM_PROJECT_ID.",
+        },
         agent_id: {
           type: "string",
-          description: "ID del agente; sus read_paths definen qué carpetas puede listar.",
+          description: "ID del agente; read_paths intersectan con el proyecto.",
         },
         folder: {
           type: "string",
-          description: "Carpeta relativa dentro del vault (un nivel). Vacío: solo read_paths.",
+          description: "Carpeta relativa (un nivel). Vacío: read_paths del agente en el proyecto.",
         },
       },
       required: ["agent_id"],
@@ -50,12 +88,33 @@ export function createListNotesTool(vault: VaultAdapter): ToolDef {
       if (!agentId) throw new Error("'agent_id' es obligatorio")
       const folder = String(args.folder ?? "").trim()
 
+      let projectId: string
+      try {
+        projectId = resolveMcpProjectId(args)
+      } catch (err) {
+        if (err instanceof ProjectRequiredError) {
+          return {
+            content: [{ type: "text", text: "Error: PROJECT_REQUIRED" }],
+            isError: true,
+          }
+        }
+        throw err
+      }
+
+      const project = await loadProject(vault, projectId)
       const perms = await resolvePermissions(vault, agentId)
+      const scope = buildProjectAgentReadScope(project, perms.readPaths)
 
       if (!folder) {
-        const lines = perms.readPaths
-        const text = lines.length > 0 ? lines.join("\n") : "(sin read_paths)"
-        log.info("sanctum_list_notes", { agentId, mode: "read_paths" })
+        if (!scope.allowed) {
+          return {
+            content: [{ type: "text", text: "Error: PERMISSION_DENIED" }],
+            isError: true,
+          }
+        }
+        const layers = scope.layers.flat().filter(Boolean)
+        const text = layers.length > 0 ? layers.join("\n") : "(sin read_paths efectivos)"
+        log.info("sanctum_list_notes", { agentId, projectId, mode: "read_paths" })
         return { content: [{ type: "text", text }] }
       }
 
@@ -67,10 +126,7 @@ export function createListNotesTool(vault: VaultAdapter): ToolDef {
       }
 
       const folderNorm = folder.replace(/\/$/, "")
-      const allowed =
-        checkPathPermission(folder, perms) ||
-        checkPathPermission(`${folderNorm}/a.md`, perms)
-      if (!allowed) {
+      if (!canListFolder(folderNorm, scope)) {
         return {
           content: [{ type: "text", text: "Error: PERMISSION_DENIED" }],
           isError: true,
@@ -91,10 +147,13 @@ export function createListNotesTool(vault: VaultAdapter): ToolDef {
       for (const f of listed.files) {
         if (!f.toLowerCase().endsWith(".md")) continue
         if (isInternalPath(f)) continue
+        if (!childPathAuthorized(f, scope)) continue
         lines.push(childLabel(f, folder))
       }
       for (const d of listed.folders) {
         if (isInternalPath(d) || folderIsInternal(d)) continue
+        const folderPath = d.endsWith("/") ? d : `${d}/`
+        if (!childPathAuthorized(folderPath, scope)) continue
         lines.push(`${childLabel(d, folder)}/`)
       }
 
@@ -106,7 +165,7 @@ export function createListNotesTool(vault: VaultAdapter): ToolDef {
         output.push(MORE_LINE)
       }
 
-      log.info("sanctum_list_notes", { agentId, folder, count: lines.length })
+      log.info("sanctum_list_notes", { agentId, projectId, folder, count: lines.length })
       return {
         content: [{ type: "text", text: output.join("\n") || "" }],
       }

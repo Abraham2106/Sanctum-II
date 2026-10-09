@@ -8,6 +8,7 @@ import { ChatRightPanel } from "./chat-right";
 import { ChatMessages } from "./chat-messages";
 import { ChatAutocomplete } from "./chat-autocomplete";
 import type { ChatViewPlugin, ChatMessage, RailAgent } from "./chat-types";
+import { appendMeshResultToThread } from "./chat-mesh-body";
 import type { SkillAuthoringProgress } from "../skills/authoring/types";
 
 export { ChatViewPlugin, ChatMessage };
@@ -189,8 +190,7 @@ export class SanctumChatView extends ItemView {
     const text = this.composer.inputEl.value.trim();
     if (!text) return;
 
-    this.composer.inputEl.disabled = true;
-    this.composer.sendBtn.disabled = true;
+    this.composer.setInFlight(true);
 
     // Detect @agent mention
     const mentionMatch = text.trim().match(/^@([\w\-]+)(?:\s+([\s\S]*))?$/);
@@ -233,8 +233,7 @@ export class SanctumChatView extends ItemView {
       thinkingEl?.remove();
       this.messenger.addMsg("agent", `Error: ${err.message}`, "bot Error");
     }
-    this.composer.inputEl.disabled = false;
-    this.composer.sendBtn.disabled = false;
+    this.composer.setInFlight(false);
     this.composer.inputEl.focus();
   }
 
@@ -247,8 +246,7 @@ export class SanctumChatView extends ItemView {
 
     this.messenger.addMsg("user", text);
     this.composer.inputEl.value = "";
-    this.composer.inputEl.disabled = true;
-    this.composer.sendBtn.disabled = true;
+    this.composer.setInFlight(true);
 
     this.messenger.addMsg("agent", "Ejecutando pipeline Forager → Researcher → Critic…", "shuffle Mesh");
     this.composer.showPipeline(true, "forager");
@@ -257,50 +255,10 @@ export class SanctumChatView extends ItemView {
       const result = await this.plugin.runMesh(text);
       this.composer.showPipeline(true, "done", result.criticScore, result.attempts);
 
-    this.messenger.messages.pop();
-    this.threadEl.lastElementChild?.remove();
+      this.messenger.messages.pop();
+      this.threadEl.lastElementChild?.remove();
 
-    const label = `search Forager → Researcher ×${result.attempts} → Critic`;
-
-    if (result.criticVerdict === "escalated") {
-      const wrap = this.threadEl.createDiv({ cls: "s-msg-agent" });
-      const meta = wrap.createDiv({ cls: "s-msg-meta" });
-      const avatar = meta.createDiv({ cls: "s-msg-avatar" });
-      setIcon(avatar, "alert-triangle");
-      meta.createDiv({ cls: "s-msg-name", text: `Forager → Researcher ×${result.attempts} → Critic` });
-      meta.createDiv({ cls: "s-msg-time", text: `Score: ${result.criticScore}/100` });
-
-      const band = wrap.createDiv({ cls: "s-escalation" });
-      band.createDiv({ text: `El Critic rechazó los ${result.loopState.max_attempts} intentos del Researcher.`, attr: { style: "font-weight:600;margin-bottom:6px" } });
-      const feedback = result.loopState.history.filter(h => h.agent === "critic").pop()?.feedback || [];
-      if (feedback.length) {
-        const ul = band.createEl("ul", { attr: { style: "margin:6px 0 0;padding-left:16px;font-size:12.5px" } });
-        feedback.forEach((f: string) => ul.createEl("li", { text: f }));
-      }
-      this.messenger.messages.push({ role: "agent", content: `[escalated] ${result.researcherOutput}`, label, timestamp: Date.now() });
-    } else {
-      let acceptMsg = `${result.researcherOutput}\n\n---\n**Evaluación del Critic:** Aceptado con ${result.criticScore}/100.`;
-      if (result.createdNotePath) {
-        const noteName = result.createdNotePath.replace(/\.md$/i, "");
-        acceptMsg += `\n\nNota guardada en: [[${noteName}]]`;
-      }
-      this.messenger.addMsg("agent", acceptMsg, label, { meshMeta: { attempts: result.attempts, score: result.criticScore, verdict: "accept" } });
-      // Mini score bar
-      const msgEl = this.threadEl.lastElementChild;
-      if (msgEl) {
-        const progWrap = msgEl.createDiv({ cls: "s-msg-prog" });
-        const attempts = result.loopState?.attempts;
-        if (attempts?.length) {
-          const prog = progWrap.createDiv({ cls: "s-mini-prog" });
-          for (const a of attempts) {
-            const dot = prog.createDiv({ cls: `s-mini-prog-dot${a.total_score >= 80 ? " ok" : a.total_score >= 50 ? " mid" : " low"}` });
-            dot.style.width = `${Math.max(10, (a.total_score / 100) * 24)}px`;
-            dot.title = `Intento ${a.attempt}: ${a.total_score}/100`;
-          }
-        }
-      }
-    }
-
+      appendMeshResultToThread(this.threadEl, result, this.messenger);
       this.right.renderTracePanel(result);
     } catch (err: any) {
       this.messenger.messages.pop();
@@ -308,8 +266,7 @@ export class SanctumChatView extends ItemView {
       this.composer.showPipeline(false);
       this.messenger.addMsg("agent", `Error en el mesh: ${err.message}`, "shuffle Error");
     }
-    this.composer.inputEl.disabled = false;
-    this.composer.sendBtn.disabled = false;
+    this.composer.setInFlight(false);
     this.composer.inputEl.focus();
   }
 

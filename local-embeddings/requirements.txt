@@ -1,0 +1,4 @@
+# Optional manual install only. Contract tests use stubs; no pin implies compatibility.
+sentence-transformers
+torch
+transformers

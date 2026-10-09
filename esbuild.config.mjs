@@ -17,6 +17,8 @@ const pluginCtx = await esbuild.context({
     "obsidian",
     "fs",
     "path",
+    "node:http",
+    "node:crypto",
     "@codemirror/autocomplete",
     "@codemirror/collab",
     "@codemirror/commands",

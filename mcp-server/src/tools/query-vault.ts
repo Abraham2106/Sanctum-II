@@ -1,34 +1,87 @@
 import type { ToolDef } from "../mcp/types.js"
 import type { VaultAdapter } from "../../../src/core/vault-adapter.js"
-import type { VectorStore } from "../../../src/rag/vector-store.js"
+import type { Project } from "../../../src/projects/types.js"
+import type { EmbedderPort, VectorIdentity } from "../../../src/runtime/ports.js"
 import { log } from "../mcp/logger.js"
-import { resolvePermissions, checkPathPermission } from "../mcp/permission-resolver.js"
-import { embedText } from "../embeddings/gemini-embed.js"
-import { RAG_DEFAULTS } from "../../../src/constants.js" // DEC-0003: un solo dueño para este valor
+import { resolvePermissions } from "../mcp/permission-resolver.js"
+import {
+  buildProjectAgentReadScope,
+  loadProject,
+  ProjectRequiredError,
+  resolveMcpProjectId,
+} from "../../../src/app/project-reader.js"
+import {
+  loadGenerationVectorStore,
+  loadIndexGenerationSnapshot,
+} from "../../../src/projects/index-generations.js"
+import { vectorIdentityFromMetadata } from "../../../src/projects/index-generations-seal.js"
+import type { VectorStore } from "../../../src/rag/vector-store.js"
+import {
+  embeddingMatchesDims,
+  evaluatePreEmbedStoreIdentity,
+  retrieveContextChunks,
+} from "../../../src/runtime/retrieval.js"
+import { RAG_DEFAULTS } from "../../../src/constants.js"
 
-export function createQueryVaultTool(
-  vault: VaultAdapter,
-  store: VectorStore,
-  geminiApiKey: string | undefined,
-): ToolDef {
+export interface QueryVaultDeps {
+  vault: VaultAdapter
+  createEmbedderForProject: (project: Project) => EmbedderPort
+}
+
+function createVectorStorePort(store: VectorStore, identity: VectorIdentity) {
+  return {
+    count: store.count,
+    identity,
+    allChunks: () =>
+      store.allChunks.map((c) => ({
+        id: c.id,
+        notePath: c.note_path,
+        chunkText: c.chunk_text,
+        embedding: c.embedding,
+      })),
+  }
+}
+
+function skipReasonMessage(reason: string, projectId: string): string {
+  switch (reason) {
+    case "scope_denied":
+      return `Sin resultados: read scope denegado para '${projectId}'.`
+    case "identity_mismatch":
+      return "Error: INDEX_IDENTITY_MISMATCH - El índice no coincide con el embedding configurado."
+    case "rebuild_required":
+      return "Error: INDEX_REBUILD_REQUIRED - No hay generación sellada válida para este proyecto."
+    case "empty_store":
+      return "Error: VAULT_NOT_INDEXED - La generación no tiene fragmentos indexados."
+    case "embedding_dims_mismatch":
+      return "Error: EMBEDDING_DIMS_MISMATCH - Dimensiones de query incompatibles."
+    default:
+      return `Sin resultados relevantes (${reason}).`
+  }
+}
+
+export function createQueryVaultTool(deps: QueryVaultDeps): ToolDef {
   return {
     name: "sanctum_query_vault",
     description:
-      "Busca fragmentos relevantes en el vault usando RAG. Recibe una query, la convierte a embedding con Gemini, y devuelve los chunks más similares del vault filtrados por los read_paths del agente. Si el vault no ha sido indexado, devuelve VAULT_NOT_INDEXED.",
+      "Busca fragmentos en la generación de índice publicada del proyecto (refresco por llamada). Requiere project_id o SANCTUM_PROJECT_ID.",
     inputSchema: {
       type: "object",
       properties: {
+        project_id: {
+          type: "string",
+          description: "ID del proyecto indexado. Si falta, usa SANCTUM_PROJECT_ID.",
+        },
         agent_id: {
           type: "string",
-          description: "ID del agente cuyo read_paths se usa para filtrar los resultados del RAG.",
+          description: "ID del agente; filtra candidatos con proyecto ∩ read_paths antes del top-k.",
         },
         query: {
           type: "string",
-          description: "Texto o pregunta a buscar en el vault. Se convierte a embedding semántico.",
+          description: "Texto o pregunta a buscar.",
         },
         max_results: {
           type: "number",
-          description: "Máximo de resultados a devolver (default 5).",
+          description: "Máximo de resultados (default 5, máx 20).",
         },
       },
       required: ["agent_id", "query"],
@@ -39,53 +92,126 @@ export function createQueryVaultTool(
       if (!agentId) throw new Error("'agent_id' es obligatorio")
       const query = String(args.query ?? "").trim()
       if (!query) throw new Error("'query' es obligatorio")
-      const limit = typeof args.max_results === "number" && args.max_results > 0 ? Math.min(args.max_results, 20) : 5
+      const limit =
+        typeof args.max_results === "number" && args.max_results > 0
+          ? Math.min(args.max_results, 20)
+          : RAG_DEFAULTS.TOP_K
 
-      if (store.count === 0) {
-        log.warn("vault not indexed", { agentId })
+      let projectId: string
+      try {
+        projectId = resolveMcpProjectId(args)
+      } catch (err) {
+        if (err instanceof ProjectRequiredError) {
+          return {
+            content: [{ type: "text", text: "Error: PROJECT_REQUIRED" }],
+            isError: true,
+          }
+        }
+        throw err
+      }
+
+      const project = await loadProject(deps.vault, projectId)
+      const snapshot = await loadIndexGenerationSnapshot(deps.vault, projectId)
+
+      if (snapshot.status !== "ready" || !snapshot.metadata) {
+        log.warn("index not ready", { projectId, status: snapshot.status, reason: snapshot.reason })
+        const code =
+          snapshot.status === "rebuild_required" ? "INDEX_REBUILD_REQUIRED" : "VAULT_NOT_INDEXED"
         return {
-          content: [{ type: "text", text: "Error: VAULT_NOT_INDEXED - El vault no tiene fragmentos indexados. Ejecutá primero el indexador (Research/ u otra carpeta) desde Obsidian antes de consultar por MCP." }],
+          content: [{ type: "text", text: `Error: ${code} - Índice no disponible para '${projectId}'.` }],
           isError: true,
         }
       }
 
-      if (!geminiApiKey) {
-        log.warn("gemini key no configurada", { agentId })
+      const store = await loadGenerationVectorStore(deps.vault, projectId, snapshot.generationId)
+      if (!store || store.count === 0) {
         return {
-          content: [{ type: "text", text: "Error: GEMINI_NOT_CONFIGURED - No hay GEMINI_API_KEYS configuradas en el entorno. Se requiere una key de Gemini para generar embeddings." }],
+          content: [{ type: "text", text: "Error: VAULT_NOT_INDEXED - La generación no tiene chunks." }],
           isError: true,
         }
       }
 
-      const perms = await resolvePermissions(vault, agentId)
+      const storeIdentity = vectorIdentityFromMetadata(snapshot.metadata)
+      const preEmbedDeny = evaluatePreEmbedStoreIdentity(project.rag, storeIdentity, projectId)
+      if (preEmbedDeny) {
+        return {
+          content: [{ type: "text", text: skipReasonMessage(preEmbedDeny, projectId) }],
+          isError: preEmbedDeny !== "scope_denied",
+        }
+      }
 
-      const embedding = await embedText(query, geminiApiKey)
+      const embedder = deps.createEmbedderForProject(project)
+      if (!embedder.hasKeys) {
+        const backend = project.embedding?.backend ?? "gemini"
+        const code = backend === "sentence-transformers" ? "LOCAL_EMBED_NOT_CONFIGURED" : "GEMINI_NOT_CONFIGURED"
+        return {
+          content: [{ type: "text", text: `Error: ${code} - Proveedor de embedding no configurado.` }],
+          isError: true,
+        }
+      }
 
-      const rawResults = store.search(embedding, limit)
+      const queryIdentity: VectorIdentity = storeIdentity
+      let queryEmbedding: number[]
+      try {
+        queryEmbedding = await embedder.embed(query, {
+          model: queryIdentity.embedModel,
+          purpose: "query",
+          expectedIdentity: snapshot.metadata.identity,
+        })
+      } catch (err) {
+        log.warn("embed failed", { projectId, error: String(err) })
+        return {
+          content: [{ type: "text", text: `Error: EMBED_FAILED - ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        }
+      }
 
-      const filtered = rawResults.filter((r) => r.score >= RAG_DEFAULTS.MIN_SIMILARITY)
+      if (!embeddingMatchesDims(queryEmbedding, queryIdentity.dims)) {
+        return {
+          content: [{ type: "text", text: "Error: EMBEDDING_DIMS_MISMATCH" }],
+          isError: true,
+        }
+      }
 
-      const permitted = store.filterByPaths(filtered, perms.readPaths)
+      const perms = await resolvePermissions(deps.vault, agentId)
+      const scope = buildProjectAgentReadScope(project, perms.readPaths)
+      const minSim = project.rag.min_similarity ?? RAG_DEFAULTS.MIN_SIMILARITY
+
+      const { chunks, skipReason } = retrieveContextChunks({
+        queryEmbedding,
+        queryIdentity,
+        store: createVectorStorePort(store, storeIdentity),
+        scope,
+        topK: limit,
+        minSimilarity: minSim,
+      })
 
       log.info("sanctum_query_vault", {
         agentId,
+        projectId,
+        generationId: snapshot.generationId,
         query: query.slice(0, 80),
-        raw: rawResults.length,
-        filtered: filtered.length,
-        permitted: permitted.length,
+        hits: chunks.length,
+        skipReason,
       })
 
-      if (permitted.length === 0) {
+      if (skipReason && chunks.length === 0) {
         return {
-          content: [{ type: "text", text: `Sin resultados relevantes para "${query}" en los paths permitidos para '${agentId}' read_paths: ${JSON.stringify(perms.readPaths)}.` }],
+          content: [{ type: "text", text: skipReasonMessage(skipReason, projectId) }],
+          isError: skipReason === "identity_mismatch" || skipReason === "rebuild_required",
         }
       }
 
-      const text = permitted
+      if (chunks.length === 0) {
+        return {
+          content: [{ type: "text", text: `Sin resultados relevantes para "${query}" en '${projectId}'.` }],
+        }
+      }
+
+      const text = chunks
         .map((r, i) => {
-          const note = r.chunk.note_path
-          const excerpt = r.chunk.chunk_text.slice(0, 400).trim()
-          return `### ${i + 1}. ${note}  (similitud: ${(r.score * 100).toFixed(0)}%)\n\n${excerpt}${r.chunk.chunk_text.length > 400 ? "..." : ""}`
+          const excerpt = r.chunkText.slice(0, 400).trim()
+          return `### ${i + 1}. ${r.notePath}  (similitud: ${(r.score * 100).toFixed(0)}%)\n\n${excerpt}${r.chunkText.length > 400 ? "..." : ""}`
         })
         .join("\n\n---\n\n")
 

@@ -53,3 +53,36 @@ export const MESH_DEFAULTS = {
   ACCEPT_THRESHOLD: 80,
   ESCALATE_THRESHOLD: 40,
 } as const;
+
+export type MeshStatus =
+  | "accepted"
+  | "needs_review"
+  | "escalated"
+  | "failed"
+  | "cancelled"
+  | "timed_out";
+
+export interface MeshAttemptRecord {
+  attempt: number;
+  output: string;
+  evaluation: CriticEvaluation;
+  usage: { prompt: number; completion: number };
+}
+
+export interface MeshSelectedAttempt {
+  attempt: number;
+  output: string;
+  score: number;
+  evaluation: CriticEvaluation;
+}
+
+export interface MeshRunResult {
+  status: MeshStatus;
+  foragerOutput: string;
+  attempts: MeshAttemptRecord[];
+  selectedAttempt: MeshSelectedAttempt | null;
+  projectId: string;
+  provenance: string;
+  escalationReason?: string[];
+  error?: string;
+}

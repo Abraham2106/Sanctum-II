@@ -10,7 +10,11 @@ export const OUTPUT_DIMS = 768;
 
 export const MAX_TEXT_LENGTH = 3000;
 
-export function embedContentJsonBody(model: string, text: string): {
+export function embedContentJsonBody(
+  model: string,
+  text: string,
+  dims: number = OUTPUT_DIMS,
+): {
   model: string;
   content: { parts: [{ text: string }] };
   outputDimensionality: number;
@@ -18,6 +22,6 @@ export function embedContentJsonBody(model: string, text: string): {
   return {
     model: `models/${model}`,
     content: { parts: [{ text }] },
-    outputDimensionality: OUTPUT_DIMS,
+    outputDimensionality: dims,
   };
 }

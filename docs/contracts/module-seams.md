@@ -38,3 +38,48 @@ Un worker toca un seam. Ninguno edita código de otro. El planner añade filas a
 | S-mcp-notes | `mcp-server/src/tools/list-notes.ts`, `mcp-server/src/tools/list-notes.test.ts`, el `registerTool` de esa tool en `mcp-server/index.ts` | DEC-0021 al listar | el resto de `index.ts`, el índice, recursión | accepted |
 | S-mcp-context | `mcp-server/src/tools/tool-context.ts`, `mcp-server/src/tools/tool-context.test.ts`, el argumento `context` y `annotations` de `invoke-agent.ts` y `run-mesh.ts` | DEC-0021 en el contexto | el bucle del mesh, embeddings, `server.ts` | accepted |
 | S-mcp-limit | el tope de cuerpo en `mcp-server/src/mcp/http.ts` y el caso 413 de `mcp-server/src/mcp/http.test.ts` | DEC-0021 | el resto del HTTP, Discord | accepted |
+
+## SANCTUM-RUNTIME-V2 (DEC-0022)
+
+Un seam agrupa una frontera explícita; las dependencias serializan sus adaptadores.
+
+| id | owns | status |
+|---|---|---|
+| S-runtime-035 | src/shared/agents/frontmatter.ts, src/agents/agent-loader.ts, mcp-server/src/tools/list-agents.ts | accepted |
+| S-runtime-036 | src/runtime/permissions.ts, src/runtime/retrieval.ts, src/orchestrator/agent-turn.ts | accepted |
+| S-runtime-037 | mcp-server/src/mcp/http.ts, mcp-server/src/mcp/http.test.ts | accepted |
+| S-runtime-038 | src/core/resource-queue.ts, src/projects/store.ts, src/rag/vector-store.ts, src/kg/kg-store.ts | accepted |
+| S-runtime-039 | src/runtime/dag.ts, src/runtime/mesh.ts, src/chains/executor.ts, src/orchestrator/mesh.ts, src/orchestrator/mesh-types.ts, src/shared/mesh/types.ts, mcp-server/src/tools/run-mesh.ts | accepted |
+| S-runtime-040 | src/projects/index-generations.ts, src/projects/indexer.ts, src/projects/indexer.test.ts, src/embeddings/gemini-balancer.ts, mcp-server/src/embeddings/gemini-embed.ts | accepted |
+| S-runtime-041 | mcp-server/index.ts, mcp-server/src/tools/query-vault.ts, mcp-server/src/tools/get-note.ts, mcp-server/src/tools/list-notes.ts, mcp-server/src/mcp/permission-resolver.ts, src/app/project-reader.ts | accepted |
+| S-runtime-042 | src/main.ts, src/plugin/**, src/app/services.ts, src/app/chat-orchestrator.ts, src/app/pending-turn.ts, src/app/write-turn.ts | accepted |
+| S-runtime-043 | src/ui/chain-view.ts, src/ui/chain-canvas.ts, src/ui/projects-view.ts, src/ui/projects/**, src/ui/kg-view.ts, src/ui/kg-scene.ts, src/ui/kg-inspector.ts, src/ui/chat-view.ts, src/ui/chat-types.ts | accepted |
+| S-runtime-044 | package.json, .github/workflows/ci.yml, mcp-server/test/**, vitest.config.ts, scripts/**, README.md, mcp-server/README.md, .env.example, docs/audits/2026-10-08/reproduce.test.ts, docs/registro-arquitectura.md, docs/arquitectura-uml.md | accepted |
+| S-runtime-045 | src/runtime/providers.ts, src/llm/opencode-client.ts, src/llm/chat-wire.ts, mcp-server/src/llm/opencode-chat.ts, discord-bot/index.ts | accepted |
+
+| S-runtime-046 | src/skills/authoring/mesh.ts, src/orchestrator/note-resolver.ts, src/orchestrator/note-generator.ts, src/core/note-writer.ts and owned tests | accepted |
+
+T036 additionally owns runtime/turn.ts and ports.ts; T043 owns chat-right/composer index-state to present all statuses. T042 consumes scoped note resolver. No overlapping writers.
+
+S-runtime-039 incluye src/shared/mesh/parse.ts y src/chains/critic-decision.ts, con sus regresiones. S-runtime-045 consume runtime/ports.ts de T-036 sin modificarlo.
+
+S-runtime-041 incluye mcp-server/src/tools/invoke-agent.ts para configuración y validación de IDs; no cambia el contrato de contexto suministrado.
+
+S-runtime-040 incluye src/embeddings/embed-contract.ts y mcp-server/src/core/fs-vault-adapter.ts exclusivamente para dimensiones y errores de lectura, con regresiones; las protecciones de rutas permanecen.
+
+S-runtime-045 recibe runtime/turn.ts de T-036, serializado por dependencia, para opciones de proveedor/modelo/cancelación por llamada.
+
+| S-runtime-047 | src/rag/vector-store.ts, src/kg/kg-store.ts y tests de persistencia; transferencia serial tras borrador T-038 | accepted |
+
+| S-runtime-048 | src/runtime/retrieval.ts y tests, transferencia serial tras T-036 | accepted |
+
+| S-local-service | local-embeddings/** Python y documentación/runtime tests únicamente | accepted |
+| S-local-client | runtime embedding/ports/retrieval/turn binding serial; embedding local-client/transport/config; projects types/project-md; constants/env; external node:http en esbuild | accepted |
+T-043 incorpora settings-tab.ts para controles existentes. T-049 transferencias seriales están bloqueadas por dependencias; T-045 no edita configuración/puertos.
+
+S-runtime-047 incluye helpers src/rag/vector-store-*.ts y src/kg/kg-store-*.ts para split propietario, sin otro seam.
+
+| S-runtime-051 | stores Vector/KG, helpers propios y regresiones lifecycle; transferencia serial de T-047 | accepted |
+Orden serial actualizado: T-045 chat turn primero; T-049 embedding turn después.
+
+| S-runtime-052 | turn.ts, agent-turn.ts, y el pase de signal en mesh.ts y chains/executor.ts, después de T-049 | accepted |
