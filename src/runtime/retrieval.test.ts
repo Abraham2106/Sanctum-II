@@ -214,6 +214,22 @@ describe("retrieval (DEC-0022)", () => {
     expect(vectorIdentitiesCompatible(base, { ...base, projectId: "   " })).toBe(false);
   });
 
+  it("vectorIdentitiesCompatible enforces configFingerprint when store sealed it", () => {
+    const base = {
+      embedModel: "google/embeddinggemma-2",
+      dims: 768,
+      projectId: "proj-a",
+      configFingerprint: "abc123",
+    };
+    expect(vectorIdentitiesCompatible(base, { ...base })).toBe(true);
+    expect(
+      vectorIdentitiesCompatible(base, { ...base, configFingerprint: "other" }),
+    ).toBe(false);
+    expect(vectorIdentitiesCompatible(base, { ...base, configFingerprint: undefined })).toBe(
+      false,
+    );
+  });
+
   it("isVerifiableStoreIdentity requires nonempty projectId", () => {
     const ok: VectorIdentity = {
       embedModel: "m",

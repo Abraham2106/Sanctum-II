@@ -18,6 +18,17 @@ export function parseProjectMd(content: string): Project {
   const model =
     data.model !== undefined && data.model !== null ? String(data.model) : ""; // DEC-0022: ausencia → ''
   const ragBlock = data.rag && typeof data.rag === "object" ? data.rag : {};
+  let embedding: Project["embedding"];
+  if (data.embedding && typeof data.embedding === "object") {
+    const block = data.embedding as Record<string, unknown>;
+    const backend = block.backend === "sentence-transformers" ? "sentence-transformers" : "gemini";
+    const model = typeof block.model === "string" ? block.model.trim() : "";
+    const revision = typeof block.revision === "string" ? block.revision.trim() : "";
+    const dims = typeof block.dims === "number" ? block.dims : Number(block.dims);
+    if (model && revision && Number.isInteger(dims)) {
+      embedding = { backend, model, revision, dims };
+    }
+  }
   const instructionsRaw =
     typeof data.instructions === "string" ? data.instructions : data.instructions != null ? String(data.instructions) : "";
 
@@ -41,6 +52,7 @@ export function parseProjectMd(content: string): Project {
           ? ragBlock.min_similarity
           : DEFAULT_PROJECT_RAG.min_similarity,
     },
+    embedding,
     files: Array.isArray(data.files) ? data.files : [],
     attachedFiles,
     starred: data.starred === true,
@@ -65,6 +77,14 @@ export function serializeProject(p: Project): string {
     },
     instructions: p.instructions,
   };
+  if (p.embedding) {
+    frontmatter.embedding = {
+      backend: p.embedding.backend,
+      model: p.embedding.model,
+      revision: p.embedding.revision,
+      dims: p.embedding.dims,
+    };
+  }
   if (p.description) frontmatter.description = p.description;
   if (p.starred) frontmatter.starred = true;
   if (p.files?.length) frontmatter.files = p.files;

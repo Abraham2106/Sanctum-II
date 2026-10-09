@@ -75,6 +75,10 @@ export function vectorIdentitiesCompatible(
   if (query.provenance) {
     if (!store.provenance || query.provenance !== store.provenance) return false;
   }
+  if (store.configFingerprint?.trim() || query.configFingerprint?.trim()) {
+    if (!store.configFingerprint?.trim() || !query.configFingerprint?.trim()) return false;
+    if (query.configFingerprint.trim() !== store.configFingerprint.trim()) return false;
+  }
   return true;
 }
 
@@ -233,6 +237,7 @@ export function formatRetrievedContext(chunks: RetrievedChunk[]): string {
 export interface ExpectedVectorSeal {
   generationId?: string;
   provenance?: string;
+  configFingerprint?: string;
 }
 
 /** DEC-0022: query identity from project RAG + active project; seal fields only when explicitly expected. */
@@ -254,6 +259,9 @@ export function resolveSealedEmbedIdentity(
   }
   if (explicitExpected?.provenance) {
     base.provenance = explicitExpected.provenance;
+  }
+  if (explicitExpected?.configFingerprint?.trim()) {
+    base.configFingerprint = explicitExpected.configFingerprint.trim();
   }
   return base;
 }

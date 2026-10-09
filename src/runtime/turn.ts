@@ -8,6 +8,7 @@ import { buildConversationPayload } from "../orchestrator/conversation";
 import type { ConversationMessage } from "../orchestrator/conversation";
 import { RAG_DEFAULTS } from "../constants";
 import { buildEffectiveReadScope } from "./permissions";
+import type { EmbeddingIdentityDocument } from "../embeddings/embedding-identity";
 import type {
   CallOptions,
   ChatPort,
@@ -55,6 +56,8 @@ export interface PortableTurnInput {
   };
   /** DEC-0022: explicit sealed generation fields for query identity (not copied from store). */
   expectedVectorSeal?: ExpectedVectorSeal;
+  /** DEC-0023: verified provider identity pinned before query embed (local health / gemini adapter). */
+  queryEmbeddingIdentity?: EmbeddingIdentityDocument;
   notify?: TurnNotifyFn;
   /** DEC-0022: per-turn overrides merged with agent/project/global chat resolution. */
   chatOptions?: CallOptions;
@@ -111,6 +114,7 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
     tavilyQuery,
     ports,
     expectedVectorSeal,
+    queryEmbeddingIdentity,
     notify,
     chatOptions,
     globalChat,
@@ -167,6 +171,8 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
       } else {
         const queryEmbedding = await ports.embedder.embed(userInput, {
           model: queryIdentity.embedModel,
+          purpose: "query",
+          expectedIdentity: queryEmbeddingIdentity,
         });
         if (!embeddingMatchesDims(queryEmbedding, queryIdentity.dims)) {
           notify?.("⚠ RAG: embedding incompatible con dimensiones del proyecto", 8000);
@@ -201,7 +207,7 @@ export async function runPortableTurn(input: PortableTurnInput): Promise<Portabl
     if (!readScope.allowed) {
       // DEC-0022: no logs/traces of unauthorized paths when scope denies embed/read.
     } else if (!ports.embedder.hasKeys) {
-      notify?.("⚠ RAG: sin Gemini API keys", 5000);
+      notify?.("⚠ RAG: proveedor de embeddings no configurado", 5000);
     } else if (ports.vectorStore.count === 0) {
       notify?.("⚠ RAG: store vacío. Indexá desde el proyecto.", 8000);
     }

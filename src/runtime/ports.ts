@@ -11,6 +11,14 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
+/** DEC-0023: embedding call options (not on CallOptions / chat). */
+export interface EmbedCallOptions {
+  model?: string;
+  purpose?: "query" | "document";
+  expectedIdentity?: import("../embeddings/embedding-identity").EmbeddingIdentityDocument;
+  signal?: AbortSignal;
+}
+
 export interface TokenUsage {
   prompt: number;
   completion: number;
@@ -38,7 +46,7 @@ export interface ChatPort {
 /** DEC-0022: embedding port; sealed generation model is passed per call when available. */
 export interface EmbedderPort {
   readonly hasKeys: boolean;
-  embed(text: string, options?: CallOptions): Promise<number[]>;
+  embed(text: string, options?: EmbedCallOptions): Promise<number[]>;
 }
 
 export interface TraceChunkPort {
@@ -64,6 +72,8 @@ export interface VectorChunkPort {
 export interface VectorIdentity {
   embedModel: string;
   dims: number;
+  /** DEC-0023: provider config fingerprint when sealed generation recorded it. */
+  configFingerprint?: string;
   /** DEC-0022: sealed generation project; must match active project before embed. */
   projectId?: string;
   generationId?: string;

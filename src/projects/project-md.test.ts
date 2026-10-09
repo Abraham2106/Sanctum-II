@@ -32,6 +32,42 @@ describe("project-md (DEC-0022 synthetic fixtures)", () => {
     expect(parsed.model).toBe("");
   });
 
+  it("roundtrips optional embedding provider block", () => {
+    const REV = "abcdef0123456789abcdef0123456789abcdef01";
+    const md = `---
+id: local
+name: n
+icon: x
+read_paths: []
+write_paths: []
+outputPath: Projects/local
+rag:
+  embed_model: gemini-embedding-2
+  dims: 768
+  chunk_words: 400
+  top_k: 5
+  min_similarity: 0.65
+embedding:
+  backend: sentence-transformers
+  model: google/embeddinggemma-2
+  revision: ${REV}
+  dims: 512
+instructions: |
+  body
+---
+
+`;
+    const parsed = parseProjectMd(md);
+    expect(parsed.embedding).toEqual({
+      backend: "sentence-transformers",
+      model: "google/embeddinggemma-2",
+      revision: REV,
+      dims: 512,
+    });
+    const reserialized = serializeProject({ ...parsed, instructions: parsed.instructions });
+    expect(parseProjectMd(reserialized).embedding).toEqual(parsed.embedding);
+  });
+
   it("preserves missing model as empty string", () => {
     const md = `---
 id: nomodel

@@ -21,8 +21,8 @@ import type {
   VectorStorePort,
   WebSearchPort,
 } from "../runtime/ports";
-import { bindEmbedderPort } from "../runtime/ports";
 import type { EffectiveReadScope } from "../runtime/permissions";
+import { bindEmbedderPort } from "../runtime/ports";
 import { runPortableTurn } from "../runtime/turn";
 import type { PortableTurnResult } from "../runtime/turn";
 
@@ -30,6 +30,8 @@ export interface TurnDeps {
   agent: AgentDefinition;
   opencodeClient: OpenCodeClient;
   geminiBalancer: GeminiBalancer;
+  /** DEC-0023: optional injected embedding port (defaults to Gemini balancer). */
+  embedder?: EmbedderPort;
   vectorStore: VectorStore;
   tracer: Tracer;
   tavilyApiKey?: string;
@@ -60,9 +62,8 @@ function createChatPort(client: OpenCodeClient): ChatPort {
   return { chat, chatMessages };
 }
 
-function createEmbedderPort(balancer: GeminiBalancer): EmbedderPort {
-  const embedFn = balancer.embed.bind(balancer);
-  return bindEmbedderPort(balancer.hasKeys, embedFn);
+function createDefaultEmbedderPort(balancer: GeminiBalancer): EmbedderPort {
+  return bindEmbedderPort(balancer.hasKeys, (text) => balancer.embed(text));
 }
 
 function createTracerPort(tracer: Tracer): TracerPort {
@@ -161,7 +162,7 @@ export async function executeTurn(
     notify: (message, durationMs) => new Notice(message, durationMs ?? 4000),
     ports: {
       chat: createChatPort(deps.opencodeClient),
-      embedder: createEmbedderPort(deps.geminiBalancer),
+      embedder: deps.embedder ?? createDefaultEmbedderPort(deps.geminiBalancer),
       vectorStore: createVectorStorePort(deps.vectorStore, deps.sealedGeneration),
       tracer: deps.traceId ? createTracerPort(deps.tracer) : undefined,
       kg: createKgPort(deps.vectorStore, deps.edgeStore, deps.kgOptions),

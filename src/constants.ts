@@ -2,6 +2,7 @@ export const VIEW_TYPE_SANCTUM = "sanctum-ii-chat";
 export const RESEARCH_PATH = "Research";
 
 export type LlmProvider = "openai" | "anthropic";
+export type EmbeddingBackendSetting = "gemini" | "sentence-transformers";
 
 export interface SanctumSettings {
   opencodeApiKey: string;
@@ -25,6 +26,13 @@ export interface SanctumSettings {
   activeProjectId: string;
   projectAutoMemory: boolean;
   projectReindexOnOpen: boolean;
+  embeddingBackend: EmbeddingBackendSetting;
+  localEmbeddingPort: number;
+  localEmbeddingToken: string;
+  localEmbeddingRevision: string;
+  localEmbeddingDims: number;
+  localEmbeddingDevice: string;
+  localEmbeddingDtype: string;
 }
 
 export const DEFAULT_SETTINGS: SanctumSettings = {
@@ -49,6 +57,13 @@ export const DEFAULT_SETTINGS: SanctumSettings = {
   activeProjectId: "sanctum-ii",
   projectAutoMemory: false,
   projectReindexOnOpen: false,
+  embeddingBackend: "gemini",
+  localEmbeddingPort: 8767,
+  localEmbeddingToken: "",
+  localEmbeddingRevision: "",
+  localEmbeddingDims: 768,
+  localEmbeddingDevice: "cpu",
+  localEmbeddingDtype: "float32",
 };
 
 // ── Shared constants ──
