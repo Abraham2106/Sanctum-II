@@ -52,6 +52,7 @@ export function createListAgentsTool(vault: VaultAdapter): ToolDef {
       type: "object",
       properties: {},
     },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     async handler() {
       const agents = await loadAgents(vault)
       log.info("sanctum_list_agents", { count: agents.length })

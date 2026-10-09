@@ -10,6 +10,25 @@ export interface NoteResolution {
 
 const AMBIGUITY_THRESHOLD = 0.05;
 
+function noteTitleMatchesQuery(title: string, query: string): boolean {
+  const t = title.toLowerCase().trim();
+  const q = query.toLowerCase().trim();
+  if (!t || !q) return false;
+  if (t.includes(q)) return true;
+  // DEC-0016: un título de menos de 3 letras no coincide dentro de la frase
+  if (t.length < 3) return false;
+  let searchStart = 0;
+  while (searchStart <= q.length - t.length) {
+    const idx = q.indexOf(t, searchStart);
+    if (idx === -1) break;
+    const beforeOk = idx === 0 || !/[a-z0-9]/.test(q[idx - 1]);
+    const afterOk = idx + t.length === q.length || !/[a-z0-9]/.test(q[idx + t.length]);
+    if (beforeOk && afterOk) return true;
+    searchStart = idx + 1;
+  }
+  return false;
+}
+
 export async function resolveNoteReference(
   query: string,
   createdNotes: CreatedNote[] | undefined,
@@ -18,10 +37,7 @@ export async function resolveNoteReference(
 ): Promise<NoteResolution> {
   // Step 1: exact match on createdNotes
   if (createdNotes && createdNotes.length > 0) {
-    const q = query.toLowerCase();
-    const matches = createdNotes.filter(n =>
-      n.title.toLowerCase().includes(q) || q.includes(n.title.toLowerCase())
-    );
+    const matches = createdNotes.filter(n => noteTitleMatchesQuery(n.title, query));
     if (matches.length === 1) {
       return {
         path: matches[0].path,

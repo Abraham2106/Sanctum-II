@@ -2,7 +2,12 @@ import { createInterface } from "node:readline"
 import { log } from "./logger.js"
 import type { JsonRpcRequest, JsonRpcResponse, ToolDef } from "./types.js"
 
-const PROTOCOL_VERSION = "2024-11-05"
+// DEC-0020: Grok Bot usa el MCP por POST /mcp
+// DEC-0021: el MCP anuncia el uso y lista notas
+const SUPPORTED_PROTOCOL_VERSIONS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"])
+const INITIALIZE_INSTRUCTIONS =
+  "Sanctum es un vault local de notas Markdown. Para verlo: sanctum_list_notes, sanctum_get_note y sanctum_query_vault. La búsqueda exige índice y GEMINI_API_KEYS. sanctum_list_agents enumera agentes. sanctum_invoke_agent y sanctum_run_mesh no leen el vault: pasan context a {{rag_context}} y gastan OPENCODE_GO_API_KEY."
+const DEFAULT_PROTOCOL_VERSION = "2025-03-26"
 
 class RpcError extends Error {
   constructor(
@@ -55,6 +60,22 @@ export class McpServer {
     process.stdout.write(JSON.stringify(res) + "\n")
   }
 
+  async handleMessage(req: JsonRpcRequest): Promise<JsonRpcResponse | null> {
+    const id = req.id ?? null
+    const isNotification = req.id === undefined || req.id === null
+    try {
+      const result = await this.dispatch(req)
+      if (isNotification) return null
+      return { jsonrpc: "2.0", id, result }
+    } catch (err) {
+      const code = err instanceof RpcError ? err.code : -32000
+      const message = err instanceof Error ? err.message : String(err)
+      log.error("fallo en request", { method: req.method, code, message })
+      if (isNotification) return null
+      return { jsonrpc: "2.0", id, error: { code, message } }
+    }
+  }
+
   private async handleLine(line: string): Promise<void> {
     let req: JsonRpcRequest
     try {
@@ -63,17 +84,10 @@ export class McpServer {
       log.error("linea json-rpc invalida", { line })
       return
     }
-    const id = req.id ?? null
-    const isNotification = req.id === undefined || req.id === null
     this.pending++
     try {
-      const result = await this.dispatch(req)
-      if (!isNotification) this.send({ jsonrpc: "2.0", id, result })
-    } catch (err) {
-      const code = err instanceof RpcError ? err.code : -32000
-      const message = err instanceof Error ? err.message : String(err)
-      log.error("fallo en request", { method: req.method, code, message })
-      if (!isNotification) this.send({ jsonrpc: "2.0", id, error: { code, message } })
+      const res = await this.handleMessage(req)
+      if (res) this.send(res)
     } finally {
       this.pending--
       if (this.closing && this.pending === 0) process.exit(0)
@@ -84,12 +98,19 @@ export class McpServer {
     log.debug("dispatch", { method: req.method, id: req.id })
     switch (req.method) {
       case "initialize": {
-        const params = (req.params ?? {}) as { clientInfo?: ClientInfo }
+        const params = (req.params ?? {}) as {
+          clientInfo?: ClientInfo
+          protocolVersion?: string
+        }
         this.clientInfo = params.clientInfo ?? null
+        const pv = params.protocolVersion
+        const protocolVersion =
+          pv && SUPPORTED_PROTOCOL_VERSIONS.has(pv) ? pv : DEFAULT_PROTOCOL_VERSION
         return {
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion,
           capabilities: { tools: { listChanged: false } },
           serverInfo: this.info,
+          instructions: INITIALIZE_INSTRUCTIONS,
         }
       }
       case "notifications/initialized":
@@ -98,11 +119,15 @@ export class McpServer {
         return {}
       case "tools/list":
         return {
-          tools: [...this.tools.values()].map((t) => ({
-            name: t.name,
-            description: t.description,
-            inputSchema: t.inputSchema,
-          })),
+          tools: [...this.tools.values()].map((t) => {
+            const entry: Record<string, unknown> = {
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema,
+            }
+            if (t.annotations !== undefined) entry.annotations = t.annotations
+            return entry
+          }),
         }
       case "tools/call": {
         const params = (req.params ?? {}) as {

@@ -4,6 +4,7 @@ import { loadAgentFromVault, renderSystemPrompt } from "../../../src/agents/agen
 import { opencodeChat } from "../llm/opencode-chat.js"
 import { TraceWriter } from "../observability/trace-writer.js"
 import { log } from "../mcp/logger.js"
+import { readToolContext } from "./tool-context.js"
 
 // Shared mesh module — single source of truth for types and parsing
 import { parseCriticJSON } from "../../../src/shared/mesh/parse.js"
@@ -27,8 +28,10 @@ export function createRunMeshTool(
 ): ToolDef {
   return {
     name: "sanctum_run_mesh",
+    // DEC-0021: el MCP anuncia el uso y lista notas
     description:
-      "Dispara el loop completo Forager → Researcher → Critic. Forager reformula el prompt y reúne contexto; Researcher produce la investigación; Critic evalúa con score 0-100 y decide aceptar o regenerar (máx. 3 intentos). Devuelve el resultado final o escalado.",
+      "Corre Forager, Researcher y Critic. No lee el vault. context es el contexto de Forager. Gasta OPENCODE_GO_API_KEY.",
+    annotations: { readOnlyHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
@@ -39,6 +42,10 @@ export function createRunMeshTool(
         threshold: {
           type: "number",
           description: "Score mínimo para aceptar (0-100, default 80). Por debajo se regenera o escala.",
+        },
+        context: {
+          type: "string",
+          description: "Texto ya recuperado del vault. Entra como contexto.",
         },
       },
       required: ["prompt"],
@@ -57,8 +64,10 @@ export function createRunMeshTool(
 
       const meshTimeoutMs = parseInt(process.env.SANCTUM_MESH_TIMEOUT_MS ?? "120000", 10)
 
+      const foragerRag = readToolContext(args)
+
       const result = await Promise.race([
-        runMesh(prompt, threshold, vault, opencodeBaseUrl, opencodeApiKey, tracer),
+        runMesh(prompt, threshold, foragerRag, vault, opencodeBaseUrl, opencodeApiKey, tracer),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error(`MESH_TIMEOUT - El mesh superó el límite de ${meshTimeoutMs}ms`)), meshTimeoutMs),
         ),
@@ -76,6 +85,7 @@ export function createRunMeshTool(
 async function runMesh(
   prompt: string,
   threshold: number,
+  foragerRag: string,
   vault: VaultAdapter,
   baseUrl: string,
   apiKey: string,
@@ -94,7 +104,7 @@ async function runMesh(
   const researcher = await loadAgentFromVault(vault, "researcher.md")
   const critic = await loadAgentFromVault(vault, "critic.md")
 
-  const foragerBody = renderSystemPrompt(forager, "", prompt)
+  const foragerBody = renderSystemPrompt(forager, foragerRag, prompt)
   const foragerResult = await opencodeChat(foragerBody, prompt, baseUrl, apiKey)
 
   let bestOutput = ""

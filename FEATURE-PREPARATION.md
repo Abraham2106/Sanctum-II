@@ -16,3 +16,49 @@ Ready exige REQ-0001 sin `UNANSWERED` y sin `TBD` críticos. Hasta entonces no h
 - security_privacy_notes: Las claves siguen en settings y env. No se escriben en el repo. El cable Anthropic usa `x-api-key` y no se loguea.
 - non_functional_requirements: El plugin sigue usando `requestUrl`. El MCP sigue usando `fetch`. Sin dependencias nuevas.
 - verification_strategy: Hojas T-001..T-005 no corren la suite. T-006 corre `npm run typecheck` y `npm test`.
+
+## Sesión self-improve 2026-10-08
+
+status: ready
+
+- rationale: Automejora medible. Tres defectos ya reproducidos en el código actual, sin pregunta abierta.
+- goal: El glob de permisos compara el path entero; un crítico sin score no se acepta; el MCP no tira la segunda clave Gemini.
+- scope_in: DEC-0009, DEC-0010, DEC-0011.
+- scope_out: Reescritura de UI, partir archivos, recursión del indexador, `@cursor/sdk`, EmbeddingGemma, `papepssss.md`, borrar el gobierno, `ChainStore.delete` (no tiene llamadores).
+- constraints: Ponytail. Un seam por hoja. Sin dependencias. Suite completa la corre el planner después del merge.
+- open_questions: ninguna
+- assumption: La rama sale de `cursor/sanctum-refactor-9918` (`b4aa0f5`), que es el producto actual. `origin/main` no tiene el router ni la poda.
+
+## Discord y Grok
+
+status: ready
+
+- rationale: El bot de Sanctum v1 no servía en este vault. El humano pidió esa pieza mejor y un gancho con Grok Bot.
+- goal: Un proceso de Discord que conversa sobre una nota Markdown del canal y, si hay `XAI_API_KEY`, habla con Grok por el cable OpenAI. El vault sigue ofreciéndose a Grok Bot por el MCP stdio que ya existe.
+- scope_in: DEC-0019.
+- scope_out: Conector oficial de Grok Bot (no hay uno de Discord), MCP remoto, RAG por mensaje, cambios de UI, llamadas vivas a xAI o a Discord.
+- constraints: Ponytail. `discord.js` solo en el proceso del bot. Suite completa después del merge de T-029.
+- open_questions: ninguna
+- risks: Sin `Message Content Intent` el gateway no entrega el texto. El token vive en el entorno del proceso, no en el vault.
+
+## Grok Bot
+
+status: ready
+
+- rationale: El humano corrigió el gancho. Grok Bot es el sistema de xAI, no la API de chat.
+- goal: El MCP de Sanctum responde en `POST /mcp` para pegarlo como conector custom.
+- scope_in: DEC-0020.
+- scope_out: OAuth, túnel, llamar a xAI, cambiar el gateway de Discord.
+- constraints: Ponytail. Sin dependencia nueva. Bind en 127.0.0.1.
+- open_questions: ninguna
+- risks: Sin un túnel HTTPS, la nube de Grok Bot no llega a localhost.
+
+## MCP usable
+
+status: ready
+
+- rationale: El humano pidió mejorar el MCP. Hay prácticas del protocolo que no cumple y el vault no se puede listar.
+- goal: DEC-0021.
+- scope_out: resources MCP, sesión, OAuth, otro paquete, búsqueda dentro de invoke o del mesh.
+- constraints: Ponytail. Cuatro hojas disjuntas. Suite después del merge.
+- open_questions: ninguna

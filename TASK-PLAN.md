@@ -28,3 +28,31 @@ Rollback: revertir solo commits de la hoja; conservar worktrees, evidencia y cam
 - T-016: los cuatro símbolos de DEC-0007 que no llegaron a borrarse.
 
 Paralelo ahora: T-011, T-012, T-013, T-014, T-015, T-016. No comparten archivos. La suite corre después del merge.
+
+## Self-improve 2026-10-08
+
+- T-017: anclar `globMatch` (S-glob, DEC-0009) — ready.
+- T-018: score ausente del crítico = 0 (S-critic-parse, DEC-0010) — ready.
+- T-019: el MCP recorre las claves Gemini (S-mcp-keys, DEC-0011) — ready.
+
+Las tres no comparten archivos. La suite completa corre en la rama después del merge.
+
+## Discord (DEC-0019)
+
+- T-026: nota de canal (S-discord-log) — done.
+- T-027: destino Grok y REST de Discord (S-discord-api) — done.
+- T-028: agente y variables (S-discord-agent) — done.
+- T-029: proceso del bot (S-discord-bot) — done.
+
+## Grok Bot (DEC-0020)
+
+- T-030: MCP por HTTP para el conector de Grok Bot (S-mcp-http) — done.
+
+## MCP (DEC-0021)
+
+- T-031: instructions y annotations (S-mcp-guide) — done.
+- T-032: listar notas (S-mcp-notes) — done.
+- T-033: context en invocar y mesh (S-mcp-context) — done.
+- T-034: corte de 1 MiB (S-mcp-limit) — done.
+
+Las cuatro no comparten archivos. T-034 solo añade el tope en el HTTP que T-030 ya mergeó.

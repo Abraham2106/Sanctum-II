@@ -18,8 +18,11 @@ export interface Chunk {
 const DEFAULT_STORE_PATH = "sanctum-logs/vector-store.jsonl";
 
 export function cosineSimilarity(a: number[], b: number[]): number {
+  // DEC-0015: largos distintos no pueden ganar el ranking con NaN
+  if (a.length !== b.length || a.length === 0) return 0;
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i++) {
+    if (!Number.isFinite(a[i]) || !Number.isFinite(b[i])) return 0;
     dot += a[i] * b[i];
     na += a[i] * a[i];
     nb += b[i] * b[i];

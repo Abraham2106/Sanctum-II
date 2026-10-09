@@ -22,6 +22,7 @@ export function createGetNoteTool(vault: VaultAdapter): ToolDef {
       },
       required: ["agent_id", "path"],
     },
+    annotations: { readOnlyHint: true, openWorldHint: false },
     async handler(args) {
       const agentId = String(args.agent_id ?? "").trim()
       if (!agentId) throw new Error("'agent_id' es obligatorio")
