@@ -3,13 +3,15 @@ import type { Project, Thread, MemoryEntry, ProjectFile } from "../projects/type
 import { ProjectStore } from "../projects/store";
 import { indexProject } from "../projects/indexer";
 import { detachAttachedFile } from "../projects/detach-file";
-import { ensureVaultDirectory } from "../core/vault-fs";
+import { ingestProjectFile, openFilePicker } from "./projects/project-files";
 import type { GeminiBalancer } from "../embeddings/gemini-balancer";
 import type { VectorStore } from "../rag/vector-store";
 import type { VaultAdapter } from "../core/vault-adapter";
 import { InputModal } from "./input-modal";
 import { FolderSelectModal } from "./folder-select-modal";
 import { DEFAULT_MODEL } from "../constants";
+import type { IndexGenerationSnapshot } from "../projects/index-generations";
+import { classifyIndexUiState, indexUiStatusHint, indexUiStatusLabel } from "./projects/index-state";
 
 export const VIEW_TYPE_PROJECTS = "sanctum-projects";
 
@@ -33,6 +35,7 @@ export interface ProjectsViewDeps {
   appendMemory: (text: string, source?: string) => Promise<void>;
   saveProject: (p: Project) => Promise<void>;
   getVectorCount: (id: string) => number;
+  getIndexSnapshot?: (projectId: string) => IndexGenerationSnapshot | null;
 }
 
 export class ProjectsView extends ItemView {
@@ -346,15 +349,46 @@ export class ProjectsView extends ItemView {
     const ragCard = this.rightEl.createDiv({ cls: "s-proj-card" });
     this.cardTitle(ragCard, "database", "Índice RAG");
     const vc = this.deps.getVectorCount(p.id);
+    const indexSnap = this.deps.getIndexSnapshot?.(p.id) ?? null;
+    const indexUi = classifyIndexUiState(indexSnap);
+    const indexRow = ragCard.createDiv({ cls: "s-proj-rag-row" });
+    indexRow.createSpan({ cls: "s-proj-rag-label", text: "Estado" });
+    indexRow.createSpan({ cls: "s-proj-rag-value", text: indexUiStatusLabel(indexUi) });
+    const indexHint = indexUiStatusHint(indexUi);
+    if (indexHint) {
+      ragCard.createDiv({ cls: "s-config-group-empty", text: indexHint, attr: { style: "margin-bottom:6px" } });
+    }
     for (const [label, value] of [
       ["Chunks", String(vc)],
-      ["Embeddings", `${p.rag.embed_model} · ${p.rag.dims}d`],
+      ["Embeddings", `${p.embedding?.model || p.rag.embed_model} · ${p.embedding?.dims || p.rag.dims}d`],
       ["Recuperación", `top-${p.rag.top_k} · sim ≥ ${p.rag.min_similarity}`],
     ]) {
       const row = ragCard.createDiv({ cls: "s-proj-rag-row" });
       row.createSpan({ cls: "s-proj-rag-label", text: label });
       row.createSpan({ cls: "s-proj-rag-value", text: value });
     }
+
+    const embedOverride = ragCard.createDiv({ cls: "s-proj-rag-row" });
+    embedOverride.createSpan({ cls: "s-proj-rag-label", text: "Proveedor (proyecto)" });
+    const embedSelect = embedOverride.createEl("select", { cls: "s-composer-chip-select" });
+    embedSelect.createEl("option", { text: "Heredar global", value: "" });
+    embedSelect.createEl("option", { text: "Gemini", value: "gemini" });
+    embedSelect.createEl("option", { text: "Local (sentence-transformers)", value: "sentence-transformers" });
+    if (p.embedding?.backend) embedSelect.value = p.embedding.backend;
+    embedSelect.onchange = () => {
+      const backend = embedSelect.value as "" | "gemini" | "sentence-transformers";
+      if (!backend) {
+        delete p.embedding;
+      } else {
+        p.embedding = {
+          backend,
+          model: backend === "gemini" ? p.rag.embed_model : "google/embeddinggemma-2",
+          revision: backend === "gemini" ? "api" : p.embedding?.revision || "",
+          dims: p.embedding?.dims || p.rag.dims,
+        };
+      }
+      void this.deps.saveProject(p);
+    };
     const reindexBtn = ragCard.createEl("button", { cls: "s-proj-btn" });
     setIcon(reindexBtn.createSpan(), "refresh-cw");
     reindexBtn.createSpan({ text: "Reindexar proyecto" });
@@ -678,58 +712,18 @@ export class ProjectsView extends ItemView {
 
   // ── File handling ──
 
-  private filesDir(): string {
-    return `sanctum-files/${this.activeProject?.id || "default"}`;
-  }
-
-  private async ingestFile(file: File): Promise<void> {
-    if (!this.activeProject) return;
-    const text = await file.text();
-    const lines = text.split("\n").length;
-    const ext = file.name.includes(".") ? file.name.split(".").pop() || "" : "";
-    const vaultPath = `${this.filesDir()}/${file.name}`;
-
-    const dir = this.filesDir();
-    await ensureVaultDirectory(this.app.vault.adapter, dir);
-    await this.app.vault.adapter.write(vaultPath, text);
-
-    const attached = this.activeProject.attachedFiles || [];
-    attached.push({
-      path: vaultPath,
-      name: file.name,
-      ext,
-      lines,
-      added_at: Date.now(),
-    });
-    this.activeProject.attachedFiles = attached;
-
-    if (!this.activeProject.files.includes(vaultPath)) {
-      this.activeProject.files.push(vaultPath);
-    }
-    if (!this.activeProject.read_paths.includes(dir)) {
-      this.activeProject.read_paths.push(dir);
-    }
-
-    await this.deps.saveProject(this.activeProject);
-    new Notice(`📎 ${file.name} adjuntado (${lines} líneas)`);
-  }
-
   private async addFile(): Promise<void> {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    input.onchange = async () => {
+    openFilePicker(async (files) => {
       if (!this.activeProject) return;
-      for (const file of Array.from(input.files || [])) {
+      for (const file of files) {
         try {
-          await this.ingestFile(file);
+          await ingestProjectFile(this.app, this.activeProject, file, (p) => this.deps.saveProject(p));
         } catch (err: any) {
           new Notice(`Error al adjuntar ${file.name}: ${err.message}`);
         }
       }
       this.renderRight();
-    };
-    input.click();
+    });
   }
 
   private async handleDrop(e: DragEvent): Promise<void> {
@@ -737,7 +731,7 @@ export class ProjectsView extends ItemView {
     if (!files || !this.activeProject) return;
     for (let i = 0; i < files.length; i++) {
       try {
-        await this.ingestFile(files[i]);
+        await ingestProjectFile(this.app, this.activeProject, files[i], (p) => this.deps.saveProject(p));
       } catch (err: any) {
         new Notice(`Error al adjuntar ${files[i].name}: ${err.message}`);
       }

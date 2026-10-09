@@ -1,12 +1,15 @@
 import { setIcon } from "obsidian";
 import type { App } from "obsidian";
-import type { ChatViewPlugin, RailAgent } from "./chat-types";
+import type { ChatViewPlugin } from "./chat-types";
+import { resolveComposerPathFilter } from "./chain-path-filter";
+import { cancelInFlightChat, cancelInFlightMesh } from "./chat-cancel-wiring";
 import { getAgentIcon, renderAvatar } from "./chat-types";
 import type { SkillAuthoringProgress, SkillAuthoringStage, SkillRagSource, SkillWebSource } from "../skills/authoring/types";
 
 export class ChatComposer {
   inputEl!: HTMLInputElement;
   sendBtn!: HTMLButtonElement;
+  cancelBtn!: HTMLButtonElement;
   pipelineEl!: HTMLElement;
   modeChatBtn!: HTMLButtonElement;
   modeMeshBtn!: HTMLButtonElement;
@@ -112,8 +115,16 @@ export class ChatComposer {
     this.inputEl = inputRow.createEl("input", { cls: "s-input" });
     this.inputEl.placeholder = "Pregunta para Agente Base...";
     this.sendBtn = inputRow.createEl("button", { cls: "s-send-btn chat-mode", text: "Enviar" });
+    this.cancelBtn = inputRow.createEl("button", { cls: "s-icon-btn", attr: { type: "button", title: "Cancelar solicitud" } });
+    setIcon(this.cancelBtn, "square");
+    this.cancelBtn.setAttribute("aria-label", "Cancelar solicitud");
+    this.cancelBtn.style.display = "none";
 
     this.sendBtn.onclick = () => this.onSend?.();
+    this.cancelBtn.onclick = () => {
+      if (this.meshMode) cancelInFlightMesh(this.plugin);
+      else cancelInFlightChat(this.plugin);
+    };
 
     // Bottom bar
     const bar = inner.createDiv({ cls: "s-composer-bar" });
@@ -123,7 +134,8 @@ export class ChatComposer {
     this.composerFolderSelect.setAttribute("aria-label", "Carpeta de contexto" );
     this.loadFolderList().then(() => {});
     this.composerFolderSelect.addEventListener("change", () => {
-      this.plugin.setActiveFolder(this.composerFolderSelect.value || null);
+      const value = this.composerFolderSelect.value;
+      this.plugin.setActiveFolder(value ? value : null);
     });
 
     const reindexChip = bar.createEl("button", { cls: "s-composer-chip", attr: { type: "button" } });
@@ -315,4 +327,15 @@ export class ChatComposer {
 
   getMeshMode(): boolean { return this.meshMode; }
   setMeshMode(v: boolean): void { this.meshMode = v; }
+
+  setInFlight(active: boolean): void {
+    this.sendBtn.disabled = active;
+    this.inputEl.disabled = active;
+    this.cancelBtn.style.display = active ? "" : "none";
+  }
+
+  /** Exposed for tests: folder chip must not map empty string to []. */
+  folderPathFilterForExecution(): string[] | undefined {
+    return resolveComposerPathFilter(this.composerFolderSelect?.value);
+  }
 }
