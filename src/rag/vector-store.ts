@@ -2,12 +2,14 @@ import { pathMatchesAny } from "../utils";
 import { isNotFoundError } from "../core/vault-fs";
 import { withResourceLock } from "../core/resource-queue";
 
-interface VectorStoreAdapter {
+export interface VectorStoreAdapter {
   read: (path: string) => Promise<string>;
   write: (path: string, content: string) => Promise<void>;
   append?: (path: string, content: string) => Promise<void>;
   exists?: (path: string) => Promise<boolean>;
 }
+
+export type VectorStoreReadAdapter = Pick<VectorStoreAdapter, "read">;
 
 export interface Chunk {
   id: string;
@@ -17,6 +19,12 @@ export interface Chunk {
 }
 
 const DEFAULT_STORE_PATH = "sanctum-logs/vector-store.jsonl";
+
+type VectorSemanticOp = { kind: "replace_note"; notePath: string; chunks: readonly Chunk[] };
+
+type VectorReplayEntry =
+  | { type: "semantic"; op: VectorSemanticOp }
+  | { type: "txn"; line: string };
 
 export function cosineSimilarity(a: number[], b: number[]): number {
   // DEC-0015: largos distintos no pueden ganar el ranking con NaN
@@ -85,6 +93,7 @@ export class VectorStore {
   private noteToChunksMap = new Map<string, Set<string>>();
   private chunks: Chunk[] = [];
   private pendingTxns: string[] = [];
+  private replayLog: VectorReplayEntry[] = [];
   private shouldTruncate = false;
   private dims = 0;
   private storePath: string;
@@ -108,56 +117,217 @@ export class VectorStore {
 
   getStorePath(): string { return this.storePath; }
 
-  private installFromRaw(raw: string): void {
-    const lines = raw.split("\n");
-    this.chunksMap.clear();
-    this.noteToChunksMap.clear();
-    this.dims = 0;
+  private applyTxnLine(line: string, maps: {
+    chunksMap: Map<string, Chunk>;
+    noteToChunksMap: Map<string, Set<string>>;
+    dims: number;
+  }): void {
+    if (!line.trim()) return;
+    try {
+      const txn = JSON.parse(line);
+      if (txn.t === "set") {
+        const floatArr = base64ToFloat32Array(txn.v);
+        const embedding = Array.from(floatArr);
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const txn = JSON.parse(line);
-        if (txn.t === "set") {
-          const floatArr = base64ToFloat32Array(txn.v);
-          const embedding = Array.from(floatArr);
+        const chunk: Chunk = {
+          id: txn.id,
+          note_path: txn.p,
+          chunk_text: txn.txt,
+          embedding
+        };
+        maps.chunksMap.set(txn.id, chunk);
 
-          const chunk: Chunk = {
-            id: txn.id,
-            note_path: txn.p,
-            chunk_text: txn.txt,
-            embedding
-          };
-          this.chunksMap.set(txn.id, chunk);
-
-          let noteSet = this.noteToChunksMap.get(txn.p);
-          if (!noteSet) {
-            noteSet = new Set<string>();
-            this.noteToChunksMap.set(txn.p, noteSet);
-          }
-          noteSet.add(txn.id);
-
-          if (embedding.length > 0 && !this.dims) {
-            this.dims = embedding.length;
-          }
-        } else if (txn.t === "del") {
-          const chunk = this.chunksMap.get(txn.id);
-          if (chunk) {
-            const noteSet = this.noteToChunksMap.get(chunk.note_path);
-            if (noteSet) {
-              noteSet.delete(txn.id);
-              if (noteSet.size === 0) {
-                this.noteToChunksMap.delete(chunk.note_path);
-              }
-            }
-            this.chunksMap.delete(txn.id);
-          }
+        let noteSet = maps.noteToChunksMap.get(txn.p);
+        if (!noteSet) {
+          noteSet = new Set<string>();
+          maps.noteToChunksMap.set(txn.p, noteSet);
         }
-      } catch (e) {
-        console.error("Error parsing transaction line in vector store log:", e);
+        noteSet.add(txn.id);
+
+        if (embedding.length > 0 && !maps.dims) {
+          maps.dims = embedding.length;
+        }
+      } else if (txn.t === "del") {
+        const chunk = maps.chunksMap.get(txn.id);
+        if (chunk) {
+          const noteSet = maps.noteToChunksMap.get(chunk.note_path);
+          if (noteSet) {
+            noteSet.delete(txn.id);
+            if (noteSet.size === 0) {
+              maps.noteToChunksMap.delete(chunk.note_path);
+            }
+          }
+          maps.chunksMap.delete(txn.id);
+        }
+      }
+    } catch (e) {
+      console.error("Error parsing transaction line in vector store log:", e);
+    }
+  }
+
+  private mapsFromRaw(raw: string): {
+    chunksMap: Map<string, Chunk>;
+    noteToChunksMap: Map<string, Set<string>>;
+    dims: number;
+  } {
+    const maps = {
+      chunksMap: new Map<string, Chunk>(),
+      noteToChunksMap: new Map<string, Set<string>>(),
+      dims: 0,
+    };
+    for (const line of raw.split("\n")) {
+      this.applyTxnLine(line, maps);
+    }
+    return maps;
+  }
+
+  private installMaps(maps: {
+    chunksMap: Map<string, Chunk>;
+    noteToChunksMap: Map<string, Set<string>>;
+    dims: number;
+  }): void {
+    this.chunksMap = maps.chunksMap;
+    this.noteToChunksMap = maps.noteToChunksMap;
+    this.dims = maps.dims;
+    this.chunks = Array.from(this.chunksMap.values());
+  }
+
+  private installFromRaw(raw: string): void {
+    this.installMaps(this.mapsFromRaw(raw));
+  }
+
+  private enqueueTxn(line: string): void {
+    this.pendingTxns.push(line);
+    this.replayLog.push({ type: "txn", line });
+  }
+
+  private cloneChunk(chunk: Chunk): Chunk {
+    return {
+      id: chunk.id,
+      note_path: chunk.note_path,
+      chunk_text: chunk.chunk_text,
+      embedding: [...chunk.embedding],
+    };
+  }
+
+  private chunkToSetLine(chunk: Chunk): string {
+    const b64 = float32ArrayToBase64(new Float32Array(chunk.embedding));
+    return JSON.stringify({
+      t: "set",
+      id: chunk.id,
+      p: chunk.note_path,
+      txt: chunk.chunk_text,
+      v: b64,
+    }) + "\n";
+  }
+
+  private applyReplaceNoteSemantic(
+    op: VectorSemanticOp,
+    staged: {
+      chunksMap: Map<string, Chunk>;
+      noteToChunksMap: Map<string, Set<string>>;
+      dims: number;
+    }
+  ): void {
+    const keep = new Set(op.chunks.map((c) => c.id));
+    const stagedIds = staged.noteToChunksMap.get(op.notePath);
+    if (stagedIds) {
+      for (const id of [...stagedIds]) {
+        if (!keep.has(id)) {
+          staged.chunksMap.delete(id);
+          stagedIds.delete(id);
+        }
+      }
+      if (stagedIds.size === 0) {
+        staged.noteToChunksMap.delete(op.notePath);
       }
     }
-    this.chunks = Array.from(this.chunksMap.values());
+
+    const mergedIds = new Set<string>();
+    for (const chunk of op.chunks) {
+      const cloned = this.cloneChunk(chunk);
+      staged.chunksMap.set(cloned.id, cloned);
+      mergedIds.add(cloned.id);
+      if (cloned.embedding.length > 0 && !staged.dims) {
+        staged.dims = cloned.embedding.length;
+      }
+    }
+    if (mergedIds.size > 0) {
+      staged.noteToChunksMap.set(op.notePath, mergedIds);
+    } else {
+      staged.noteToChunksMap.delete(op.notePath);
+    }
+  }
+
+  private materializeReplaceNoteTxns(
+    op: VectorSemanticOp,
+    staged: {
+      chunksMap: Map<string, Chunk>;
+      noteToChunksMap: Map<string, Set<string>>;
+      dims: number;
+    }
+  ): string[] {
+    const lines: string[] = [];
+    const keep = new Set(op.chunks.map((c) => c.id));
+    const stagedIds = staged.noteToChunksMap.get(op.notePath);
+    if (stagedIds) {
+      for (const id of [...stagedIds]) {
+        if (!keep.has(id)) {
+          lines.push(JSON.stringify({ t: "del", id }) + "\n");
+        }
+      }
+    }
+    for (const chunk of op.chunks) {
+      lines.push(this.chunkToSetLine(chunk));
+    }
+    return lines;
+  }
+
+  private async buildPersistBatchFromReplay(replayEnd: number, adapter: Pick<VectorStoreAdapter, "read">): Promise<string[]> {
+    const raw = await readExistingOrEmpty(adapter, this.storePath);
+    const staged = this.mapsFromRaw(raw);
+    const lines: string[] = [];
+    for (let i = 0; i < replayEnd; i++) {
+      const entry = this.replayLog[i];
+      if (entry.type === "txn") {
+        lines.push(entry.line);
+        this.applyTxnLine(entry.line, staged);
+      } else {
+        for (const line of this.materializeReplaceNoteTxns(entry.op, staged)) {
+          lines.push(line);
+        }
+        this.applyReplaceNoteSemantic(entry.op, staged);
+      }
+    }
+    return lines;
+  }
+
+  private retirePersistedPrefix(
+    replayRef: VectorReplayEntry[],
+    replayCount: number,
+    pendingRef: string[],
+    pendingCount: number
+  ): void {
+    if (this.replayLog === replayRef) {
+      replayRef.splice(0, replayCount);
+    }
+    if (this.pendingTxns === pendingRef) {
+      pendingRef.splice(0, pendingCount);
+    }
+  }
+
+  private replayOntoMaps(staged: {
+    chunksMap: Map<string, Chunk>;
+    noteToChunksMap: Map<string, Set<string>>;
+    dims: number;
+  }): void {
+    for (const entry of this.replayLog) {
+      if (entry.type === "semantic") {
+        this.applyReplaceNoteSemantic(entry.op, staged);
+      } else {
+        this.applyTxnLine(entry.line, staged);
+      }
+    }
   }
 
   private resetMapsToEmpty(): void {
@@ -167,28 +337,36 @@ export class VectorStore {
     this.dims = 0;
   }
 
-  async load(adapter: VectorStoreAdapter): Promise<void> {
+  async load(adapter: VectorStoreReadAdapter): Promise<void> {
     const epochAtStart = this.mutationEpoch;
     await withResourceLock(adapter, this.storePath, () => this.loadUnlocked(adapter, epochAtStart));
   }
 
-  private async loadUnlocked(adapter: VectorStoreAdapter, epochAtStart: number): Promise<void> {
+  private async loadUnlocked(adapter: VectorStoreReadAdapter, epochAtStart: number): Promise<void> {
     try {
       const raw = await adapter.read(this.storePath);
-      if (this.mutationEpoch !== epochAtStart) {
-        this.shouldTruncate = true;
-        return;
+      if (this.mutationEpoch === epochAtStart && this.replayLog.length === 0 && !this.shouldTruncate) {
+        this.installFromRaw(raw);
+        this.pendingTxns = [];
+        this.shouldTruncate = false;
+      } else if (this.shouldTruncate) {
+        // clear() during load stays authoritative over disk baseline
+      } else {
+        const staged = this.mapsFromRaw(raw);
+        this.replayOntoMaps(staged);
+        this.installMaps(staged);
       }
-      this.installFromRaw(raw);
-      this.pendingTxns = [];
-      this.shouldTruncate = false;
       console.error(`[VectorStore] ✅ Loaded ${this.chunks.length} chunks from ${this.storePath}`);
     } catch (error) {
       if (isNotFoundError(error)) {
-        if (this.mutationEpoch === epochAtStart) {
+        if (this.mutationEpoch === epochAtStart && this.replayLog.length === 0 && !this.shouldTruncate) {
           this.resetMapsToEmpty();
           this.pendingTxns = [];
           this.shouldTruncate = false;
+        } else if (!this.shouldTruncate && this.replayLog.length > 0) {
+          const staged = this.mapsFromRaw("");
+          this.replayOntoMaps(staged);
+          this.installMaps(staged);
         }
         console.error(`[VectorStore] 📄 No existing store at ${this.storePath} — starting empty`);
         return;
@@ -203,9 +381,12 @@ export class VectorStore {
   }
 
   private async saveUnlocked(adapter: VectorStoreAdapter): Promise<void> {
+    const replayRef = this.replayLog;
+    const replayCount = replayRef.length;
+    const pendingRef = this.pendingTxns;
+    const pendingCountAtCapture = pendingRef.length;
+
     if (this.shouldTruncate) {
-      const pendingRef = this.pendingTxns;
-      const pendingBefore = pendingRef.length;
       const txns: string[] = [];
       for (const chunk of this.chunksMap.values()) {
         const b64 = float32ArrayToBase64(new Float32Array(chunk.embedding));
@@ -221,21 +402,23 @@ export class VectorStore {
       await adapter.write(this.storePath, fileContent);
       if (this.pendingTxns === pendingRef) {
         this.shouldTruncate = false;
-        pendingRef.splice(0, pendingBefore);
+        this.retirePersistedPrefix(replayRef, replayCount, pendingRef, pendingCountAtCapture);
         console.error(`[VectorStore] 💾 Truncate-saved ${this.chunks.length} chunks to ${this.storePath} (${(fileContent.length / 1024).toFixed(1)}KB)`);
       }
       return;
     }
 
-    if (this.pendingTxns.length === 0) return;
+    const appendLines =
+      replayCount > 0
+        ? await this.buildPersistBatchFromReplay(replayCount, adapter)
+        : pendingRef.slice(0, pendingCountAtCapture);
+    if (appendLines.length === 0) return;
 
-    const pendingRef = this.pendingTxns;
-    const capturedCount = pendingRef.length;
-    const appendContent = pendingRef.slice(0, capturedCount).join("");
+    const appendContent = appendLines.join("");
     await appendToFile(adapter, this.storePath, appendContent);
     if (this.pendingTxns === pendingRef) {
-      pendingRef.splice(0, capturedCount);
-      console.info(`[VectorStore] 💾 Append-saved ${capturedCount} txns to ${this.storePath}`);
+      this.retirePersistedPrefix(replayRef, replayCount, pendingRef, pendingCountAtCapture);
+      console.info(`[VectorStore] 💾 Append-saved ${appendLines.length} txns to ${this.storePath}`);
     }
   }
 
@@ -245,11 +428,16 @@ export class VectorStore {
 
     this.touchMutation();
 
+    const clonedChunks = newChunks.map((c) => this.cloneChunk(c));
+    this.replayLog.push({
+      type: "semantic",
+      op: { kind: "replace_note", notePath: path, chunks: clonedChunks },
+    });
+
     const oldChunkIds = this.noteToChunksMap.get(path);
     if (oldChunkIds) {
       for (const oldId of oldChunkIds) {
         this.chunksMap.delete(oldId);
-        this.pendingTxns.push(JSON.stringify({ t: "del", id: oldId }) + "\n");
       }
       this.noteToChunksMap.delete(path);
     }
@@ -259,15 +447,6 @@ export class VectorStore {
       for (const c of newChunks) {
         this.chunksMap.set(c.id, c);
         newSet.add(c.id);
-
-        const b64 = float32ArrayToBase64(new Float32Array(c.embedding));
-        this.pendingTxns.push(JSON.stringify({
-          t: "set",
-          id: c.id,
-          p: c.note_path,
-          txt: c.chunk_text,
-          v: b64
-        }) + "\n");
       }
       this.noteToChunksMap.set(path, newSet);
 
@@ -285,6 +464,7 @@ export class VectorStore {
     this.noteToChunksMap.clear();
     this.chunks = [];
     this.pendingTxns = [];
+    this.replayLog = [];
     this.shouldTruncate = true;
     this.dims = 0;
   }
